@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "screentrigger://schema/config.schema.json",
+  "title": "ScreenTrigger config.json 文档 schema（TASK-006）",
+  "$comment": "02 config.json 表格的机器可校验等价物（冲突以 02 为准）。未知字段拒绝（additionalProperties:false，02：未声明字段拒绝）；NaN/Infinity 由各端序列化层拒绝（Python parse_constant / serde_json 默认 / TS JSON.parse）。model_directory 必须为数据根相对路径且解析后不越界（拒绝 ..、绝对路径、盘符——07 §6 路径组件判断）。configLimits 块为三端共享范围常量事实源（与 contract-cases.json thresholds.configLimits 逐字一致）。默认值 = 02 config.json 完整示例逐字段；revision 初始 1、每次 update/reset 递增（§5.4）。schema_version>2 → SCHEMA_UNSUPPORTED（拒绝写入并提示升级，未知字段不静默删除）；同版本未知字段/坏 JSON → DATA_CORRUPT（走恢复流程，不建空库覆盖）。敏感字段结论：本 schema 无任何凭据/密钥/令牌字段（02 不提供），无需脱敏；日志遵守 06「不记录参数全文」。",
+  "configLimits": {
+    "defaultFrequencyHz": {"min": 0.1, "max": 30},
+    "threshold": {"min": 0, "max": 1},
+    "ocrMinConfidence": {"min": 0, "max": 1},
+    "pngCompressionLevel": {"min": 0, "max": 9},
+    "previewHz": {"min": 1, "max": 20},
+    "moveDurationMs": {"min": 0, "max": 5000},
+    "typeIntervalMs": {"min": 0, "max": 5000},
+    "totalTimeoutMs": {"min": 0},
+    "rotateBytesMin": 1048576,
+    "rotateBytesMax": 104857600,
+    "fileCount": {"min": 1, "max": 20},
+    "themes": ["system", "light", "dark"],
+    "loggingLevels": ["debug", "info", "warning", "error"],
+    "languages": ["zh-CN"]
+  },
+  "definitions": {
+    "general": {
+      "type": "object",
+      "required": ["language", "theme"],
+      "properties": {
+        "language": {"enum": ["zh-CN"], "default": "zh-CN"},
+        "theme": {"enum": ["system", "light", "dark"], "default": "system"}
+      },
+      "additionalProperties": false
+    },
+    "recognition": {
+      "type": "object",
+      "required": [
+        "default_frequency_hz",
+        "default_threshold",
+        "rgb_tolerance",
+        "hsv_tolerance",
+        "ocr_model_id",
+        "ocr_min_confidence",
+        "model_directory"
+      ],
+      "properties": {
+        "default_frequency_hz": {"type": "number", "minimum": 0.1, "maximum": 30, "default": 1},
+        "default_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.85},
+        "rgb_tolerance": {"$ref": "#/definitions/toleranceRgb"},
+        "hsv_tolerance": {"$ref": "#/definitions/toleranceHsv"},
+        "ocr_model_id": {"type": ["string", "null"], "default": null},
+        "ocr_min_confidence": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.7},
+        "model_directory": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![A-Za-z]:)(?![\\\\/])(?!.*(^|[\\\\/])\\.\\.($|[\\\\/])).+$",
+          "default": "models",
+          "$comment": "数据根相对目录：禁绝对路径/盘符/..（02/07 §6）；不越界由加载期组件判断复核"
+        }
+      },
+      "additionalProperties": false
+    },
+    "toleranceRgb": {
+      "type": "object",
+      "required": ["r", "g", "b"],
+      "properties": {
+        "r": {"type": "integer", "minimum": 0, "maximum": 255, "default": 15},
+        "g": {"type": "integer", "minimum": 0, "maximum": 255, "default": 15},
+        "b": {"type": "integer", "minimum": 0, "maximum": 255, "default": 15}
+      },
+      "additionalProperties": false
+    },
+    "toleranceHsv": {
+      "type": "object",
+      "required": ["h", "s", "v"],
+      "properties": {
+        "h": {"type": "integer", "minimum": 0, "maximum": 180, "default": 10},
+        "s": {"type": "integer", "minimum": 0, "maximum": 100, "default": 20},
+        "v": {"type": "integer", "minimum": 0, "maximum": 100, "default": 20}
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "type": "object",
+      "required": ["preview_hz", "png_compression_level"],
+      "properties": {
+        "preview_hz": {"type": "integer", "minimum": 1, "maximum": 20, "default": 10},
+        "png_compression_level": {"type": "integer", "minimum": 0, "maximum": 9, "default": 6}
+      },
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "object",
+      "required": ["allow_exit", "move_duration_ms", "type_interval_ms"],
+      "properties": {
+        "allow_exit": {"type": "boolean", "default": false},
+        "move_duration_ms": {"type": "integer", "minimum": 0, "maximum": 5000, "default": 200},
+        "type_interval_ms": {"type": "integer", "minimum": 0, "maximum": 5000, "default": 50}
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": ["total_timeout_ms"],
+      "properties": {
+        "total_timeout_ms": {"type": "integer", "minimum": 0, "default": 0}
+      },
+      "additionalProperties": false
+    },
+    "hotkeys": {
+      "type": "object",
+      "required": ["start_selection", "stop_script", "pause_script"],
+      "properties": {
+        "start_selection": {"type": "string", "minLength": 1, "default": "Ctrl+Alt+S"},
+        "stop_script": {"type": "string", "minLength": 1, "default": "Ctrl+Alt+X"},
+        "pause_script": {"type": "string", "minLength": 1, "default": "Ctrl+Alt+P"}
+      },
+      "additionalProperties": false,
+      "$comment": "TASK-006 本任务仅纯数据保存；注册生效与回滚属热键任务（01 ConfigService 完整语义边界）。"
+    },
+    "logging": {
+      "type": "object",
+      "required": ["level", "rotate_bytes", "file_count"],
+      "properties": {
+        "level": {"enum": ["debug", "info", "warning", "error"], "default": "info"},
+        "rotate_bytes": {"type": "integer", "minimum": 1048576, "maximum": 104857600, "default": 10485760},
+        "file_count": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": [
+    "schema_version",
+    "revision",
+    "general",
+    "recognition",
+    "capture",
+    "input",
+    "execution",
+    "hotkeys",
+    "logging"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "revision": {"type": "integer", "minimum": 1, "default": 1},
+    "general": {"$ref": "#/definitions/general"},
+    "recognition": {"$ref": "#/definitions/recognition"},
+    "capture": {"$ref": "#/definitions/capture"},
+    "input": {"$ref": "#/definitions/input"},
+    "execution": {"$ref": "#/definitions/execution"},
+    "hotkeys": {"$ref": "#/definitions/hotkeys"},
+    "logging": {"$ref": "#/definitions/logging"}
+  },
+  "additionalProperties": false
+}

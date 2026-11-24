@@ -1,0 +1,24 @@
+{
+  "provider_id": "builtin.ocr",
+  "api_version": 1,
+  "provider_version": "1.0.0",
+  "supported_condition_types": [
+    "ocr"
+  ],
+  "model_ids": [
+    "korean_PP-OCRv5_mobile_rec"
+  ],
+  "supported_languages": [
+    "en",
+    "zh",
+    "ko"
+  ],
+  "thread_safe": false,
+  "offline": true,
+  "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+  "source": "official_models/korean_PP-OCRv5_mobile_rec",
+  "sha256": "cac3e5f12cf04aaa77f6a5bc704e4e736ef2908476551891d84b41b4e9090462",
+  "supported_charsets": [
+    "utf-8"
+  ]
+}

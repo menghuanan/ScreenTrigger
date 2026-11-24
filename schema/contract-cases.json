@@ -1,0 +1,1118 @@
+{
+  "$comment": "双端共享契约用例集。TASK-005（设计 §3.4/§8.1）：Rust contract_tests 与 Python backend/tests/test_ipc_contract.py 跑同一份文件，各端执行 applies_to 含本端的用例；thresholds 为三端共享阈值（docs/03/06）。TASK-006（设计 §2.2/§9.1）扩展：新增 kind=type_validation（类型纯校验：输入样例+期望错误字段定位）与 config_patch（patch/expected_revision/期望结果或错误码，执行方=B2 ConfigService 测试与 Rust contract_tests）；thresholds 新增 configLimits（02 范围常量，三端运行时比对禁止硬编码偏离）。既有键/用例只增不改（向后兼容：Rust contract_tests 仅按 include_str 读 thresholds 固定字段，新增键与新增用例不影响其断言）。malformed 样本仅以 JSON 可表达的字节描述；非 UTF-8 字节样本由各端以 native 字节注入（rawBytesUtf8 字段给出其 UTF-8 转义描述）。",
+  "version": 2,
+  "thresholds": {
+    "protocolVersion": 1,
+    "maxFrameBytes": 2097152,
+    "dedupResponseCache": 10000,
+    "seenIdSetCapacity": 100000,
+    "normalInflightLimit": 32,
+    "consecutiveMalformedLimit": 10,
+    "normalDeadlineMs": 5000,
+    "startupDeadlineMs": 30000,
+    "pythonConsecutiveGarbageExitCode": 3,
+    "requestLedgerCapacity": 10000,
+    "hostWhitelist": [
+      "input_action",
+      "window_snapshot",
+      "acquire_input_lease",
+      "release_input_lease"
+    ],
+    "mergeableEvents": ["selection_updated", "recognition_stats"],
+    "configLimits": {
+      "defaultFrequencyHz": {"min": 0.1, "max": 30},
+      "threshold": {"min": 0, "max": 1},
+      "ocrMinConfidence": {"min": 0, "max": 1},
+      "pngCompressionLevel": {"min": 0, "max": 9},
+      "previewHz": {"min": 1, "max": 20},
+      "moveDurationMs": {"min": 0, "max": 5000},
+      "typeIntervalMs": {"min": 0, "max": 5000},
+      "totalTimeoutMs": {"min": 0},
+      "rotateBytesMin": 1048576,
+      "rotateBytesMax": 104857600,
+      "fileCount": {"min": 1, "max": 20},
+      "themes": ["system", "light", "dark"],
+      "loggingLevels": ["debug", "info", "warning", "error"],
+      "languages": ["zh-CN"]
+    }
+  },
+  "cases": [
+    {
+      "id": "valid-request-hello",
+      "kind": "valid_frame",
+      "applies_to": ["python", "rust"],
+      "frame": {
+        "protocol_version": 1,
+        "session_id": "session-contract-1",
+        "type": "request",
+        "id": "ui-1",
+        "command": "hello",
+        "params": {}
+      }
+    },
+    {
+      "id": "valid-response-success",
+      "kind": "valid_frame",
+      "applies_to": ["python", "rust"],
+      "frame": {
+        "protocol_version": 1,
+        "session_id": "session-contract-1",
+        "type": "response",
+        "id": "ui-1",
+        "success": true,
+        "data": {"engine_time": "2026-10-09T12:00:00.000Z"}
+      }
+    },
+    {
+      "id": "valid-response-error",
+      "kind": "valid_frame",
+      "applies_to": ["python", "rust"],
+      "frame": {
+        "protocol_version": 1,
+        "session_id": "session-contract-1",
+        "type": "response",
+        "id": "ui-2",
+        "success": false,
+        "error": {
+          "code": "UNKNOWN_COMMAND",
+          "message": "未注册命令",
+          "details": {"command": "foo"},
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "valid-event-system-ready",
+      "kind": "valid_frame",
+      "applies_to": ["python", "rust"],
+      "frame": {
+        "protocol_version": 1,
+        "session_id": "session-contract-1",
+        "type": "event",
+        "seq": 1,
+        "name": "system_ready",
+        "timestamp": "2026-10-09T12:00:00.000Z",
+        "payload": {"capabilities": [], "versions": {}}
+      }
+    },
+    {
+      "id": "valid-host-request-input-action",
+      "kind": "valid_frame",
+      "applies_to": ["python", "rust"],
+      "frame": {
+        "protocol_version": 1,
+        "session_id": "session-contract-1",
+        "type": "host_request",
+        "id": "py-0b7e6d3e-1111-4c22-9f3e-2f9d0e8a5b01",
+        "command": "input_action",
+        "params": {"execution_id": "e1", "lease_id": "l1", "action_id": "a1", "geometry_revision": 3, "action": {"kind": "click", "x": 10, "y": 20, "button": "left", "clicks": 1}}
+      }
+    },
+    {
+      "id": "valid-host-response-capability-denied",
+      "kind": "valid_frame",
+      "applies_to": ["python", "rust"],
+      "frame": {
+        "protocol_version": 1,
+        "session_id": "session-contract-1",
+        "type": "host_response",
+        "id": "py-0b7e6d3e-1111-4c22-9f3e-2f9d0e8a5b01",
+        "success": false,
+        "error": {
+          "code": "CAPABILITY_DENIED",
+          "message": "宿主能力未提供",
+          "details": {"command": "input_action"},
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "malformed-invalid-json",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "raw": "{not json}",
+      "expect": {"reason": "invalid_json", "counted": true}
+    },
+    {
+      "id": "malformed-not-object",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "raw": "[1,2,3]",
+      "expect": {"reason": "not_an_object", "counted": true}
+    },
+    {
+      "id": "malformed-request-missing-id",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": 1, "session_id": "session-contract-1", "type": "request", "command": "hello", "params": {}},
+      "expect": {"reason": "missing_field:id", "counted": true}
+    },
+    {
+      "id": "malformed-request-missing-command",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": 1, "session_id": "session-contract-1", "type": "request", "id": "ui-1", "params": {}},
+      "expect": {"reason": "missing_field:command", "counted": true}
+    },
+    {
+      "id": "malformed-response-missing-success",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": 1, "session_id": "session-contract-1", "type": "response", "id": "ui-1", "data": {}},
+      "expect": {"reason": "missing_field:success", "counted": true}
+    },
+    {
+      "id": "malformed-response-data-error-exclusive",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": 1, "session_id": "session-contract-1", "type": "response", "id": "ui-1", "success": true},
+      "expect": {"reason": "data_error_exclusive", "counted": true}
+    },
+    {
+      "id": "malformed-event-missing-timestamp",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": 1, "session_id": "session-contract-1", "type": "event", "seq": 1, "name": "system_ready", "payload": {}},
+      "expect": {"reason": "missing_field:timestamp", "counted": true}
+    },
+    {
+      "id": "malformed-host-request-missing-params",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": 1, "session_id": "session-contract-1", "type": "host_request", "id": "py-0b7e6d3e-1111-4c22-9f3e-2f9d0e8a5b01", "command": "input_action"},
+      "expect": {"reason": "missing_field:params", "counted": true}
+    },
+    {
+      "id": "malformed-bad-protocol-version",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": 2, "session_id": "session-contract-1", "type": "request", "id": "ui-1", "command": "hello", "params": {}},
+      "expect": {"reason": "unsupported_protocol_version", "counted": true}
+    },
+    {
+      "id": "malformed-boolean-protocol-version",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": true, "session_id": "session-contract-1", "type": "request", "id": "ui-1", "command": "hello", "params": {}},
+      "expect": {"reason": "unsupported_protocol_version", "counted": true}
+    },
+    {
+      "id": "malformed-unknown-type",
+      "kind": "malformed",
+      "applies_to": ["python", "rust"],
+      "frame": {"protocol_version": 1, "session_id": "session-contract-1", "type": "broadcast", "id": "ui-1", "command": "hello"},
+      "expect": {"reason": "unsupported_type:broadcast", "counted": true}
+    },
+    {
+      "id": "drop-missing-session-id",
+      "kind": "drop_no_count",
+      "applies_to": ["python", "rust"],
+      "description": "用户冻结契约③：session_id 缺失 → 丢弃+stderr 日志，不计畸形帧（03：拒绝≠关会话）",
+      "frame": {"protocol_version": 1, "type": "request", "id": "ui-1", "command": "hello", "params": {}},
+      "expect": {"counted": false, "responded": false}
+    },
+    {
+      "id": "drop-stale-session",
+      "kind": "drop_no_count",
+      "applies_to": ["python", "rust"],
+      "description": "旧 session 迟到帧 → 丢弃不计数（03：旧会话消息全部拒绝）",
+      "frame": {"protocol_version": 1, "session_id": "session-old", "type": "request", "id": "ui-1", "command": "hello", "params": {}},
+      "expect": {"counted": false, "responded": false}
+    },
+    {
+      "id": "oversize-frame-2mib",
+      "kind": "oversize",
+      "applies_to": ["python", "rust"],
+      "description": "单帧 >2MiB：接收端丢行+PROTOCOL_ERROR 计数不断流；发送端拒绝发送（设计 §6.5）",
+      "paddingField": "payload",
+      "paddingChar": "x",
+      "expect": {"logCode": "PROTOCOL_ERROR", "sessionAlive": true}
+    },
+    {
+      "id": "unknown-command-business-placeholder",
+      "kind": "dispatch",
+      "applies_to": ["python", "rust"],
+      "description": "业务命令骨架期注册框架位但回 UNKNOWN_COMMAND（设计 §1.2/§5.3）",
+      "command": "execute_script",
+      "expect": {
+        "success": false,
+        "error": {"code": "UNKNOWN_COMMAND", "message": "未注册命令", "retryable": false}
+      }
+    },
+    {
+      "id": "get-job-not-found",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "command": "get_job",
+      "params": {"job_id": "job-missing"},
+      "expect": {"success": false, "errorCode": "NOT_FOUND"}
+    },
+    {
+      "id": "cancel-request-completed",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "command": "cancel_request",
+      "params": {"request_id": "known-id"},
+      "expect": {"success": true, "data": {"cancelled": false, "reason": "completed"}}
+    },
+    {
+      "id": "cancel-request-not-found",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "command": "cancel_request",
+      "params": {"request_id": "never-seen"},
+      "expect": {"success": true, "data": {"cancelled": false, "reason": "not_found"}}
+    },
+    {
+      "id": "cancel-job-terminal-false",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "终态 job 取消返回 cancelled=false（03）",
+      "command": "cancel_job",
+      "expect": {"success": true, "data": {"cancelled": false}}
+    },
+    {
+      "id": "host-whitelist",
+      "kind": "host_whitelist",
+      "applies_to": ["python", "rust"],
+      "allowed": ["input_action", "window_snapshot", "acquire_input_lease", "release_input_lease"],
+      "deniedExample": "click_mouse",
+      "deniedPythonCode": "INVALID_PARAMS",
+      "deniedRustCode": "UNKNOWN_COMMAND"
+    },
+    {
+      "id": "host-bridge-capability-denied",
+      "kind": "host_bridge",
+      "applies_to": ["rust"],
+      "description": "白名单内宿主命令骨架期由 Rust hostbridge 回 CAPABILITY_DENIED 的 host_response（同 id）",
+      "command": "input_action",
+      "expect": {"errorCode": "CAPABILITY_DENIED"}
+    },
+    {
+      "id": "dedup-same-content-replay",
+      "kind": "dedup",
+      "applies_to": ["rust"],
+      "description": "同 ID 同内容重放缓存响应，不重新执行（03）",
+      "expect": {"forwardCount": 1, "replayed": true}
+    },
+    {
+      "id": "dedup-different-content-conflict",
+      "kind": "dedup",
+      "applies_to": ["rust"],
+      "description": "同 ID 不同内容 → CONFLICT（03）",
+      "expect": {"errorCode": "CONFLICT"}
+    },
+    {
+      "id": "dedup-expired-id",
+      "kind": "dedup",
+      "applies_to": ["rust"],
+      "description": "被淘汰 ID 再达 → DUPLICATE_EXPIRED，不重做副作用（03/R08）",
+      "expect": {"errorCode": "DUPLICATE_EXPIRED"}
+    },
+    {
+      "id": "backpressure-busy-32",
+      "kind": "backpressure",
+      "applies_to": ["rust"],
+      "description": "普通类在途 ≥32 → BUSY{retryable:true}，不转发；控制类通道独立不受限（03/06）",
+      "expect": {"errorCode": "BUSY", "controlBypass": true}
+    },
+    {
+      "id": "control-class-commands",
+      "kind": "threshold",
+      "applies_to": ["python", "rust"],
+      "description": "控制类命令清单（03：停止/心跳通道保留容量）；stop_script 转发前先关输入闸门",
+      "controlCommands": ["stop_script", "cancel_request", "cancel_job", "ping", "query_request"]
+    },
+    {
+      "id": "timeout-normal-5s",
+      "kind": "timeout",
+      "applies_to": ["rust"],
+      "description": "普通命令 5s 超时 → INTERNAL_ERROR（message 含期限与 request_id，§9-D5）；迟到成功响应仍写缓存",
+      "deadlineMs": 5000,
+      "expect": {"errorCode": "INTERNAL_ERROR"}
+    },
+    {
+      "id": "timeout-startup-30s",
+      "kind": "timeout",
+      "applies_to": ["rust"],
+      "description": "hello/引擎启动 30s 期限；看门狗语义保持 TASK-004（设计 §6.3）",
+      "deadlineMs": 30000
+    },
+    {
+      "id": "consecutive-malformed-close-session",
+      "kind": "threshold",
+      "applies_to": ["python", "rust"],
+      "description": "连续畸形（中间合法帧清零计数）达 10 → 关会话；Python 侧 stderr 日志后退出 code 3（设计 §6.5 双端对称）",
+      "limit": 10,
+      "pythonExitCode": 3
+    },
+    {
+      "id": "session-rebuild-100000",
+      "kind": "threshold",
+      "applies_to": ["rust"],
+      "description": "已见 ID 集合达 100000 且在途为空 → 清空重建空闲会话（03）",
+      "limit": 100000
+    },
+    {
+      "id": "response-cache-10000",
+      "kind": "threshold",
+      "applies_to": ["rust"],
+      "description": "响应缓存 LRU 容量 10000（03：请求 ID 最多保留最近 10000 个最终响应）",
+      "limit": 10000
+    },
+    {
+      "id": "inflight-limit-32",
+      "kind": "threshold",
+      "applies_to": ["rust"],
+      "description": "普通类在途上限 32（03）",
+      "limit": 32
+    },
+    {
+      "id": "non-utf8-line-lossy",
+      "kind": "malformed",
+      "applies_to": ["rust"],
+      "description": "非 UTF-8 字节行：for_each_line_lossy 解码失败 → 畸形计数+日志，不断流（R4 口径）；Python 侧文本层无法产出非法字节，由 os.write 注入（TASK-004 BUG-6 判据）",
+      "rawBytesUtf8": "\\xff\\xfe\\x80 not-valid-utf8 line\\n",
+      "expect": {"counted": true, "sessionAlive": true}
+    },
+    {
+      "id": "type-region-screen-negative-x-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：screen 空间 x/y 可负（虚拟桌面），负坐标合法样本",
+      "typeName": "region",
+      "value": {"space": "screen_physical", "x": -900, "y": 200, "width": 120, "height": 40, "display_id": "display-1"},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-region-client-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "typeName": "region",
+      "value": {"space": "window_client_physical", "x": 0, "y": 0, "width": 120, "height": 40, "binding_id": "binding-1"},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-region-image-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "typeName": "region",
+      "value": {"space": "image_pixel", "x": 0, "y": 0, "width": 120, "height": 40, "image_id": "img-1"},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-region-min-10x10-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：10×10 下限边界通过",
+      "typeName": "region",
+      "value": {"space": "screen_physical", "x": -900, "y": 0, "width": 10, "height": 10, "display_id": "display-1"},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-region-width-9-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "06：宽 <10 → INVALID_REGION（太小分支）",
+      "typeName": "region",
+      "value": {"space": "screen_physical", "x": 0, "y": 0, "width": 9, "height": 10, "display_id": "display-1"},
+      "expect": {"valid": false, "code": "INVALID_REGION", "field": "region.width"}
+    },
+    {
+      "id": "type-region-height-9-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "typeName": "region",
+      "value": {"space": "screen_physical", "x": 0, "y": 0, "width": 10, "height": 9, "display_id": "display-1"},
+      "expect": {"valid": false, "code": "INVALID_REGION", "field": "region.height"}
+    },
+    {
+      "id": "type-region-client-negative-x-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：client 空间不可负",
+      "typeName": "region",
+      "value": {"space": "window_client_physical", "x": -1, "y": 0, "width": 120, "height": 40, "binding_id": "binding-1"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.x"}
+    },
+    {
+      "id": "type-region-image-negative-y-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：image 空间不可负",
+      "typeName": "region",
+      "value": {"space": "image_pixel", "x": 0, "y": -1, "width": 120, "height": 40, "image_id": "img-1"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.y"}
+    },
+    {
+      "id": "type-region-screen-with-binding-id-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02 空间互斥：binding_id 仅 client 空间出现",
+      "typeName": "region",
+      "value": {"space": "screen_physical", "x": 0, "y": 0, "width": 120, "height": 40, "display_id": "display-1", "binding_id": "binding-1"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.binding_id"}
+    },
+    {
+      "id": "type-region-client-with-display-id-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02 空间互斥：display_id 仅 screen 空间出现",
+      "typeName": "region",
+      "value": {"space": "window_client_physical", "x": 0, "y": 0, "width": 120, "height": 40, "binding_id": "binding-1", "display_id": "display-1"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.display_id"}
+    },
+    {
+      "id": "type-region-screen-missing-display-id-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：screen 空间 display_id 必填",
+      "typeName": "region",
+      "value": {"space": "screen_physical", "x": 0, "y": 0, "width": 120, "height": 40},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.display_id"}
+    },
+    {
+      "id": "type-region-client-missing-binding-id-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "typeName": "region",
+      "value": {"space": "window_client_physical", "x": 0, "y": 0, "width": 120, "height": 40},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.binding_id"}
+    },
+    {
+      "id": "type-region-image-missing-image-id-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "typeName": "region",
+      "value": {"space": "image_pixel", "x": 0, "y": 0, "width": 120, "height": 40},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.image_id"}
+    },
+    {
+      "id": "type-region-unknown-space-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "typeName": "region",
+      "value": {"space": "virtual_screen", "x": 0, "y": 0, "width": 120, "height": 40, "display_id": "display-1"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.space"}
+    },
+    {
+      "id": "type-point-single-pixel-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：Point 单像素读取不受 ≥10 限制",
+      "typeName": "point",
+      "value": {"x": -900, "y": 0},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-localrect-1x1-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：LocalRect 宽高≥1（防把 10×10 套到局部 ROI）",
+      "typeName": "local_rect",
+      "value": {"x": 0, "y": 0, "width": 1, "height": 1},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-localrect-zero-width-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "typeName": "local_rect",
+      "value": {"x": 0, "y": 0, "width": 0, "height": 1},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "local_rect.width"}
+    },
+    {
+      "id": "type-target-valid-minimal",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：最小合法目标（2 叶条件树，anchor 指向存在叶）",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "开始按钮", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [
+          {"id": "c1", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c2", "type": "color", "params": {"color_space": "hsv", "color": {"h": 10, "s": 80, "v": 90}, "tolerance": {"h": 10, "s": 20, "v": 20}}}
+        ]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-target-hsc-color-space-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：hsc 不是合法 color_space，生成即 INVALID_PARAMS",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "色块", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [
+          {"id": "c1", "type": "color", "params": {"color_space": "hsc", "color": {"h": 10, "s": 80, "v": 90}}}
+        ]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions.params.color_space"}
+    },
+    {
+      "id": "type-target-eleven-leaves-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：叶 1–10，第 11 叶拒绝",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "多叶", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [
+          {"id": "c1", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c2", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c3", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c4", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c5", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c6", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c7", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c8", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c9", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c10", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c11", "type": "template", "params": {"threshold": 0.85}}
+        ]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions"}
+    },
+    {
+      "id": "type-target-depth-5-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：嵌套最多 4 层，5 层分支拒绝",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "深树", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [{"op": "all", "children": [{"op": "all", "children": [{"op": "all", "children": [{"op": "all", "children": [{"id": "c1", "type": "template", "params": {"threshold": 0.85}}]}]}]}]}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions"}
+    },
+    {
+      "id": "type-target-anchor-missing-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：anchor_condition_id 必须指向存在叶",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "锚缺失", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c9",
+        "conditions": {"op": "all", "children": [{"id": "c1", "type": "template", "params": {"threshold": 0.85}}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "anchor_condition_id"}
+    },
+    {
+      "id": "type-target-duplicate-leaf-id-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：叶 ID 目标内唯一",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "重复叶", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [
+          {"id": "c1", "type": "template", "params": {"threshold": 0.85}},
+          {"id": "c1", "type": "template", "params": {"threshold": 0.9}}
+        ]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions"}
+    },
+    {
+      "id": "type-target-threshold-out-of-range-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：template threshold 0..1",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "阈值越界", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [{"id": "c1", "type": "template", "params": {"threshold": 1.2}}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions.params.threshold"}
+    },
+    {
+      "id": "type-target-canny-low-high-equal-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：canny_low < canny_high（相等即违例）",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "canny相等", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [{"id": "c1", "type": "contour", "params": {"threshold": 0.85, "canny_low": 50, "canny_high": 50}}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions.params.canny_high"}
+    },
+    {
+      "id": "type-target-hsv-h-360-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：HSV h∈[0,360)",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "h越界", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [{"id": "c1", "type": "color", "params": {"color_space": "hsv", "color": {"h": 360, "s": 80, "v": 90}}}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions.params.color.h"}
+    },
+    {
+      "id": "type-target-name-blank-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：name 去首尾空白后 1–100 字符",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "   ", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [{"id": "c1", "type": "template", "params": {"threshold": 0.85}}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "name"}
+    },
+    {
+      "id": "type-target-name-101-chars-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：name 上限 100 字符",
+      "typeName": "target",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "名", "group_id": null,
+        "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "c1",
+        "conditions": {"op": "all", "children": [{"id": "c1", "type": "template", "params": {"threshold": 0.85}}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "name"},
+      "nameOverrideLength": 101
+    },
+    {
+      "id": "type-runconfig-valid-once-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "typeName": "run_config",
+      "value": {"script_id": "s1", "args": {}, "mode": "once", "iterations": null, "stop_target_id": null, "debug": false, "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-runconfig-count-missing-iterations-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：mode=count 必填 iterations≥1",
+      "typeName": "run_config",
+      "value": {"script_id": "s1", "args": {}, "mode": "count", "iterations": null, "stop_target_id": null, "debug": false, "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "iterations"}
+    },
+    {
+      "id": "type-runconfig-count-with-stop-target-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：stop_target_id 仅 until_target 非空，其他模式必 null",
+      "typeName": "run_config",
+      "value": {"script_id": "s1", "args": {}, "mode": "count", "iterations": 3, "stop_target_id": "t1", "debug": false, "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "stop_target_id"}
+    },
+    {
+      "id": "type-runconfig-display-and-binding-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：display_id 与 binding_id 互斥",
+      "typeName": "run_config",
+      "value": {"script_id": "s1", "args": {}, "mode": "once", "iterations": null, "stop_target_id": null, "debug": false, "region": null, "display_id": "display-1", "binding_id": "binding-1", "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "binding_id"}
+    },
+    {
+      "id": "type-monitor-on-match-stop-repeat-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：on_match=stop 时 repeat 必须 false",
+      "typeName": "monitor_config",
+      "value": {"target_id": "t1", "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0, "debug": false, "repeat": true, "wait_timeout_ms": 30000, "on_match": "stop", "action_script_id": null, "action_args": {}, "on_timeout": "stop", "timeout_script_id": null, "timeout_args": {}, "max_retries": 0, "retry_delay_ms": 1000, "trigger": "rising_edge", "cooldown_ms": 1000},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "repeat"}
+    },
+    {
+      "id": "type-monitor-retry-max-zero-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：on_timeout=retry 时 max_retries 须 ≥1",
+      "typeName": "monitor_config",
+      "value": {"target_id": "t1", "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0, "debug": false, "repeat": false, "wait_timeout_ms": 30000, "on_match": "stop", "action_script_id": null, "action_args": {}, "on_timeout": "retry", "timeout_script_id": null, "timeout_args": {}, "max_retries": 0, "retry_delay_ms": 1000, "trigger": "rising_edge", "cooldown_ms": 1000},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "max_retries"}
+    },
+    {
+      "id": "type-monitor-max-retries-101-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：max_retries 0–100",
+      "typeName": "monitor_config",
+      "value": {"target_id": "t1", "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0, "debug": false, "repeat": false, "wait_timeout_ms": 30000, "on_match": "stop", "action_script_id": null, "action_args": {}, "on_timeout": "retry", "timeout_script_id": null, "timeout_args": {}, "max_retries": 101, "retry_delay_ms": 1000, "trigger": "rising_edge", "cooldown_ms": 1000},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "max_retries"}
+    },
+    {
+      "id": "type-script-param-required-with-default-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：required=true 时 default 必须 null",
+      "typeName": "script",
+      "value": {"id": "s1", "revision": 1, "name": "脚本", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "count", "type": "number", "required": true, "default": 3, "description": ""}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "parameters"}
+    },
+    {
+      "id": "type-script-source-path-escape-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02/07 §6：source_path 形态 scripts/<id>/<hash>.lua，.. 组件拒绝（组件判断非 startswith）",
+      "typeName": "script",
+      "value": {"id": "s1", "revision": 1, "name": "脚本", "source_path": "scripts/../secret.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "source_path"}
+    },
+    {
+      "id": "type-script-name-101-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：name 去首尾空白后 >100 码点拒绝（TASK-012 名称边界；三端同源）",
+      "typeName": "script",
+      "nameOverrideLength": 101,
+      "value": {"id": "s1", "revision": 1, "name": "脚本", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "name"}
+    },
+    {
+      "id": "type-script-parameters-not-array-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02：parameters 必须为数组（TASK-012；三端同源）",
+      "typeName": "script",
+      "value": {"id": "s1", "revision": 1, "name": "脚本", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": {"name": "x"}, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "parameters"}
+    },
+    {
+      "id": "type-script-minimal-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "02 Script 形态完整合法（TASK-012 正例；三端同源）",
+      "typeName": "script",
+      "value": {"id": "s1", "revision": 1, "name": "登录点击", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "retry", "type": "number", "required": false, "default": 3, "description": "重试次数"}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "config-patch-valid-deep",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "深合并：对象递归合并、标量替换；合法 patch → revision+1",
+      "patch": {"recognition": {"default_threshold": 0.9}},
+      "expectedRevision": 1,
+      "expect": {"success": true, "revision": 2, "field": "recognition.default_threshold", "value": 0.9}
+    },
+    {
+      "id": "config-patch-unknown-top-field",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "02：未声明字段拒绝（顶层）",
+      "patch": {"foo": 1},
+      "expectedRevision": 1,
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "foo", "configUnchanged": true}
+    },
+    {
+      "id": "config-patch-unknown-nested-field",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "02：未声明字段拒绝（嵌套），错误定位到完整路径",
+      "patch": {"recognition": {"foo": 1}},
+      "expectedRevision": 1,
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "recognition.foo", "configUnchanged": true}
+    },
+    {
+      "id": "config-patch-nan-rejected",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "02：禁 NaN/Infinity；样本以字符串描述（NaN 帧级拒绝或 INVALID_PARAMS，三端口径一致）",
+      "patch": {"recognition": {"default_threshold": "NaN"}},
+      "expectedRevision": 1,
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "recognition.default_threshold", "configUnchanged": true}
+    },
+    {
+      "id": "config-patch-frequency-50-out-of-range",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "configLimits：frequency 0.1–30",
+      "patch": {"recognition": {"default_frequency_hz": 50}},
+      "expectedRevision": 1,
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "recognition.default_frequency_hz", "configUnchanged": true}
+    },
+    {
+      "id": "config-patch-rotate-bytes-500kib-out-of-range",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "configLimits：rotate_bytes 1MiB..100MiB",
+      "patch": {"logging": {"rotate_bytes": 512000}},
+      "expectedRevision": 1,
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "logging.rotate_bytes", "configUnchanged": true}
+    },
+    {
+      "id": "config-patch-wrong-revision-conflict",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "06：expected_revision 不匹配 → CONFLICT，不写盘",
+      "patch": {"general": {"theme": "dark"}},
+      "expectedRevision": 99,
+      "expect": {"success": false, "errorCode": "CONFLICT", "configUnchanged": true}
+    },
+    {
+      "id": "config-patch-ocr-model-id-null-valid",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "§5.4d：可 null 字段允许显式置 null（ocr_model_id=null → 文字识别禁用）",
+      "patch": {"recognition": {"ocr_model_id": null}},
+      "expectedRevision": 1,
+      "expect": {"success": true, "revision": 2, "field": "recognition.ocr_model_id", "value": null}
+    },
+    {
+      "id": "config-patch-model-directory-parent-escape",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "02/07 §6：model_directory 拒绝 ..（组件判断）",
+      "patch": {"recognition": {"model_directory": "../models"}},
+      "expectedRevision": 1,
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "recognition.model_directory", "configUnchanged": true}
+    },
+    {
+      "id": "config-patch-model-directory-absolute",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "02：model_directory 拒绝绝对路径/盘符",
+      "patch": {"recognition": {"model_directory": "C:/models"}},
+      "expectedRevision": 1,
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "recognition.model_directory", "configUnchanged": true}
+    },
+    {
+      "id": "config-reset-wrong-revision-conflict",
+      "kind": "config_patch",
+      "applies_to": ["python", "rust"],
+      "description": "03：reset_config 同样校验 expected_revision；内容=默认值、revision 递增、不删除目标/脚本",
+      "patch": null,
+      "reset": true,
+      "expectedRevision": 99,
+      "expect": {"success": false, "errorCode": "CONFLICT", "configUnchanged": true}
+    },
+    {
+      "id": "type-target-hsv-h-359-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "§15 裁决：HSV h∈[0,360) 整数域闭区间上界 359 合法（types.schema.json colorHsv maximum=359）",
+      "typeName": "target",
+      "value": {"id": "t1", "sample_no": 1, "revision": 1, "name": "h上界", "group_id": null, "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"}, "thumbnail_path": null, "anchor_condition_id": "c1", "conditions": {"op": "all", "children": [{"id": "c1", "type": "color", "params": {"color_space": "hsv", "color": {"h": 359, "s": 80, "v": 90}, "tolerance": {"h": 180, "s": 20, "v": 20}}}]}, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-monitor-run-script-double-violation-timeout-script-id-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "§15.7 裁决 V1：on_timeout=run_script 且 timeout_script_id 缺失、同时 max_retries≠0 双违例 → 结构缺失优先（分支 required 先于交叉约束），报 timeout_script_id",
+      "typeName": "monitor_config",
+      "value": {"target_id": "t1", "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0, "debug": false, "repeat": false, "wait_timeout_ms": 30000, "on_match": "stop", "action_script_id": null, "action_args": {}, "on_timeout": "run_script", "timeout_script_id": null, "timeout_args": {}, "max_retries": 3, "retry_delay_ms": 1000, "trigger": "rising_edge", "cooldown_ms": 1000},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "timeout_script_id"}
+    },
+    {
+      "id": "type-group-top-level-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "TASK-011 用户裁决 2026-10-11：顶层分组（parent_group_id=null、depth=0）合法样本",
+      "typeName": "group",
+      "value": {"id": "g1", "revision": 1, "name": "顶层组", "parent_group_id": null, "depth": 0, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-group-nested-depth2-valid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust"],
+      "description": "TASK-011 用户裁决 2026-10-11：三层分组的第 3 层（depth=2、父存在）合法样本",
+      "typeName": "group",
+      "value": {"id": "g3", "revision": 1, "name": "孙组", "parent_group_id": "g2", "depth": 2, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
+      "expect": {"valid": true}
+    },
+    {
+      "id": "group-dispatch-create-top-level-ok",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011：create_group 无 parent（键缺省）→ 顶层 depth 0 成功",
+      "command": "create_group",
+      "params": {"name": "顶层组"},
+      "expect": {"success": true, "result": {"group.depth": 0, "group.parent_group_id": null}}
+    },
+    {
+      "id": "group-dispatch-create-nested-ok",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011：create_group 带 parent_group_id 逐层下钻 → depth 2（三层可达）",
+      "command": "create_group",
+      "setup": [
+        {"command": "create_group", "params": {"name": "L0"}},
+        {"command": "create_group", "params": {"name": "L1", "parent_group_id": "$0"}}
+      ],
+      "params": {"name": "L2", "parent_group_id": "$1"},
+      "expect": {"success": true, "result": {"group.depth": 2}}
+    },
+    {
+      "id": "group-dispatch-create-parent-missing",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011 Q8：create_group 父组不存在 → GROUP_NOT_FOUND field=parent_group_id",
+      "command": "create_group",
+      "params": {"name": "孤儿组", "parent_group_id": "g-missing"},
+      "expect": {"success": false, "errorCode": "GROUP_NOT_FOUND", "field": "parent_group_id"}
+    },
+    {
+      "id": "group-dispatch-create-sibling-name-duplicate",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011 Q1：同层组名 NFC+casefold 后重复 → INVALID_PARAMS field=name",
+      "command": "create_group",
+      "setup": [{"command": "create_group", "params": {"name": "Abc"}}],
+      "params": {"name": "abc"},
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "name"}
+    },
+    {
+      "id": "group-dispatch-create-depth-overflow",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011 Q2：层级 >3（depth 3）→ RESOURCE_LIMIT field=parent_group_id",
+      "command": "create_group",
+      "setup": [
+        {"command": "create_group", "params": {"name": "L0"}},
+        {"command": "create_group", "params": {"name": "L1", "parent_group_id": "$0"}},
+        {"command": "create_group", "params": {"name": "L2", "parent_group_id": "$1"}}
+      ],
+      "params": {"name": "L3", "parent_group_id": "$2"},
+      "expect": {"success": false, "errorCode": "RESOURCE_LIMIT", "field": "parent_group_id"}
+    },
+    {
+      "id": "group-dispatch-create-name-blank-invalid",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011/02：组名去首尾空白后须 1–100 码点（此处 101 码点）→ INVALID_PARAMS field=name",
+      "command": "create_group",
+      "params": {"name": "名"},
+      "nameOverrideLength": 101,
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "name"}
+    },
+    {
+      "id": "group-dispatch-update-empty-both-absent",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011 Q3：update_group name/parent_group_id 均键缺省 → INVALID_PARAMS field=name",
+      "command": "update_group",
+      "setup": [{"command": "create_group", "params": {"name": "唯一"}}],
+      "params": {"group_id": "$0", "expected_revision": 1},
+      "expect": {"success": false, "errorCode": "INVALID_PARAMS", "field": "name"}
+    },
+    {
+      "id": "group-dispatch-update-reparent-to-top",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011：update_group 显式 parent_group_id=null → 移至顶层（depth 0）",
+      "command": "update_group",
+      "setup": [
+        {"command": "create_group", "params": {"name": "P"}},
+        {"command": "create_group", "params": {"name": "C", "parent_group_id": "$0"}}
+      ],
+      "params": {"group_id": "$1", "parent_group_id": null, "expected_revision": 1},
+      "expect": {"success": true, "result": {"group.parent_group_id": null, "group.depth": 0}}
+    },
+    {
+      "id": "group-dispatch-update-name-only-keeps-parent",
+      "kind": "dispatch",
+      "applies_to": ["python"],
+      "description": "TASK-011：update_group 仅改名（parent_group_id 键缺省=不搬移）→ 层级不变",
+      "command": "update_group",
+      "setup": [
+        {"command": "create_group", "params": {"name": "P"}},
+        {"command": "create_group", "params": {"name": "C", "parent_group_id": "$0"}}
+      ],
+      "params": {"group_id": "$1", "name": "C2", "expected_revision": 1},
+      "expect": {"success": true, "result": {"group.name": "C2", "group.depth": 1}}
+    },
+    {
+      "id": "recognition-job-command-set",
+      "kind": "recognition_job",
+      "applies_to": ["python"],
+      "description": "TASK-013：6 条识别命令全部 job 化注册（无命令集合变更，对外总数仍 62）",
+      "commands": ["recognize_text", "match_template", "match_contour", "detect_color",
+                   "evaluate_target_conditions", "test_recognition"]
+    },
+    {
+      "id": "recognition-job-recognize-text-blocks",
+      "kind": "recognition_job",
+      "applies_to": ["python"],
+      "description": "TASK-013：recognize_text job result = {blocks: TextBlock[]}",
+      "command": "recognize_text",
+      "resultKeys": ["blocks"]
+    },
+    {
+      "id": "recognition-job-match-template-truncated",
+      "kind": "recognition_job",
+      "applies_to": ["python"],
+      "description": "TASK-013 Q4/02：match_template job result = {matches: Candidate[], truncated: bool}",
+      "command": "match_template",
+      "resultKeys": ["matches", "truncated"],
+      "missIsError": false
+    },
+    {
+      "id": "recognition-job-match-contour-truncated",
+      "kind": "recognition_job",
+      "applies_to": ["python"],
+      "description": "TASK-013 Q4/02：match_contour job result = {matches: Candidate[], truncated: bool}",
+      "command": "match_contour",
+      "resultKeys": ["matches", "truncated"],
+      "missIsError": false
+    },
+    {
+      "id": "recognition-job-detect-color-truncated",
+      "kind": "recognition_job",
+      "applies_to": ["python"],
+      "description": "TASK-013 Q4/02：detect_color job result = {matches: Candidate[], truncated: bool}",
+      "command": "detect_color",
+      "resultKeys": ["matches", "truncated"],
+      "missIsError": false
+    },
+    {
+      "id": "recognition-job-evaluate-target-conditions-result",
+      "kind": "recognition_job",
+      "applies_to": ["python"],
+      "description": "TASK-013/02：evaluate_target_conditions job result = RecognitionResult（found≡matches 非空）",
+      "command": "evaluate_target_conditions",
+      "resultKeys": ["target_id", "sample_no", "target_revision", "frame_id", "found",
+                     "matches", "elapsed_ms", "truncated"]
+    },
+    {
+      "id": "recognition-job-test-recognition-draft-null-ids",
+      "kind": "recognition_job",
+      "applies_to": ["python"],
+      "description": "TASK-013/03：test_recognition 未保存草稿结果 sample_no/target_id=null",
+      "command": "test_recognition",
+      "resultKeys": ["target_id", "sample_no", "target_revision", "frame_id", "found",
+                     "matches", "elapsed_ms", "truncated"],
+      "draftNullIds": true
+    }
+  ]
+}

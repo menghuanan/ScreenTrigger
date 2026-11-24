@@ -1,0 +1,177 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "screentrigger://schema/envelope.schema.json",
+  "title": "ScreenTrigger NDJSON 协议信封（TASK-005）",
+  "description": "docs/03-IPC协议.md 与 TASK-005 设计 §5.4 畸形帧必填集的三端一致性唯一来源。session_id 在 schema 层必填（线上合法帧必须携带）；运行时缺失/不匹配的帧由接收端丢弃并记 stderr 日志、不计畸形帧（用户冻结契约③）。畸形帧必填集：通用 {protocol_version=1, type} + 按类型 {request:+id,command; response:+id,success 且 data/error 互斥必有一; event:+seq,name,timestamp; host_request:+id,command,params; host_response:+id,success 且 data/error 互斥必有一}。",
+  "definitions": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "details", "retryable"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string", "description": "面向用户，不含堆栈（docs/03）"},
+        "details": {"type": "object", "description": "不含堆栈敏感对象（docs/03）"},
+        "retryable": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "required": ["id", "state"],
+      "properties": {
+        "id": {"type": "string"},
+        "state": {"enum": ["available", "pending", "unavailable"]},
+        "reason": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "helloData": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "engine_version",
+        "lua_version",
+        "schema_version",
+        "capabilities",
+        "model_manifests"
+      ],
+      "properties": {
+        "protocol_version": {"const": 1},
+        "engine_version": {"type": "string"},
+        "lua_version": {
+          "type": ["string", "null"],
+          "description": "探测失败→null，且 capabilities.lua_script=unavailable（用户冻结契约①）"
+        },
+        "schema_version": {"type": "integer"},
+        "capabilities": {"type": "array", "items": {"$ref": "#/definitions/capability"}},
+        "model_manifests": {"type": "array"}
+      },
+      "additionalProperties": false
+    },
+    "rfc3339UtcMillis": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "description": "02：UTC RFC3339；TASK-005 设计 §5.4 event 必填 timestamp"
+    },
+    "envelopeBase": {
+      "type": "object",
+      "required": ["protocol_version", "session_id", "type"],
+      "properties": {
+        "protocol_version": {"const": 1},
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9-]+$"
+        },
+        "type": {
+          "enum": ["request", "response", "event", "host_request", "host_response"]
+        }
+      }
+    },
+    "requestEnvelope": {
+      "type": "object",
+      "required": ["protocol_version", "session_id", "type", "id", "command"],
+      "properties": {
+        "protocol_version": {"const": 1},
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9-]+$"
+        },
+        "type": {"const": "request"},
+        "id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "command": {"type": "string"},
+        "params": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "responseEnvelope": {
+      "type": "object",
+      "required": ["protocol_version", "session_id", "type", "id", "success"],
+      "anyOf": [{"required": ["data"]}, {"required": ["error"]}],
+      "not": {"required": ["data", "error"]},
+      "properties": {
+        "protocol_version": {"const": 1},
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9-]+$"
+        },
+        "type": {"const": "response"},
+        "id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "success": {"type": "boolean"},
+        "data": {},
+        "error": {"$ref": "#/definitions/error"}
+      },
+      "additionalProperties": false
+    },
+    "eventEnvelope": {
+      "type": "object",
+      "required": ["protocol_version", "session_id", "type", "seq", "name", "timestamp"],
+      "properties": {
+        "protocol_version": {"const": 1},
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9-]+$"
+        },
+        "type": {"const": "event"},
+        "seq": {"type": "integer", "minimum": 1},
+        "name": {"type": "string", "minLength": 1},
+        "timestamp": {"$ref": "#/definitions/rfc3339UtcMillis"},
+        "payload": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "hostRequestEnvelope": {
+      "type": "object",
+      "required": ["protocol_version", "session_id", "type", "id", "command", "params"],
+      "properties": {
+        "protocol_version": {"const": 1},
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9-]+$"
+        },
+        "type": {"const": "host_request"},
+        "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^py-[0-9a-fA-F-]+$"},
+        "command": {"type": "string", "minLength": 1},
+        "params": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "hostResponseEnvelope": {
+      "type": "object",
+      "required": ["protocol_version", "session_id", "type", "id", "success"],
+      "anyOf": [{"required": ["data"]}, {"required": ["error"]}],
+      "not": {"required": ["data", "error"]},
+      "properties": {
+        "protocol_version": {"const": 1},
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9-]+$"
+        },
+        "type": {"const": "host_response"},
+        "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^py-[0-9a-fA-F-]+$"},
+        "success": {"type": "boolean"},
+        "data": {},
+        "error": {"$ref": "#/definitions/error"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/definitions/requestEnvelope"},
+    {"$ref": "#/definitions/responseEnvelope"},
+    {"$ref": "#/definitions/eventEnvelope"},
+    {"$ref": "#/definitions/hostRequestEnvelope"},
+    {"$ref": "#/definitions/hostResponseEnvelope"}
+  ]
+}

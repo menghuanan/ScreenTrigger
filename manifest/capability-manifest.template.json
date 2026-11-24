@@ -1,0 +1,14 @@
+{
+  "_comment": "能力 manifest 模板（TASK-003）：hello/system_ready 与 capability 查询消费。unavailable 必须显式呈现，不得静默降级。",
+  "api_version": 1,
+  "capabilities": [
+    {"id": "ocr", "state": "available", "reason": null, "languages": ["zh", "en", "ja", "ko"], "language_evidence": {"zh": "TASK-001 探针实测", "en": "TASK-001 探针实测（ch 包含拉丁）", "ja": "TASK-003 ocr_lang_probe 实测", "ko": "TASK-003 ocr_lang_probe 实测"}, "notes": "仅声明已装模型语言；未声明覆盖的符号记为不支持"},
+    {"id": "template_match", "state": "pending", "reason": "A05 实现后可用", "notes": "TM_CCOEFF_NORMED 路径"},
+    {"id": "contour_match", "state": "pending", "reason": "A05 实现后可用", "notes": "matchShapes I1 路径"},
+    {"id": "color_match", "state": "pending", "reason": "A05 实现后可用", "notes": "HSV 已确认（用户 2026-10-09）"},
+    {"id": "lua_script", "state": "available", "reason": null, "notes": "Lua 5.4 via lupa 2.8；忙循环可停、内存限额生效（TASK-001 探针）"},
+    {"id": "input", "state": "pending", "reason": "M05 Rust 输入闸门实现后可用", "notes": "SendInput Unicode/组合键/拖拽取消 OS 能力已由 TASK-002 探针验证"},
+    {"id": "capture", "state": "pending", "reason": "M01/Rust 捕获实现后可用", "notes": "BitBlt 路径 OS 能力已由 TASK-002 探针验证；WGC 待 Rust 侧评估"}
+  ],
+  "unavailable_policy": "缺模型/缺运行时 → MODEL_UNAVAILABLE；推理错误 → RECOGNITION_FAILED；无静默下载、无静默降级"
+}

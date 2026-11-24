@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ScreenTrigger catalog generation manifest",
+  "description": "TASK-010 / Q4 授权的冻结最小 manifest schema；为 docs/02「schema、文件 hashes、计数」的超集且不冲突。与 docs/03 无关，公开命令目录不受影响。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generation", "created_at", "files", "counts"],
+  "properties": {
+    "schema_version": {"type": "integer", "enum": [2]},
+    "generation": {"type": "string", "minLength": 1, "pattern": "^g-"},
+    "created_at": {"type": "string", "minLength": 1},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "bytes"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "enum": ["targets.json", "groups.json", "script_metadata.json"]
+          },
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "bytes": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets", "groups", "scripts", "next_sample_no"],
+      "properties": {
+        "targets": {"type": "integer", "minimum": 0},
+        "groups": {"type": "integer", "minimum": 0},
+        "scripts": {"type": "integer", "minimum": 0},
+        "next_sample_no": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

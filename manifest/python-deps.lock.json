@@ -1,0 +1,66 @@
+{
+  "_comment": "TASK-015 实测版本快照：仅记录本任务在探针 venv 实测到的版本。**非正式依赖锁**——正式依赖锁定归 TASK-027（AUDIT-20261012-006 仍 OPEN），本文件不构成发布承诺。",
+  "_status": "measured_snapshot_not_final_lock",
+  "_measured_env": {
+    "python": "3.13.14",
+    "implementation": "CPython",
+    "wheel_tag": "cp313-cp313-win_amd64",
+    "venv": "probe-task001（仓库外隔离 venv）",
+    "measured_by_task": "TASK-015"
+  },
+  "packages": [
+    {
+      "name": "paddlepaddle",
+      "import_name": "paddle",
+      "version": "3.3.1",
+      "license": "Apache-2.0",
+      "role": "OCR 推理运行时",
+      "measured": true,
+      "notes": "paddle.version.mkl()=ON / cuda()=False；必须 enable_mkldnn=False（默认配置 PIR/onednn 崩溃，探针实测 onednn_instruction.cc:118）"
+    },
+    {
+      "name": "paddleocr",
+      "version": "3.7.0",
+      "license": "Apache-2.0",
+      "role": "OCR 引擎封装",
+      "measured": true,
+      "notes": "requires: aiohttp, paddlex, PyYAML, requests, typing-extensions；doc 预处理流水线建议关闭（use_doc_orientation_classify/use_doc_unwarping/use_textline_orientation=False）"
+    },
+    {
+      "name": "opencv-python",
+      "import_name": "cv2",
+      "version": "4.10.0",
+      "license": "Apache-2.0",
+      "role": "图像处理",
+      "measured": true,
+      "notes": "真实 cv2.__version__=4.10.0（模板 5.0.0.93 为元数据漂移）"
+    },
+    {
+      "name": "numpy",
+      "version": "2.3.5",
+      "license": "BSD-3-Clause",
+      "role": "数组运算",
+      "measured": true
+    },
+    {
+      "name": "pillow",
+      "import_name": "PIL",
+      "version": "12.3.0",
+      "license": "HPND/MIT-CMU",
+      "role": "图像编解码",
+      "measured": true
+    },
+    {
+      "name": "lupa",
+      "version": "2.8",
+      "license": "MIT",
+      "role": "Lua 5.4 运行时",
+      "measured": true,
+      "notes": "lupa.lua54 可用（_VERSION=Lua 5.4；显式 lua54 后端）"
+    }
+  ],
+  "models_catalog": "manifest/models.catalog.json（逐文件 sha256 + 许可证 + 语言；权重二进制不入仓库）",
+  "model_manifests_disk_layout": "models/<model_id>/manifest.json（02 布局，仅元数据）",
+  "provisioning_note": "正式模型 provisioning/离线分发归 TASK-027（登记项 L-015-02）；本快照不代表模型已随包分发",
+  "evidence": "reports/raw/TASK-015/q10-deps-probe.txt"
+}

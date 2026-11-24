@@ -1,0 +1,39 @@
+# TASK-001 探针依赖模板（探针依赖模板 · TASK-001.OUTPUT.01）
+#
+# 用途：隔离 venv 安装候选依赖的模板。每行注明用途、版本候选、Python 3.13/Windows 支持、
+# 许可证、包体影响。实际锁定版本以运行后 pip freeze 与 manifest 为准，不在此预填"已验证"。
+# 安装命令（示例，解释器用绝对路径）：
+#   <隔离venv>/Scripts/python.exe -m pip install -r tools/probes/requirements-probe.txt.template
+#
+# 不允许降低 Python 版本制造成功假象：无 cp313 wheel 即记录不兼容事实（R01）。
+
+# --- OCR 推理运行时（D04 首选候选）---
+# 用途：OCR 推理；版本候选：>=2.6（以 PyPI 当前 cp313 win_amd64 wheel 为准）
+# Python3.13/Windows 支持：待探针验证——历史上 paddlepaddle wheel 覆盖滞后于新 Python 版本，
+#   若无 cp313 wheel 即为 R01 阻塞证据。
+# 许可证：Apache-2.0；包体影响：数百 MB（CPU 版）
+paddlepaddle
+
+# --- OCR 引擎封装（D04 首选候选）---
+# 用途：OCR 流水线封装（检测+识别+语言包）；许可证：Apache-2.0
+# 包体影响：数十 MB，另加模型文件（每语言数 MB~数十 MB，模型体积计入 R11）
+paddleocr
+
+# --- Lua 5.4 绑定（D06 候选）---
+# 用途：内嵌 Lua 5.4 运行时；必须验证 lupa.lua54 子模块存在且 _VERSION=="Lua 5.4"
+# 许可证：MIT；包体影响：约 1 MB
+lupa
+
+# --- 图像处理 ---
+# 用途：模板/轮廓/颜色识别基础；许可证：Apache-2.0；包体影响：约 40 MB
+opencv-python
+# 用途：数组运算；许可证：BSD-3-Clause
+numpy
+# 用途：图像编解码（PNG/JPEG 导入）；许可证：HPND/MIT-CMU；包体影响：约 3 MB
+pillow
+
+# --- 替代方案（不默认安装；D04 评估备选，安装前需负责人确认）---
+# 用途：ONNX 推理运行时（PP-OCR 导出模型自包含方案）；许可证：MIT
+# onnxruntime
+# 用途：Tesseract 绑定（需外部 tesseract.exe，分发与许可另行评估）；许可证：Apache-2.0
+# pytesseract

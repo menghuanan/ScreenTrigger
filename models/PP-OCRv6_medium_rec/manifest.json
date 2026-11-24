@@ -1,0 +1,23 @@
+{
+  "provider_id": "builtin.ocr",
+  "api_version": 1,
+  "provider_version": "1.0.0",
+  "supported_condition_types": [
+    "ocr"
+  ],
+  "model_ids": [
+    "PP-OCRv6_medium_rec"
+  ],
+  "supported_languages": [
+    "en",
+    "zh"
+  ],
+  "thread_safe": false,
+  "offline": true,
+  "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+  "source": "official_models/PP-OCRv6_medium_rec",
+  "sha256": "1b01c79a914587933f615569e75de54f2e638ebb5d3f3b3c1b38c24ede8c7319",
+  "supported_charsets": [
+    "utf-8"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "TASK-004 骨架默认能力：仅 Tauri 核心与事件权限；不引入 shell/fs/http 插件权限（docs/07 §4 固定入口约束）。",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:event:default"]
+}

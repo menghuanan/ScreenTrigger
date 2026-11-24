@@ -1,0 +1,346 @@
+{
+  "catalog_version": 1,
+  "schema": "models.catalog/1",
+  "generated_by": "reports/raw/TASK-015/gen-model-catalog.py",
+  "sources": [
+    "reports/TASK-001/probe-result.json",
+    "reports/TASK-003/ocr-lang-probe.json",
+    "reports/raw/TASK-015/q12-lang-dirs.json"
+  ],
+  "library_root_hint": "~/.paddlex/official_models",
+  "first_batch_languages": [
+    "zh",
+    "en",
+    "ja",
+    "ko"
+  ],
+  "verified_languages": [
+    "en",
+    "ko",
+    "zh"
+  ],
+  "recognition_models": [
+    "PP-OCRv6_medium_rec",
+    "korean_PP-OCRv5_mobile_rec"
+  ],
+  "engines": [
+    {
+      "detection_model": "PP-OCRv6_medium_det",
+      "recognition_model": "PP-OCRv6_medium_rec",
+      "languages": [
+        "en",
+        "zh"
+      ]
+    },
+    {
+      "detection_model": "PP-OCRv5_server_det",
+      "recognition_model": "korean_PP-OCRv5_mobile_rec",
+      "languages": [
+        "en",
+        "zh",
+        "ko"
+      ]
+    }
+  ],
+  "models": [
+    {
+      "model_id": "PP-LCNet_x1_0_doc_ori",
+      "family": "PP-LCNet",
+      "kind": "ori",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "primary_language": null,
+      "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+      "source": "official_models/PP-LCNet_x1_0_doc_ori",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1575,
+          "sha256": "a3a43406012ee8c7b9b38dfab1b11610f33e8245cd864a9a9302d042616a859e"
+        },
+        {
+          "name": "README.md",
+          "bytes": 6850,
+          "sha256": "e38ea9c16eba0e14e12216418085e8974481d7c0fc3aed4e7df5cf1869c2c97a"
+        },
+        {
+          "name": "config.json",
+          "bytes": 2561,
+          "sha256": "e49f6be2fe4034232b05fb80d983a7b9bde4592d4a52812129c9a348057d3147"
+        },
+        {
+          "name": "inference.json",
+          "bytes": 104441,
+          "sha256": "3580978602f309c3554508dd85d4fe09b73a7e0d80d7f9e63258f5b72c390c69"
+        },
+        {
+          "name": "inference.pdiparams",
+          "bytes": 6754166,
+          "sha256": "e8d6e7c5d264507e40e58a655779059d616b20d7441ea22047d829eb3931989c"
+        },
+        {
+          "name": "inference.yml",
+          "bytes": 766,
+          "sha256": "9e195eb729a8173588cd0e8a852c8b373aa606e79e77b4ac7d8346f5426caf26"
+        }
+      ]
+    },
+    {
+      "model_id": "PP-LCNet_x1_0_textline_ori",
+      "family": "PP-LCNet",
+      "kind": "ori",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "primary_language": null,
+      "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+      "source": "official_models/PP-LCNet_x1_0_textline_ori",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1575,
+          "sha256": "a3a43406012ee8c7b9b38dfab1b11610f33e8245cd864a9a9302d042616a859e"
+        },
+        {
+          "name": "README.md",
+          "bytes": 3554,
+          "sha256": "c2de067422621e296f697b849b90b8f6cae090a8e0a27d8b04eeb8d68ffb8ce0"
+        },
+        {
+          "name": "config.json",
+          "bytes": 2487,
+          "sha256": "c1a2576f9713adabdc4a58d9d654fcc9ea93b6efd0e2d3581d5aab409a33f14f"
+        },
+        {
+          "name": "inference.json",
+          "bytes": 104399,
+          "sha256": "b81929eeaff8e52db0fafb49c9fbfc5bc0572f81641fe0179cc52096323fb4d4"
+        },
+        {
+          "name": "inference.pdiparams",
+          "bytes": 6743918,
+          "sha256": "0de2bcf996cf553e2b848dd7b1769dafffc6917b1ccdf55c1d8efe7909fbf743"
+        },
+        {
+          "name": "inference.yml",
+          "bytes": 735,
+          "sha256": "8d5120d0e1a30a9df7ed46aa9119da3796ed066777089d1c1d705f132d5e90f9"
+        }
+      ]
+    },
+    {
+      "model_id": "PP-OCRv5_server_det",
+      "family": "PP-OCRv5",
+      "kind": "det",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "primary_language": null,
+      "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+      "source": "official_models/PP-OCRv5_server_det",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1575,
+          "sha256": "a3a43406012ee8c7b9b38dfab1b11610f33e8245cd864a9a9302d042616a859e"
+        },
+        {
+          "name": "README.md",
+          "bytes": 15912,
+          "sha256": "4fd4cf7c6fc3239ede7274c3877e7a0c4424ffa7f56b2775e4e7961c24b1f107"
+        },
+        {
+          "name": "config.json",
+          "bytes": 2871,
+          "sha256": "436bf19010fe3879477e8599a870a0ec8ccd14ca39056805ec4ed20ab318ec04"
+        },
+        {
+          "name": "inference.json",
+          "bytes": 402480,
+          "sha256": "af5876933d8806a1b50d895867e0781e135cd92ff37381992828fc8d1b842d28"
+        },
+        {
+          "name": "inference.pdiparams",
+          "bytes": 87932887,
+          "sha256": "183146fe9d9910352f68482f623bcbbb9fa7b9e8fa1463b9ad288cef00524d2d"
+        },
+        {
+          "name": "inference.yml",
+          "bytes": 903,
+          "sha256": "28fb721efc3634fc8aa677e474b9602cb815a91cf569ef357a7a553d7b3ce685"
+        }
+      ]
+    },
+    {
+      "model_id": "PP-OCRv6_medium_det",
+      "family": "PP-OCRv6",
+      "kind": "det",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "primary_language": null,
+      "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+      "source": "official_models/PP-OCRv6_medium_det",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1575,
+          "sha256": "a3a43406012ee8c7b9b38dfab1b11610f33e8245cd864a9a9302d042616a859e"
+        },
+        {
+          "name": "README.md",
+          "bytes": 23247,
+          "sha256": "59f37b08a9a49aa6c1275e7b0363991353582f4dc7676539a5d2b05aab57e744"
+        },
+        {
+          "name": "inference.json",
+          "bytes": 312150,
+          "sha256": "0f1a7ec35da36173529c7a60238b7f7919e3831929c3f700ad90ad4896adecd5"
+        },
+        {
+          "name": "inference.pdiparams",
+          "bytes": 61960476,
+          "sha256": "85218d2e3d98f5a21c58b4220627be923a97aee5db3cc71f39536ab31ac53960"
+        },
+        {
+          "name": "inference.yml",
+          "bytes": 886,
+          "sha256": "7298d5ead546584af2504d03355f881ac7a7bc0eb1e282d3e159277c1d0af871"
+        }
+      ]
+    },
+    {
+      "model_id": "PP-OCRv6_medium_rec",
+      "family": "PP-OCRv6",
+      "kind": "rec",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "primary_language": null,
+      "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+      "source": "official_models/PP-OCRv6_medium_rec",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1575,
+          "sha256": "a3a43406012ee8c7b9b38dfab1b11610f33e8245cd864a9a9302d042616a859e"
+        },
+        {
+          "name": "README.md",
+          "bytes": 23474,
+          "sha256": "75ff9c4853ed171f36224127805062f9bcd1cfbbcacae3d577344866df74f6d3"
+        },
+        {
+          "name": "inference.json",
+          "bytes": 221814,
+          "sha256": "0b2e25e990bd072f1bf77d59d67d508bce6c4bd44af6624e0fb27d6da2cd00e8"
+        },
+        {
+          "name": "inference.pdiparams",
+          "bytes": 76465087,
+          "sha256": "1b01c79a914587933f615569e75de54f2e638ebb5d3f3b3c1b38c24ede8c7319"
+        },
+        {
+          "name": "inference.yml",
+          "bytes": 150580,
+          "sha256": "991b700facf5b50a7de193468207d5f4255b538dde0d312ae3b7c7a9b6873129"
+        }
+      ]
+    },
+    {
+      "model_id": "UVDoc",
+      "family": "UVDoc",
+      "kind": "doc",
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "primary_language": null,
+      "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+      "source": "official_models/UVDoc",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1575,
+          "sha256": "a3a43406012ee8c7b9b38dfab1b11610f33e8245cd864a9a9302d042616a859e"
+        },
+        {
+          "name": "README.md",
+          "bytes": 4463,
+          "sha256": "a20104a3a6d1e4c3311e0e1b8f9913a3faf181752376f901fb3f09336dec756f"
+        },
+        {
+          "name": "config.json",
+          "bytes": 1489,
+          "sha256": "0ffdb1f399eee3eb7816fb79b1380f97f89039b955eee2e60d3f7336f6f30875"
+        },
+        {
+          "name": "inference.json",
+          "bytes": 190986,
+          "sha256": "2c2bc3e0f15e782cf8f2ad411b5033d99ca504fe88648f8054a5e925ba2336e0"
+        },
+        {
+          "name": "inference.pdiparams",
+          "bytes": 32054311,
+          "sha256": "810488899520e0da843b9bd9769ba4949f1c81e357f0eceb12d4a7da459c3eca"
+        },
+        {
+          "name": "inference.yml",
+          "bytes": 330,
+          "sha256": "be83d537b358f3ff87740e77e14a83ee9e9a7bb215c33d091b69e8bd5904fe39"
+        }
+      ]
+    },
+    {
+      "model_id": "korean_PP-OCRv5_mobile_rec",
+      "family": "korean",
+      "kind": "rec",
+      "languages": [
+        "en",
+        "zh",
+        "ko"
+      ],
+      "primary_language": "ko",
+      "license": "Apache-2.0（PaddlePaddle 官方模型，分发条款以官方声明为准）",
+      "source": "official_models/korean_PP-OCRv5_mobile_rec",
+      "files": [
+        {
+          "name": ".gitattributes",
+          "bytes": 1575,
+          "sha256": "a3a43406012ee8c7b9b38dfab1b11610f33e8245cd864a9a9302d042616a859e"
+        },
+        {
+          "name": "README.md",
+          "bytes": 7110,
+          "sha256": "0524f6bd8681b9b37f817a11a0bdd8cc99d5a4968b65b693baf532fb73f8a99b"
+        },
+        {
+          "name": "config.json",
+          "bytes": 229129,
+          "sha256": "c86a49d6301e6c4ff3398a87a2a1926b3521a46e90042833e18bbfa8ba6165c2"
+        },
+        {
+          "name": "inference.json",
+          "bytes": 217724,
+          "sha256": "562404e3c590c50c93778d5f0a94df21b47b5ab8f3ea6d47c7f8a7930c3bc844"
+        },
+        {
+          "name": "inference.pdiparams",
+          "bytes": 13342671,
+          "sha256": "cac3e5f12cf04aaa77f6a5bc704e4e736ef2908476551891d84b41b4e9090462"
+        },
+        {
+          "name": "inference.yml",
+          "bytes": 96039,
+          "sha256": "f757fa1c40e99edcf27e9cce879b93eb2a51fa46f5ef39095689b8c37dd75998"
+        }
+      ]
+    }
+  ]
+}

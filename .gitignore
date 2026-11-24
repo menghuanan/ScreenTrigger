@@ -1,0 +1,30 @@
+node_modules/
+/dist/
+target/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.vs/
+/.workbuddy/
+.env
+.env.*
+!.env.example
+
+# Local acceptance records, user approval transcripts, and captured output.
+/reports/
+/docs/agent/check-state.json
+/docs/decisions/2026-11-25-winui3.md
+
+# Keep local OCR weights and Windows signing keys out of source control.
+/models/**
+!/models/*/
+!/models/*/manifest.json
+*.pfx
+*.p12
+
+# Windows packaging uses only the two icons named in tauri.conf.json.
+/src-tauri/icons/*
+!/src-tauri/icons/icon.ico
+!/src-tauri/icons/icon.png
+/src-tauri/gen/

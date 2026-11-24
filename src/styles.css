@@ -1,0 +1,630 @@
+/*
+ * ScreenTrigger 骨架手写样式（TASK-004 设计 §3.2 styles.css）。
+ * 无主题系统、无外链字体/CDN（离线约束 S07）；简洁可读的浅色单主题。
+ */
+
+/* ---- 基础 ---- */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #24292f;
+  background: #f6f8fa;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ---- 布局 ---- */
+
+.app {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 16px 20px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.app-subtitle {
+  color: #57606a;
+  font-size: 12px;
+}
+
+.app-footer {
+  color: #6e7781;
+  font-size: 12px;
+  border-top: 1px solid #d0d7de;
+  padding-top: 8px;
+}
+
+section {
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+section h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+section h3 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: #57606a;
+}
+
+.muted {
+  color: #6e7781;
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+/* ---- 消息条 ---- */
+
+.notice {
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.notice-info {
+  background: #ddf4ff;
+  border-color: #54aeff66;
+  color: #0969da;
+}
+
+.notice-error {
+  background: #ffebe9;
+  border-color: #ff818266;
+  color: #cf222e;
+}
+
+/* ---- 健康横幅（§2.4 状态色调）---- */
+
+.health-banner {
+  border-left-width: 5px;
+}
+
+.banner-idle {
+  border-left-color: #8c959f;
+}
+
+.banner-starting {
+  border-left-color: #bf8700;
+  background: #fff8c5;
+}
+
+.banner-ready {
+  border-left-color: #1a7f37;
+  background: #dafbe1;
+}
+
+.banner-stopping {
+  border-left-color: #bf8700;
+  background: #fff8c5;
+}
+
+.banner-exited {
+  border-left-color: #cf222e;
+  background: #ffebe9;
+}
+
+.banner-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.banner-label {
+  font-size: 12px;
+  color: #57606a;
+}
+
+.banner-state {
+  font-size: 17px;
+}
+
+.banner-session {
+  font-size: 12px;
+  color: #57606a;
+  font-family: Consolas, monospace;
+}
+
+.banner-detail {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.banner-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 28px;
+  margin: 10px 0 0;
+}
+
+.banner-facts div {
+  display: flex;
+  gap: 6px;
+}
+
+.banner-facts dt {
+  color: #57606a;
+  font-size: 12px;
+}
+
+.banner-facts dd {
+  margin: 0;
+  font-size: 13px;
+  font-family: Consolas, monospace;
+  word-break: break-all;
+}
+
+/* ---- 诊断区 ---- */
+
+.diagnostics {
+  margin-top: 12px;
+}
+
+.diagnostics summary {
+  cursor: pointer;
+  color: #0969da;
+  font-size: 13px;
+  user-select: none;
+}
+
+.stderr-tail {
+  background: #0d1117;
+  color: #c9d1d9;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 8px 0 0;
+}
+
+.diag-error {
+  color: #cf222e;
+  font-size: 13px;
+}
+
+/* ---- 能力徽标 ---- */
+
+.badge-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.badge-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.badge-available {
+  background: #dafbe1;
+  color: #1a7f37;
+  border-color: #1a7f3788;
+}
+
+.badge-pending {
+  background: #eff1f3;
+  color: #57606a;
+  border-color: #8c959f66;
+}
+
+.badge-unavailable {
+  background: #ffebe9;
+  color: #cf222e;
+  border-color: #ff818288;
+}
+
+.badge-reason {
+  color: #57606a;
+  font-size: 12px;
+}
+
+.critical-hint {
+  color: #cf222e;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 4px 0;
+}
+
+/* ---- per-capability gate 状态列表（TASK-006 §7.3）---- */
+
+.gate-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gate-list li {
+  font-size: 12px;
+}
+
+.gate-ok {
+  color: #1a7f37;
+}
+
+.gate-blocked {
+  color: #cf222e;
+}
+
+/* ---- 按钮 ---- */
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.btn {
+  padding: 6px 18px;
+  border-radius: 6px;
+  border: 1px solid #d0d7de;
+  background: #f6f8fa;
+  color: #24292f;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  background: #eef1f4;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #1f883d;
+  border-color: #1a7f37;
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #1a7f37;
+}
+
+.btn-danger {
+  background: #cf222e;
+  border-color: #a40e26;
+  color: #ffffff;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #a40e26;
+}
+
+.btn-secondary {
+  margin-top: 8px;
+}
+
+/* TASK-015：OCR 离线能力覆盖明细（OcrCapabilityPanel）。 */
+.ocr-coverage {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.ocr-coverage-row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.ocr-coverage-key {
+  flex: 0 0 120px;
+  color: #57606a;
+}
+
+.ocr-coverage-value {
+  flex: 1 1 auto;
+  word-break: break-all;
+}
+
+/* TASK-016：复合条件与测试识别面板（RecognitionTestPanel / ConditionTreeEditor / EvidenceList）。 */
+
+.recognition-test-panel .rt-hint {
+  font-size: 12px;
+  color: #6e7781;
+  margin: 4px 0;
+}
+
+.recognition-test-panel .rt-blocked {
+  color: #cf222e;
+}
+
+.rt-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.rt-inputs label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.rt-inputs input[type="text"] {
+  flex: 1 1 auto;
+  padding: 4px 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.rt-input-error {
+  color: #cf222e;
+  font-size: 13px;
+  margin: 6px 0;
+}
+
+/* -- 条件树编辑器 -- */
+
+.ct-editor {
+  border: 1px dashed #d0d7de;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #fbfcfd;
+}
+
+.ct-branch {
+  border-left: 2px solid #d0d7de;
+  padding-left: 8px;
+  margin: 6px 0;
+}
+
+.ct-branch-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ct-op select {
+  margin-left: 4px;
+}
+
+.ct-children {
+  margin: 6px 0;
+}
+
+.ct-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ct-add .btn {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.ct-leaf {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 6px 0;
+  background: #ffffff;
+}
+
+.ct-leaf-anchor {
+  border-color: #1a7f37;
+  box-shadow: 0 0 0 1px #1a7f3733;
+}
+
+.ct-leaf-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.ct-leaf-id {
+  font-family: Consolas, monospace;
+  color: #0969da;
+}
+
+.ct-remove {
+  padding: 2px 10px;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.ct-params,
+.ct-roi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 6px;
+  font-size: 12px;
+  align-items: center;
+}
+
+.ct-params input[type="number"],
+.ct-params input[type="text"] {
+  width: 90px;
+  padding: 2px 6px;
+  margin-left: 4px;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+}
+
+.ct-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ct-channel input[type="number"] {
+  width: 64px;
+}
+
+.ct-tol-label {
+  color: #57606a;
+}
+
+.ct-roi input[type="number"] {
+  width: 68px;
+  padding: 2px 6px;
+  margin-left: 4px;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+}
+
+/* -- 结果与证据 -- */
+
+.rt-result {
+  margin-top: 10px;
+}
+
+.rt-summary {
+  font-size: 13px;
+  margin: 4px 0;
+}
+
+.rt-truncated {
+  color: #bf8700;
+}
+
+.rt-miss {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #f6f8fa;
+}
+
+.rt-miss-line {
+  margin: 0;
+  font-size: 13px;
+}
+
+.rt-matches {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rt-match {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.rt-match-head {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-family: Consolas, monospace;
+}
+
+.rt-match-index {
+  color: #0969da;
+}
+
+.rt-match-meta {
+  font-size: 12px;
+  color: #57606a;
+  margin-top: 2px;
+}
+
+.rt-evidence {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rt-evidence-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.rt-evidence-id {
+  font-family: Consolas, monospace;
+  color: #0969da;
+  min-width: 42px;
+}
+
+.rt-hit .rt-evidence-state {
+  color: #1a7f37;
+}
+
+.rt-missrow .rt-evidence-state {
+  color: #cf222e;
+}
+
+.rt-evidence-skipped .rt-evidence-state {
+  color: #8c959f;
+}
+
+.rt-error {
+  border: 1px solid #ff818266;
+  background: #ffebe9;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #cf222e;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.rt-retryable {
+  color: #bf8700;
+  margin-left: 6px;
+}

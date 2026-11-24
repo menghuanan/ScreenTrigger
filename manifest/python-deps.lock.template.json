@@ -1,0 +1,27 @@
+{
+  "_comment": "Python 依赖锁模板（TASK-003）。version_kind: probed=探针实测 / pending=待 A02 锁定。探针环境 Python 3.13.14 隔离 venv。",
+  "python": {"version": "3.13.14", "implementation": "CPython", "wheel_tag": "cp313-cp313-win_amd64"},
+  "packages": [
+    {"name": "paddlepaddle", "version": "3.3.1", "license": "Apache-2.0", "role": "OCR 推理运行时", "version_kind": "probed", "notes": "必须 enable_mkldnn=False（默认配置 PIR/onednn 崩溃，探针实测 onednn_instruction.cc:118）"},
+    {"name": "paddleocr", "version": "3.7.0", "license": "Apache-2.0", "role": "OCR 引擎封装", "version_kind": "probed", "notes": "doc 预处理流水线建议关闭（use_doc_orientation_classify/use_doc_unwarping/use_textline_orientation=False）"},
+    {"name": "opencv-python", "version": "5.0.0.93", "license": "Apache-2.0", "role": "图像处理", "version_kind": "probed"},
+    {"name": "numpy", "version": "2.3.5", "license": "BSD-3-Clause", "role": "数组运算", "version_kind": "probed"},
+    {"name": "pillow", "version": "12.3.0", "license": "HPND/MIT-CMU", "role": "图像编解码", "version_kind": "probed"},
+    {"name": "lupa", "version": "2.8", "license": "MIT", "role": "Lua 5.4 运行时", "version_kind": "probed", "notes": "_VERSION=Lua 5.4；max_memory 为创建参数"},
+    {"name": "node-lts", "version": null, "license": "MIT", "role": "前端构建", "version_kind": "pending"},
+    {"name": "rust-toolchain", "version": null, "license": "MIT/Apache-2.0", "role": "Tauri2 host", "version_kind": "pending"}
+  ],
+  "models": [
+    {"family": "PP-OCR", "name": "PP-OCRv6_medium_det", "license": "Apache-2.0（以官方声明为准）", "version_kind": "probed", "sha256_files": "reports/TASK-001/probe-result.json model_manifest"},
+    {"family": "PP-OCR", "name": "PP-OCRv6_medium_rec", "license": "Apache-2.0（以官方声明为准）", "version_kind": "probed"},
+    {"family": "PP-LCNet", "name": "PP-LCNet_x1_0_doc_ori", "license": "Apache-2.0（以官方声明为准）", "version_kind": "probed"},
+    {"family": "PP-LCNet", "name": "PP-LCNet_x1_0_textline_ori", "license": "Apache-2.0（以官方声明为准）", "version_kind": "probed"},
+    {"family": "UVDoc", "name": "UVDoc", "license": "Apache-2.0（以官方声明为准）", "version_kind": "probed"}
+  ],
+  "contract_versions": {
+    "data_schema_version": 2,
+    "ipc_protocol_version": 1,
+    "lua_api_version": 1,
+    "provider_api_version": 1
+  }
+}
