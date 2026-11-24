@@ -1,4 +1,3 @@
-node_modules/
 /dist/
 target/
 __pycache__/
@@ -22,9 +21,3 @@ __pycache__/
 !/models/*/manifest.json
 *.pfx
 *.p12
-
-# Windows packaging uses only the two icons named in tauri.conf.json.
-/src-tauri/icons/*
-!/src-tauri/icons/icon.ico
-!/src-tauri/icons/icon.png
-/src-tauri/gen/

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "screentrigger://schema/types.schema.json",
   "title": "ScreenTrigger 共享类型声明（TASK-006）",
-  "$comment": "02-数据结构.md 的机器可校验映射（三端单一事实源；与 02 表格冲突时以 02 为准）。三端落点：Rust src-tauri/src/types/、TS src/lib/types/、Python backend/types/（dataclass(frozen)+validate() 纯函数）。snake_case 三端统一，禁止同义字段（Match 用 bbox/center、Region 用 space）。跨字段约束（canny low<high、mode 条件必填、条件树叶数/深度/唯一性、16KiB metadata 等）在 JSON Schema 中以 if/then 或 description 声明，运行时以三端 validate() 纯函数与 schema/contract-cases.json type_validation 用例为准。",
+  "$comment": "02-数据结构.md 的机器可校验映射（三端单一事实源；与 02 表格冲突时以 02 为准）。Python backend/types/（dataclass(frozen)+validate() 纯函数）。snake_case 三端统一，禁止同义字段（Match 用 bbox/center、Region 用 space）。跨字段约束（canny low<high、mode 条件必填、条件树叶数/深度/唯一性、16KiB metadata 等）在 JSON Schema 中以 if/then 或 description 声明，运行时以三端 validate() 纯函数与 schema/contract-cases.json type_validation 用例为准。",
   "definitions": {
     "rect": {
       "type": "object",

@@ -17,7 +17,7 @@
    token/containment/sha256/尺寸 → 读入 → 存入 ``SessionImageStore`` →
    返回**引擎签发** `ImageRef`，并删除临时文件。
 
-本模块是引擎侧消费端（对应 Rust ``src-tauri/src/selection/hostframe.rs`` 的签发端）。
+本模块是引擎侧消费端。
 token 线格式与 Rust 侧**逐字一致**（详见 ``test_host_frame_token.py`` 的跨语言固定向量）。
 
 关键约束（07 §6）：临时区读入路径必须做**规范路径（realpath）+ 路径组件包含**

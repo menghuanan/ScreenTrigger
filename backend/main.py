@@ -22,8 +22,7 @@ from __future__ import annotations
 # ===========================================================================
 # 入口引导（AUDIT-20261012-001）：必须位于**第一个标准库 import 之前**。
 #
-# 直接以 `python backend/main.py` 执行（Rust 开发态文件入口，见
-# src-tauri/src/sidecar/mod.rs 的 resolve_sidecar_command / build_sidecar_args）时，
+# 直接以 `python backend/main.py` 执行时，
 # 解释器把脚本所在目录 <repo>/backend 置于 sys.path[0]。该目录下的
 # backend/types/ 会以**顶层模块名 `types`** 遮蔽标准库 types：
 #     import argparse → re → enum → `from types import MappingProxyType, ...`

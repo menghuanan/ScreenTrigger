@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "screentrigger://schema/config.schema.json",
   "title": "ScreenTrigger config.json 文档 schema（TASK-006）",
-  "$comment": "02 config.json 表格的机器可校验等价物（冲突以 02 为准）。未知字段拒绝（additionalProperties:false，02：未声明字段拒绝）；NaN/Infinity 由各端序列化层拒绝（Python parse_constant / serde_json 默认 / TS JSON.parse）。model_directory 必须为数据根相对路径且解析后不越界（拒绝 ..、绝对路径、盘符——07 §6 路径组件判断）。configLimits 块为三端共享范围常量事实源（与 contract-cases.json thresholds.configLimits 逐字一致）。默认值 = 02 config.json 完整示例逐字段；revision 初始 1、每次 update/reset 递增（§5.4）。schema_version>2 → SCHEMA_UNSUPPORTED（拒绝写入并提示升级，未知字段不静默删除）；同版本未知字段/坏 JSON → DATA_CORRUPT（走恢复流程，不建空库覆盖）。敏感字段结论：本 schema 无任何凭据/密钥/令牌字段（02 不提供），无需脱敏；日志遵守 06「不记录参数全文」。",
+  "$comment": "02 config.json 表格的机器可校验等价物（冲突以 02 为准）。未知字段拒绝（additionalProperties:false，02：未声明字段拒绝）；NaN/Infinity 由各端序列化层拒绝（Python parse_constant / serde_json 默认）。model_directory 必须为数据根相对路径且解析后不越界（拒绝 ..、绝对路径、盘符——07 §6 路径组件判断）。configLimits 块为三端共享范围常量事实源（与 contract-cases.json thresholds.configLimits 逐字一致）。默认值 = 02 config.json 完整示例逐字段；revision 初始 1、每次 update/reset 递增（§5.4）。schema_version>2 → SCHEMA_UNSUPPORTED（拒绝写入并提示升级，未知字段不静默删除）；同版本未知字段/坏 JSON → DATA_CORRUPT（走恢复流程，不建空库覆盖）。敏感字段结论：本 schema 无任何凭据/密钥/令牌字段（02 不提供），无需脱敏；日志遵守 06「不记录参数全文」。",
   "configLimits": {
     "defaultFrequencyHz": {"min": 0.1, "max": 30},
     "threshold": {"min": 0, "max": 1},

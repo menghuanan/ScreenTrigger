@@ -1,6 +1,6 @@
 # ScreenTrigger 执行入口
 
-本仓库已有旧版前端与后端实现。全前端的目标架构和切换条件见 `docs/winui3-migration.md`，所有新增应用界面采用 WinUI 3。先读 `docs/agent/执行约定.md` 和 `docs/agent/检查与闭环.md`。产品要求、技术契约和业务验收不得因检查工具的通过而被视为已实现。
+本仓库已有后端实现。全前端的目标架构和切换条件见 `docs/winui3-migration.md`，所有新增应用界面采用 WinUI 3。先读 `docs/agent/执行约定.md` 和 `docs/agent/检查与闭环.md`。产品要求、技术契约和业务验收不得因检查工具的通过而被视为已实现。
 
 - 原子任务使用 TASK 编号，测试组使用 TEST 编号，A 编号只表示任务组。先核对具体任务卡、硬依赖和决策阻塞。
 - 开始工作先运行 `python tools/run_acceptance.py audit --scope baseline`。查看生成报告，记录既有问题，不覆盖既有失败证据。

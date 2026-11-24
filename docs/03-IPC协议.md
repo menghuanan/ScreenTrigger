@@ -40,7 +40,7 @@ Lua 请求输入时 Python 发 `type=host_request,id=py-<uuid>,command=input_act
 
 UI 发给宿主的 start_selection_mode/list_windows/bind_window/hotkey 类命令由 Rust 处理；Rust 用同样信封转入事件总线。其余命令路由给 Python。消息 seq 由 Rust 面向 UI 出口统一分配，Python 内部序号不能冒充 UI seq。需要等待 host_response 的 Python worker 不占 IPC reader。
 
-**内部约定（不进公开命令目录，对外命令总数仍为 62）**：宿主在无法经 UI 往返的同步上下文（如 `confirm_selection` 的宿主本地处理）中，可经内部同步通道向引擎发送引擎命令 `register_host_frame {token:string} → {image:ImageRef}`。宿主把捕获的最终帧写入数据根受控临时区并签发**一次性 host-frame token**（HMAC-SHA256 签名，会话绑定 + TTL + 单次；与 `import_image` 的 import_token 同一安全模型——引擎**只认 token，不接受任意路径**）；引擎校验 token/路径包含/sha256/尺寸后读入、**由引擎 SessionImageStore 签发** `ImageRef` 并删除临时文件。该命令仅供宿主↔引擎**内部**使用，不出现在 §命令目录，UI 与脚本不得调用；其线格式与安全约束见实现出处 `backend/image/host_frame.py`（引擎侧）与 `src-tauri/src/selection/hostframe.rs`（旧宿主实现，原生迁移归入 `native/host/src/selection/`）。
+**内部约定（不进公开命令目录，对外命令总数仍为 62）**：宿主在无法经 UI 往返的同步上下文（如 `confirm_selection` 的宿主本地处理）中，可经内部同步通道向引擎发送引擎命令 `register_host_frame {token:string} → {image:ImageRef}`。宿主把捕获的最终帧写入数据根受控临时区并签发**一次性 host-frame token**（HMAC-SHA256 签名，会话绑定 + TTL + 单次；与 `import_image` 的 import_token 同一安全模型——引擎**只认 token，不接受任意路径**）；引擎校验 token/路径包含/sha256/尺寸后读入、**由引擎 SessionImageStore 签发** `ImageRef` 并删除临时文件。该命令仅供宿主↔引擎**内部**使用，不出现在 §命令目录，UI 与脚本不得调用；其线格式与安全约束见实现出处 `backend/image/host_frame.py`（引擎侧）与 `native/host/src/selection/`。
 
 InputAction 为带 kind 的对象：move `{x,y,duration_ms}`；click `{x,y,button,clicks}`；drag `{from:{x,y},to:{x,y},duration_ms}`；scroll `{delta}`；key `{key,state:tap|down|up}`；text `{text,interval_ms}`；hotkey `{keys:[string]}`。点均 screen_physical；若非坐标动作则使用当前指针/前台并同样做区域/身份检查。输入响应 `{action_id,dispatched:true}` 仅表示调用完成，不保证目标应用业务成功。
 

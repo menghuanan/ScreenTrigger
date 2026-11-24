@@ -2,7 +2,7 @@
 """TASK-011 契约用例一致性测试（``schema/contract-cases.json`` 三端同源）。
 
 本文件与 ``test_types_contract.py``（kind=type_validation）及 Rust
-``contract_tests.rs``/TS ``contractCases.ts`` 消费**同一份** ``contract-cases.json``：
+``contract_tests.rs`` 消费**同一份** ``contract-cases.json``：
 
 - ``kind="type_validation"`` 且 ``typeName="group"``（``applies_to`` 含 python）：
   纯结构校验 ``validate_type("group", value)`` 与 ``expect``（valid/code/field）逐字一致；
@@ -10,7 +10,7 @@
   经真实命令层（``Dispatcher`` + ``register_target_commands`` + 注入替身 service）执行，
   断言 TASK-011 §13.1 裁决群组语义（Q1 同层同名、Q2 层级超限、Q3 update_group
   至少给一字段、Q5 显式 null 搬移、Q8 父组不存在）——命令层语义仅 Python 侧可达，
-  故这些用例 ``applies_to=["python"]``（Rust/TS 只跑纯 ``type_validation``）。
+  故这些用例 ``applies_to=["python"]``（Rust 只跑纯 ``type_validation``）。
 
 用例 ``setup`` 支持 ``"$N"`` 占位（引用第 N 个已创建分组的 id），供父组/搬移场景；
 每条 dispatch 用例在**全新**临时仓库上执行（setup 之间互不污染）。

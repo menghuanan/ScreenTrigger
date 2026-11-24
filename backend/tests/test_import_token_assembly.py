@@ -23,7 +23,7 @@ from backend.capture.errors import CaptureError
 from backend.image.tokens import HmacTokenAuthority, NullTokenAuthority, mint_import_token
 from backend.main import _build_import_token_authority
 
-# --- 共享 fixed vector（必须与 Rust src-tauri/src/import/token.rs 逐字相同） ---
+# --- 共享 fixed vector（必须与 Rust token.rs 逐字相同） ---
 FIXED_SECRET_HEX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
 FIXED_SESSION = "sess-vector"
 FIXED_PATH = "C:/pick/img.png"

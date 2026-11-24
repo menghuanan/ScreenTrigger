@@ -219,7 +219,7 @@ pub struct RouterHandle {
     tx: mpsc::Sender<RouterInput>,
 }
 
-/// 客户端 recv 余量：服务端期限先到（§5.1 同步命令；TS 侧同参 +500ms，§3.3）。
+/// 客户端 recv 余量：服务端期限先到（§5.1 同步命令，§3.3）。
 const CLIENT_RECV_MARGIN: Duration = Duration::from_millis(500);
 
 impl RouterHandle {

@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """TASK-012 契约用例一致性测试（``schema/contract-cases.json`` 三端同源）。
 
-与 ``test_types_contract.py``（kind=type_validation）及 Rust ``contract_tests.rs``、
-TS ``contractCases.ts`` 消费**同一份** ``contract-cases.json``：
+与 ``test_types_contract.py``（kind=type_validation）及 Rust ``contract_tests.rs`` 消费**同一份** ``contract-cases.json``：
 
 - ``kind="type_validation"`` 且 ``typeName="script"``（``applies_to`` 含 python）：
   纯结构校验 ``validate_type("script", value)`` 与 ``expect``（valid/code/field）逐字一致；
