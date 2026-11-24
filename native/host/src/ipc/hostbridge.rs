@@ -166,7 +166,7 @@ fn host_response_envelope(
 
 /// 06 错误四字段对象。
 fn error_object(code: &str, message: &str) -> Value {
-    json!({ "code": code, "message": message, "details": Value::Null, "retryable": false })
+    json!({ "code": code, "message": message, "details": {}, "retryable": false })
 }
 
 // ---------------------------------------------------------------------------

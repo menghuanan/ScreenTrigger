@@ -32,9 +32,9 @@ def main() -> int:
 
     # 场景1：Per-Monitor V2 生效
     scenarios["pmv2_awareness"] = {
-        "expected": "awareness==2 (PER_MONITOR_AWARE)",
-        "actual": awareness,
-        "pass": awareness == 2,
+        "expected": "当前线程的 DPI context 等于 PER_MONITOR_AWARE_V2",
+        "actual": {"awareness": awareness, "per_monitor_v2": env["per_monitor_v2"]},
+        "pass": env["per_monitor_v2"],
     }
 
     # 场景2：逐显示器 DPI/物理 rect
@@ -64,11 +64,11 @@ def main() -> int:
         "expected": "100/125/150/200/300% 混合 DPI 像素误差≤1",
         "actual": {
             "current_scales": scales,
-            "covered_in_matrix": covered,
+            "available_scales": sorted(covered),
             "status": "NOT_RUN",
-            "reason": "本机无法程序化更改系统缩放且仅单屏；需测试机在多缩放/多屏环境复验",
+            "reason": "显示器清点只记录当前拓扑；各缩放下的像素误差需实际拖选动态目标测量",
         },
-        "pass": True,  # 场景本体记录事实；矩阵 NOT_RUN 不判 FAIL
+        "pass": None,
     }
 
     result = {
@@ -79,9 +79,10 @@ def main() -> int:
         "scenarios": scenarios,
     }
     write_report(args.json_out, result)
-    ok = all(v["pass"] for v in scenarios.values())
+    ok = all(v["pass"] is not False for v in scenarios.values())
     for k, v in scenarios.items():
-        print(f"  {k}: {'PASS' if v['pass'] else 'FAIL'}")
+        status = {True: "PASS", False: "FAIL", None: "NOT_RUN"}[v["pass"]]
+        print(f"  {k}: {status}")
     print(f"[display_probe] monitors={len(monitors)} scales={scales} virtual={vs}")
     return 0 if ok else 1
 

@@ -1,7 +1,7 @@
 """TASK-002 探针：窗口身份、客户区几何与 geometry_revision（纯 Win32）。
 
 场景（对应任务卡 STEPS.03，TEST-006 的 OS 部分）：
-1. 身份元组：hwnd/pid/进程名/类名/标题（U17 选择已打开窗口的身份基础）；
+1. 身份元组：hwnd/pid/进程创建时间。进程名、类名和标题供界面显示；
 2. 客户区物理 rect：GetClientRect+ClientToScreen；对比 GetWindowRect 与 DWM 扩展框架边界；
 3. 移动/缩放 → geometry_revision 变化、身份不变；
 4. 最小化/失焦 → minimized/foreground 状态可观测（WINDOW_UNAVAILABLE 语义依据）；
@@ -20,7 +20,7 @@ import sys
 import time
 sys.path.insert(0, __file__.rsplit("\\", 1)[0] if "\\" in __file__ else ".")
 from common import (GA_ROOT, HWND_TOPMOST, MiniWindow, SWP_NOMOVE,  # noqa: E402
-                    SWP_NOSIZE, base_environment, geometry_revision,
+                    SWP_NOSIZE, base_environment,
                     set_per_monitor_v2, SW_MINIMIZE, SW_RESTORE, utc_now,
                     user32, write_report)
 
@@ -30,6 +30,13 @@ def get_root_hwnd(hwnd) -> int:
 
 
 def window_identity(hwnd) -> dict:
+    from datetime import datetime, timedelta, timezone
+    kernel = ctypes.windll.kernel32
+    kernel.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+    kernel.OpenProcess.restype = wt.HANDLE
+    kernel.CloseHandle.argtypes = [wt.HANDLE]
+    kernel.GetProcessTimes.argtypes = [wt.HANDLE] + [ctypes.POINTER(wt.FILETIME)] * 4
+    kernel.QueryFullProcessImageNameW.argtypes = [wt.HANDLE, wt.DWORD, wt.LPWSTR, ctypes.POINTER(wt.DWORD)]
     pid = wt.DWORD(0)
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
     title_buf = ctypes.create_unicode_buffer(256)
@@ -37,17 +44,22 @@ def window_identity(hwnd) -> dict:
     class_buf = ctypes.create_unicode_buffer(256)
     user32.GetClassNameW(hwnd, class_buf, 256)
     process_name = None
+    started_at = None
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+    h = kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
     if h:
         name_buf = ctypes.create_unicode_buffer(260)
         size = wt.DWORD(260)
         try:
-            if ctypes.windll.kernel32.QueryFullProcessImageNameW(h, 0, name_buf, ctypes.byref(size)):
+            times = [wt.FILETIME() for _ in range(4)]
+            if kernel.GetProcessTimes(h, *(ctypes.byref(t) for t in times)):
+                ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+                started_at = (datetime(1601, 1, 1, tzinfo=timezone.utc) + timedelta(microseconds=ticks // 10)).isoformat()
+            if kernel.QueryFullProcessImageNameW(h, 0, name_buf, ctypes.byref(size)):
                 process_name = name_buf.value.rsplit("\\", 1)[-1]
         finally:
-            ctypes.windll.kernel32.CloseHandle(h)
-    return {"hwnd": hwnd, "pid": pid.value, "process_name": process_name,
+            kernel.CloseHandle(h)
+    return {"hwnd": hwnd, "pid": pid.value, "process_started_at": started_at, "process_name": process_name,
             "class_name": class_buf.value, "title": title_buf.value}
 
 
@@ -88,7 +100,19 @@ def main() -> int:
     awareness = set_per_monitor_v2()
     env = base_environment(awareness)
     scenarios = {}
-    dpi = env["monitors"][0]["dpi"] if env["monitors"] else 96
+    previous_geometry = None
+    revision = 0
+
+    def geometry_revision(hwnd, rect):
+        nonlocal previous_geometry, revision
+        user32.MonitorFromWindow.argtypes = [wt.HWND, wt.DWORD]
+        user32.MonitorFromWindow.restype = wt.HANDLE
+        user32.GetDpiForWindow.argtypes = [wt.HWND]
+        geometry = (dict(rect), user32.MonitorFromWindow(hwnd, 2), user32.GetDpiForWindow(hwnd))
+        if geometry != previous_geometry:
+            revision += 1
+            previous_geometry = geometry
+        return revision
 
     win = MiniWindow("ST-TASK002-WINDOW-PROBE", 100, 100, 320, 240)
     win.pump(200)
@@ -100,7 +124,7 @@ def main() -> int:
         "expected": "hwnd>0、pid>0、进程名/类名/标题非空",
         "actual": ident,
         "pass": bool(ident["hwnd"] and ident["pid"] and ident["process_name"]
-                     and ident["class_name"]),
+            and ident["class_name"] and ident["process_started_at"]),
     }
 
     # 场景2：客户区物理 rect 与 DWM 边界
@@ -112,17 +136,17 @@ def main() -> int:
         "pass": client0["w"] > 0 and client0["h"] > 0,
     }
 
-    rev0 = geometry_revision(client0, ident["class_name"], dpi)
+    rev0 = geometry_revision(hwnd, client0)
 
     # 场景3：移动 → revision 变化、身份不变
     user32.SetWindowPos(hwnd, None, 240, 200, 0, 0, SWP_NOSIZE)
     win.pump(250)
     client1 = client_physical_rect(hwnd)
-    rev1 = geometry_revision(client1, ident["class_name"], dpi)
+    rev1 = geometry_revision(hwnd, client1)
     scenarios["move_revision"] = {
         "expected": "移动后客户区原点变化、geometry_revision 变化、身份元组不变",
         "actual": {"client_before": client0, "client_after": client1,
-                   "revision_changed": rev0 != rev1,
+                   "revisions": [rev0, rev1], "revision_changed": rev0 < rev1,
                    "identity_stable": window_identity(hwnd) == ident},
         "pass": client1 != client0 and rev0 != rev1 and window_identity(hwnd) == ident,
     }
@@ -131,10 +155,11 @@ def main() -> int:
     user32.SetWindowPos(hwnd, None, 0, 0, 440, 320, SWP_NOMOVE)
     win.pump(250)
     client2 = client_physical_rect(hwnd)
-    rev2 = geometry_revision(client2, ident["class_name"], dpi)
+    rev2 = geometry_revision(hwnd, client2)
     scenarios["resize_revision"] = {
         "expected": "缩放后客户区尺寸变化、geometry_revision 再次变化",
-        "actual": {"client_after_resize": client2, "revision_changed_again": rev1 != rev2},
+        "actual": {"client_after_resize": client2, "revisions": [rev1, rev2],
+                   "revision_changed_again": rev1 < rev2},
         "pass": client2["w"] != client1["w"] and rev1 != rev2,
     }
 
@@ -183,9 +208,9 @@ def main() -> int:
         "recorded_at": utc_now(),
         "environment": env,
         "binding_design": {
-            "identity_tuple": "hwnd+pid+process_name+class_name",
-            "geometry_revision_basis": "hash(client_rect, monitor, dpi) 前16hex",
-            "note": "标题不参与身份；业务实现需另加进程创建时间对抗句柄复用（06 不变量 4）",
+            "identity_tuple": "hwnd+pid+process_started_at",
+            "geometry_revision_basis": "客户区物理边界、所在显示器或窗口 DPI 改变时递增整数版本",
+            "note": "重新绑定时核对进程创建时间；窗口标题只供显示。",
         },
         "scenarios": scenarios,
     }

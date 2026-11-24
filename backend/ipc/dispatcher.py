@@ -247,16 +247,16 @@ class Dispatcher:
     def run(self) -> int:
         """stdin 读循环；返回进程退出码：0=EOF 优雅退出，3=连续畸形关会话（§6.5）。"""
         while True:
-            raw = self.transport.read_line()
-            if raw is None:
-                self._log("stdin EOF，优雅退出")
-                return 0
             try:
+                raw = self.transport.read_line()
+                if raw is None:
+                    self._log("stdin EOF，优雅退出")
+                    return 0
                 envelope = parse_frame(raw)
             except MalformedFrameError as exc:
                 self.malformed_count += 1
                 self.consecutive_malformed += 1
-                self._log("畸形帧 #%d（%s）：%r" % (self.malformed_count, exc.reason, raw[:120]))
+                self._log("畸形帧 #%d（%s）" % (self.malformed_count, exc.reason))
                 if self.consecutive_malformed >= self.consecutive_limit:
                     self._log(
                         "连续畸形帧达 %d，关闭会话（协议错误，退出 code %d）"

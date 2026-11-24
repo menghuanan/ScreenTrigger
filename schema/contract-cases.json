@@ -378,7 +378,7 @@
     {
       "id": "type-region-screen-negative-x-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：screen 空间 x/y 可负（虚拟桌面），负坐标合法样本",
       "typeName": "region",
       "value": {"space": "screen_physical", "x": -900, "y": 200, "width": 120, "height": 40, "display_id": "display-1"},
@@ -387,7 +387,7 @@
     {
       "id": "type-region-client-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "typeName": "region",
       "value": {"space": "window_client_physical", "x": 0, "y": 0, "width": 120, "height": 40, "binding_id": "binding-1"},
       "expect": {"valid": true}
@@ -395,7 +395,7 @@
     {
       "id": "type-region-image-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "typeName": "region",
       "value": {"space": "image_pixel", "x": 0, "y": 0, "width": 120, "height": 40, "image_id": "img-1"},
       "expect": {"valid": true}
@@ -403,7 +403,7 @@
     {
       "id": "type-region-min-10x10-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：10×10 下限边界通过",
       "typeName": "region",
       "value": {"space": "screen_physical", "x": -900, "y": 0, "width": 10, "height": 10, "display_id": "display-1"},
@@ -412,7 +412,7 @@
     {
       "id": "type-region-width-9-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "06：宽 <10 → INVALID_REGION（太小分支）",
       "typeName": "region",
       "value": {"space": "screen_physical", "x": 0, "y": 0, "width": 9, "height": 10, "display_id": "display-1"},
@@ -421,7 +421,7 @@
     {
       "id": "type-region-height-9-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "typeName": "region",
       "value": {"space": "screen_physical", "x": 0, "y": 0, "width": 10, "height": 9, "display_id": "display-1"},
       "expect": {"valid": false, "code": "INVALID_REGION", "field": "region.height"}
@@ -429,7 +429,7 @@
     {
       "id": "type-region-client-negative-x-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：client 空间不可负",
       "typeName": "region",
       "value": {"space": "window_client_physical", "x": -1, "y": 0, "width": 120, "height": 40, "binding_id": "binding-1"},
@@ -438,7 +438,7 @@
     {
       "id": "type-region-image-negative-y-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：image 空间不可负",
       "typeName": "region",
       "value": {"space": "image_pixel", "x": 0, "y": -1, "width": 120, "height": 40, "image_id": "img-1"},
@@ -447,7 +447,7 @@
     {
       "id": "type-region-screen-with-binding-id-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02 空间互斥：binding_id 仅 client 空间出现",
       "typeName": "region",
       "value": {"space": "screen_physical", "x": 0, "y": 0, "width": 120, "height": 40, "display_id": "display-1", "binding_id": "binding-1"},
@@ -456,7 +456,7 @@
     {
       "id": "type-region-client-with-display-id-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02 空间互斥：display_id 仅 screen 空间出现",
       "typeName": "region",
       "value": {"space": "window_client_physical", "x": 0, "y": 0, "width": 120, "height": 40, "binding_id": "binding-1", "display_id": "display-1"},
@@ -465,7 +465,7 @@
     {
       "id": "type-region-screen-missing-display-id-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：screen 空间 display_id 必填",
       "typeName": "region",
       "value": {"space": "screen_physical", "x": 0, "y": 0, "width": 120, "height": 40},
@@ -474,7 +474,7 @@
     {
       "id": "type-region-client-missing-binding-id-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "typeName": "region",
       "value": {"space": "window_client_physical", "x": 0, "y": 0, "width": 120, "height": 40},
       "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.binding_id"}
@@ -482,7 +482,7 @@
     {
       "id": "type-region-image-missing-image-id-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "typeName": "region",
       "value": {"space": "image_pixel", "x": 0, "y": 0, "width": 120, "height": 40},
       "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.image_id"}
@@ -490,7 +490,7 @@
     {
       "id": "type-region-unknown-space-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "typeName": "region",
       "value": {"space": "virtual_screen", "x": 0, "y": 0, "width": 120, "height": 40, "display_id": "display-1"},
       "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "region.space"}
@@ -498,7 +498,7 @@
     {
       "id": "type-point-single-pixel-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：Point 单像素读取不受 ≥10 限制",
       "typeName": "point",
       "value": {"x": -900, "y": 0},
@@ -507,7 +507,7 @@
     {
       "id": "type-localrect-1x1-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：LocalRect 宽高≥1（防把 10×10 套到局部 ROI）",
       "typeName": "local_rect",
       "value": {"x": 0, "y": 0, "width": 1, "height": 1},
@@ -516,7 +516,7 @@
     {
       "id": "type-localrect-zero-width-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "typeName": "local_rect",
       "value": {"x": 0, "y": 0, "width": 0, "height": 1},
       "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "local_rect.width"}
@@ -524,7 +524,7 @@
     {
       "id": "type-target-valid-minimal",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：最小合法目标（2 叶条件树，anchor 指向存在叶）",
       "typeName": "target",
       "value": {
@@ -542,7 +542,7 @@
     {
       "id": "type-target-hsc-color-space-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：hsc 不是合法 color_space，生成即 INVALID_PARAMS",
       "typeName": "target",
       "value": {
@@ -559,7 +559,7 @@
     {
       "id": "type-target-eleven-leaves-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：叶 1–10，第 11 叶拒绝",
       "typeName": "target",
       "value": {
@@ -586,7 +586,7 @@
     {
       "id": "type-target-depth-5-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：嵌套最多 4 层，5 层分支拒绝",
       "typeName": "target",
       "value": {
@@ -601,7 +601,7 @@
     {
       "id": "type-target-anchor-missing-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：anchor_condition_id 必须指向存在叶",
       "typeName": "target",
       "value": {
@@ -616,7 +616,7 @@
     {
       "id": "type-target-duplicate-leaf-id-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：叶 ID 目标内唯一",
       "typeName": "target",
       "value": {
@@ -634,7 +634,7 @@
     {
       "id": "type-target-threshold-out-of-range-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：template threshold 0..1",
       "typeName": "target",
       "value": {
@@ -649,7 +649,7 @@
     {
       "id": "type-target-canny-low-high-equal-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：canny_low < canny_high（相等即违例）",
       "typeName": "target",
       "value": {
@@ -664,7 +664,7 @@
     {
       "id": "type-target-hsv-h-360-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：HSV h∈[0,360)",
       "typeName": "target",
       "value": {
@@ -679,7 +679,7 @@
     {
       "id": "type-target-name-blank-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：name 去首尾空白后 1–100 字符",
       "typeName": "target",
       "value": {
@@ -694,7 +694,7 @@
     {
       "id": "type-target-name-101-chars-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：name 上限 100 字符",
       "typeName": "target",
       "value": {
@@ -710,7 +710,7 @@
     {
       "id": "type-runconfig-valid-once-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "typeName": "run_config",
       "value": {"script_id": "s1", "args": {}, "mode": "once", "iterations": null, "stop_target_id": null, "debug": false, "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0},
       "expect": {"valid": true}
@@ -718,7 +718,7 @@
     {
       "id": "type-runconfig-count-missing-iterations-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：mode=count 必填 iterations≥1",
       "typeName": "run_config",
       "value": {"script_id": "s1", "args": {}, "mode": "count", "iterations": null, "stop_target_id": null, "debug": false, "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0},
@@ -727,7 +727,7 @@
     {
       "id": "type-runconfig-count-with-stop-target-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：stop_target_id 仅 until_target 非空，其他模式必 null",
       "typeName": "run_config",
       "value": {"script_id": "s1", "args": {}, "mode": "count", "iterations": 3, "stop_target_id": "t1", "debug": false, "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0},
@@ -736,7 +736,7 @@
     {
       "id": "type-runconfig-display-and-binding-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：display_id 与 binding_id 互斥",
       "typeName": "run_config",
       "value": {"script_id": "s1", "args": {}, "mode": "once", "iterations": null, "stop_target_id": null, "debug": false, "region": null, "display_id": "display-1", "binding_id": "binding-1", "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0},
@@ -745,7 +745,7 @@
     {
       "id": "type-monitor-on-match-stop-repeat-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：on_match=stop 时 repeat 必须 false",
       "typeName": "monitor_config",
       "value": {"target_id": "t1", "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0, "debug": false, "repeat": true, "wait_timeout_ms": 30000, "on_match": "stop", "action_script_id": null, "action_args": {}, "on_timeout": "stop", "timeout_script_id": null, "timeout_args": {}, "max_retries": 0, "retry_delay_ms": 1000, "trigger": "rising_edge", "cooldown_ms": 1000},
@@ -754,7 +754,7 @@
     {
       "id": "type-monitor-retry-max-zero-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：on_timeout=retry 时 max_retries 须 ≥1",
       "typeName": "monitor_config",
       "value": {"target_id": "t1", "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0, "debug": false, "repeat": false, "wait_timeout_ms": 30000, "on_match": "stop", "action_script_id": null, "action_args": {}, "on_timeout": "retry", "timeout_script_id": null, "timeout_args": {}, "max_retries": 0, "retry_delay_ms": 1000, "trigger": "rising_edge", "cooldown_ms": 1000},
@@ -763,7 +763,7 @@
     {
       "id": "type-monitor-max-retries-101-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：max_retries 0–100",
       "typeName": "monitor_config",
       "value": {"target_id": "t1", "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0, "debug": false, "repeat": false, "wait_timeout_ms": 30000, "on_match": "stop", "action_script_id": null, "action_args": {}, "on_timeout": "retry", "timeout_script_id": null, "timeout_args": {}, "max_retries": 101, "retry_delay_ms": 1000, "trigger": "rising_edge", "cooldown_ms": 1000},
@@ -772,7 +772,7 @@
     {
       "id": "type-script-param-required-with-default-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：required=true 时 default 必须 null",
       "typeName": "script",
       "value": {"id": "s1", "revision": 1, "name": "脚本", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "count", "type": "number", "required": true, "default": 3, "description": ""}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
@@ -781,7 +781,7 @@
     {
       "id": "type-script-source-path-escape-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02/07 §6：source_path 形态 scripts/<id>/<hash>.lua，.. 组件拒绝（组件判断非 startswith）",
       "typeName": "script",
       "value": {"id": "s1", "revision": 1, "name": "脚本", "source_path": "scripts/../secret.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
@@ -790,7 +790,7 @@
     {
       "id": "type-script-name-101-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：name 去首尾空白后 >100 码点拒绝（TASK-012 名称边界；三端同源）",
       "typeName": "script",
       "nameOverrideLength": 101,
@@ -800,7 +800,7 @@
     {
       "id": "type-script-parameters-not-array-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：parameters 必须为数组（TASK-012；三端同源）",
       "typeName": "script",
       "value": {"id": "s1", "revision": 1, "name": "脚本", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": {"name": "x"}, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
@@ -809,7 +809,7 @@
     {
       "id": "type-script-minimal-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02 Script 形态完整合法（TASK-012 正例；三端同源）",
       "typeName": "script",
       "value": {"id": "s1", "revision": 1, "name": "登录点击", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "retry", "type": "number", "required": false, "default": 3, "description": "重试次数"}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
@@ -818,7 +818,7 @@
     {
       "id": "config-patch-valid-deep",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "深合并：对象递归合并、标量替换；合法 patch → revision+1",
       "patch": {"recognition": {"default_threshold": 0.9}},
       "expectedRevision": 1,
@@ -827,7 +827,7 @@
     {
       "id": "config-patch-unknown-top-field",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：未声明字段拒绝（顶层）",
       "patch": {"foo": 1},
       "expectedRevision": 1,
@@ -836,7 +836,7 @@
     {
       "id": "config-patch-unknown-nested-field",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：未声明字段拒绝（嵌套），错误定位到完整路径",
       "patch": {"recognition": {"foo": 1}},
       "expectedRevision": 1,
@@ -845,7 +845,7 @@
     {
       "id": "config-patch-nan-rejected",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：禁 NaN/Infinity；样本以字符串描述（NaN 帧级拒绝或 INVALID_PARAMS，三端口径一致）",
       "patch": {"recognition": {"default_threshold": "NaN"}},
       "expectedRevision": 1,
@@ -854,7 +854,7 @@
     {
       "id": "config-patch-frequency-50-out-of-range",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "configLimits：frequency 0.1–30",
       "patch": {"recognition": {"default_frequency_hz": 50}},
       "expectedRevision": 1,
@@ -863,7 +863,7 @@
     {
       "id": "config-patch-rotate-bytes-500kib-out-of-range",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "configLimits：rotate_bytes 1MiB..100MiB",
       "patch": {"logging": {"rotate_bytes": 512000}},
       "expectedRevision": 1,
@@ -872,7 +872,7 @@
     {
       "id": "config-patch-wrong-revision-conflict",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "06：expected_revision 不匹配 → CONFLICT，不写盘",
       "patch": {"general": {"theme": "dark"}},
       "expectedRevision": 99,
@@ -881,7 +881,7 @@
     {
       "id": "config-patch-ocr-model-id-null-valid",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "§5.4d：可 null 字段允许显式置 null（ocr_model_id=null → 文字识别禁用）",
       "patch": {"recognition": {"ocr_model_id": null}},
       "expectedRevision": 1,
@@ -890,7 +890,7 @@
     {
       "id": "config-patch-model-directory-parent-escape",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02/07 §6：model_directory 拒绝 ..（组件判断）",
       "patch": {"recognition": {"model_directory": "../models"}},
       "expectedRevision": 1,
@@ -899,7 +899,7 @@
     {
       "id": "config-patch-model-directory-absolute",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "02：model_directory 拒绝绝对路径/盘符",
       "patch": {"recognition": {"model_directory": "C:/models"}},
       "expectedRevision": 1,
@@ -908,7 +908,7 @@
     {
       "id": "config-reset-wrong-revision-conflict",
       "kind": "config_patch",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "03：reset_config 同样校验 expected_revision；内容=默认值、revision 递增、不删除目标/脚本",
       "patch": null,
       "reset": true,
@@ -918,7 +918,7 @@
     {
       "id": "type-target-hsv-h-359-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "§15 裁决：HSV h∈[0,360) 整数域闭区间上界 359 合法（types.schema.json colorHsv maximum=359）",
       "typeName": "target",
       "value": {"id": "t1", "sample_no": 1, "revision": 1, "name": "h上界", "group_id": null, "image": {"path": "images/example.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 40, "format": "png", "storage_mode": "original"}, "thumbnail_path": null, "anchor_condition_id": "c1", "conditions": {"op": "all", "children": [{"id": "c1", "type": "color", "params": {"color_space": "hsv", "color": {"h": 359, "s": 80, "v": 90}, "tolerance": {"h": 180, "s": 20, "v": 20}}}]}, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}},
@@ -927,7 +927,7 @@
     {
       "id": "type-monitor-run-script-double-violation-timeout-script-id-invalid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "§15.7 裁决 V1：on_timeout=run_script 且 timeout_script_id 缺失、同时 max_retries≠0 双违例 → 结构缺失优先（分支 required 先于交叉约束），报 timeout_script_id",
       "typeName": "monitor_config",
       "value": {"target_id": "t1", "region": null, "display_id": "display-1", "binding_id": null, "allow_exit": false, "frequency_hz": 1, "total_timeout_ms": 0, "debug": false, "repeat": false, "wait_timeout_ms": 30000, "on_match": "stop", "action_script_id": null, "action_args": {}, "on_timeout": "run_script", "timeout_script_id": null, "timeout_args": {}, "max_retries": 3, "retry_delay_ms": 1000, "trigger": "rising_edge", "cooldown_ms": 1000},
@@ -936,7 +936,7 @@
     {
       "id": "type-group-top-level-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "TASK-011 用户裁决 2026-10-11：顶层分组（parent_group_id=null、depth=0）合法样本",
       "typeName": "group",
       "value": {"id": "g1", "revision": 1, "name": "顶层组", "parent_group_id": null, "depth": 0, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
@@ -945,7 +945,7 @@
     {
       "id": "type-group-nested-depth2-valid",
       "kind": "type_validation",
-      "applies_to": ["python", "rust"],
+      "applies_to": ["python", "rust", "csharp"],
       "description": "TASK-011 用户裁决 2026-10-11：三层分组的第 3 层（depth=2、父存在）合法样本",
       "typeName": "group",
       "value": {"id": "g3", "revision": 1, "name": "孙组", "parent_group_id": "g2", "depth": 2, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},

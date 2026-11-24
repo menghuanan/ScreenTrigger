@@ -29,13 +29,13 @@ class _FakeClock:
     """可注入单调时钟。"""
 
     def __init__(self, start: float = 1000.0) -> None:
-        self.now = float(start)
+        self.now_ns = round(start * 1_000_000_000)
 
     def monotonic(self) -> float:
-        return self.now
+        return self.now_ns / 1_000_000_000
 
     def advance(self, seconds: float) -> None:
-        self.now += float(seconds)
+        self.now_ns += round(seconds * 1_000_000_000)
 
 
 class _FakeSleep:

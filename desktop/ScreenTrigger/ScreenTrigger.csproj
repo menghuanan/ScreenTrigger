@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <HostProject>$(MSBuildThisFileDirectory)..\..\native\host\Cargo.toml</HostProject>
+    <HostOutput>$(MSBuildThisFileDirectory)..\..\dist\native-host</HostOutput>
+    <HostProfile Condition="'$(Configuration)' == 'Release'">release</HostProfile>
+    <HostProfile Condition="'$(HostProfile)' == ''">debug</HostProfile>
+    <CargoProfileArg Condition="'$(HostProfile)' == 'release'">--release</CargoProfileArg>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../schema/types.schema.json" LogicalName="ScreenTrigger.types.json" />
+    <EmbeddedResource Include="../../schema/config.schema.json" LogicalName="ScreenTrigger.config.json" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.7.0" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" PrivateAssets="all" />
+    <Content Include="$(HostOutput)\$(HostProfile)\screen_trigger_lib.dll"
+             Link="screen_trigger_lib.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="BuildNativeHost" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="cargo build --locked $(CargoProfileArg) --manifest-path &quot;$(HostProject)&quot; --target-dir &quot;$(HostOutput)&quot;" />
+  </Target>
+</Project>

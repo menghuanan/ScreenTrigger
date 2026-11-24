@@ -50,12 +50,12 @@ pub struct IpcError {
 }
 
 impl IpcError {
-    /// 基础构造（details 默认 Null）。
+    /// 06 四字段错误。无字段详情时返回空对象。
     pub fn new(code: &str, message: &str, retryable: bool) -> Self {
         IpcError {
             code: code.to_string(),
             message: message.to_string(),
-            details: Value::Null,
+            details: json!({}),
             retryable,
         }
     }
@@ -169,7 +169,7 @@ pub fn ipc_error_from_value(value: &Value) -> IpcError {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string(),
-        details: value.get("details").cloned().unwrap_or(Value::Null),
+        details: value.get("details").filter(|v| v.is_object()).cloned().unwrap_or_else(|| json!({})),
         retryable: value
             .get("retryable")
             .and_then(Value::as_bool)

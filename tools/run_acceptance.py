@@ -68,14 +68,18 @@ def local(root, name):
 
 def baseline(root):
     files = {}
-    for path in sorted(root.rglob("*")):
-        rel = path.relative_to(root)
-        if any(x in SKIP for x in rel.parts) or rel.as_posix() == STATE:
-            continue
-        if path.is_file() and path.suffix not in (".pyc", ".pyo"):
-            if not path.resolve().is_relative_to(root.resolve()):
+    resolved_root = root.resolve()
+    for directory, directories, filenames in root.walk():
+        directories[:] = [name for name in directories if name not in SKIP]
+        for name in filenames:
+            path = directory / name
+            rel = path.relative_to(root).as_posix()
+            if name in SKIP or rel == STATE or path.suffix in (".pyc", ".pyo") or not path.is_file():
+                continue
+            if not path.resolve().is_relative_to(resolved_root):
                 raise ValueError(f"source symlink outside workspace: {rel}")
-            files[rel.as_posix()] = digest(path)
+            files[rel] = digest(path)
+    files = dict(sorted(files.items()))
     return {"sha256": hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest(), "files": files}
 
 

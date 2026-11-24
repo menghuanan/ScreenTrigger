@@ -403,11 +403,13 @@ class StdioTransport:
         stdout: Optional[io.TextIOBase] = None,
         stdin: Optional[io.TextIOBase] = None,
         stderr: Optional[io.TextIOBase] = None,
+        on_delivery_failure: Optional[Callable[[], None]] = None,
     ) -> None:
         self._stdout: io.TextIOBase = stdout if stdout is not None else sys.stdout
         self._stdin: io.TextIOBase = stdin if stdin is not None else sys.stdin
         self._stderr: io.TextIOBase = stderr if stderr is not None else sys.stderr
-        self._queue: "queue.Queue[Optional[str]]" = queue.Queue()
+        self._queue: "queue.Queue[Optional[str]]" = queue.Queue(maxsize=128)
+        self._delivery_failure = on_delivery_failure
         self._writer_thread: Optional[threading.Thread] = None
         self._closed: bool = False
         self._close_stream_on_finish: bool = False
@@ -447,14 +449,38 @@ class StdioTransport:
             return False
         if not frame.endswith("\n"):
             frame = frame + "\n"
-        self._queue.put(frame)
+        try:
+            self._queue.put_nowait(frame)
+        except queue.Full:
+            self._fail_delivery()
+            return False
         return True
+
+    def _fail_delivery(self) -> None:
+        self._closed = True
+        if self._delivery_failure is not None:
+            self._delivery_failure()
 
     def read_line(self) -> Optional[str]:
         """从 stdin 读一行原始文本；EOF 返回 None（优雅退出信号）。"""
-        line = self._stdin.readline()
-        if line == "":
+        limit = MAX_FRAME_BYTES + 2
+        source = getattr(self._stdin, "buffer", self._stdin)
+        line = source.readline(limit)
+        newline = b"\n" if isinstance(line, bytes) else "\n"
+        if len(line) == limit and not line.endswith(newline):
+            # Consume the rest of this frame so that its tail cannot be parsed as a new request.
+            while True:
+                tail = source.readline(limit)
+                if not tail or tail.endswith(newline):
+                    break
+            raise MalformedFrameError("PROTOCOL_ERROR: frame_too_large")
+        if not line:
             return None
+        if isinstance(line, bytes):
+            try:
+                return line.decode("utf-8")
+            except UnicodeDecodeError:
+                raise MalformedFrameError("invalid_utf8") from None
         return line
 
     def close_stdout(self, close_stream: bool = False) -> None:
@@ -466,7 +492,10 @@ class StdioTransport:
         if close_stream:
             self._close_stream_on_finish = True
         self._closed = True
-        self._queue.put(None)
+        try:
+            self._queue.put(None, timeout=0.25)
+        except queue.Full:
+            self._fail_delivery()
 
     def join_writer(self, timeout: Optional[float] = None) -> bool:
         """等待 writer 线程结束；返回其是否已退出（进程退出前保证 flush）。"""
@@ -486,8 +515,12 @@ class StdioTransport:
                     if self._close_stream_on_finish:
                         self._stdout.close()
                 return
-            self._stdout.write(item)
-            self._stdout.flush()
+            try:
+                self._stdout.write(item)
+                self._stdout.flush()
+            except (OSError, ValueError):
+                self._fail_delivery()
+                return
 
 
 # ---------------------------------------------------------------------------
@@ -788,6 +821,7 @@ class SidecarApp:
             self.emit_system_ready()
         if fault == "stdout_close_after_ready":
             self.transport.close_stdout()
+            self.transport.join_writer(timeout=2.0)
             # 判据修正（主理人 2026-10-09 指令；依据 T6 探针 + CPython 语义实证）：
             # CPython 的 sys.stdout.close() 不关闭 OS 层句柄（os.close(1) 在其
             # closed 后仍成功），任何传输下仅关闭文本包装层而进程存活时父端都
@@ -1067,7 +1101,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     """
     configure_stdio()
     args = SidecarArgs.parse(argv)
-    transport = StdioTransport(stdout=sys.stdout, stdin=sys.stdin, stderr=sys.stderr)
+    # Terminal replies must be reliable. Losing the output channel ends the owning session
+    # so that the host closes the input gate and fails its outstanding requests.
+    transport = StdioTransport(stdout=sys.stdout, stdin=sys.stdin, stderr=sys.stderr,
+                               on_delivery_failure=lambda: os._exit(PROTOCOL_ERROR_EXIT_CODE))
     # 捕获与导入共享同一会话级图像注册表（ImageRef 生命周期一致，release/preview 通用）。
     image_store = SessionImageStore(session_id=args.session_id)
     capture_service = None

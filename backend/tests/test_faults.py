@@ -246,7 +246,14 @@ class FaultRoutingTest(unittest.TestCase):
 
     def test_stdout_close_after_ready_closes_stream(self):
         app, transport, out, _err = make_app(fault="stdout_close_after_ready")
-        self.assertEqual(app.run(), 0)
+        saved_stdout = os.dup(1)
+        try:
+            self.assertEqual(app.run(), 0)
+            with self.assertRaises(OSError):
+                os.fstat(1)
+        finally:
+            os.dup2(saved_stdout, 1)
+            os.close(saved_stdout)
         frames = stdout_frames(out)
         self.assertEqual(len(frames), 1)
         self.assertEqual(frames[0]["name"], "system_ready")

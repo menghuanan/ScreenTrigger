@@ -35,6 +35,7 @@ import threading
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from backend.config.defaults import default_config
+from backend.strict_json import loads as strict_loads
 
 Logger = Callable[[str], None]
 
@@ -65,8 +66,18 @@ _DRIVE_LETTER_RE = re.compile(r"^[A-Za-z]:")
 
 
 def _copy_file(src: str, dst: str) -> None:
-    """备份拷贝封装（模块级，供测试故障注入替换）。"""
-    shutil.copyfile(src, dst)
+    """Publish a complete backup only after the copy and flush succeed."""
+    staged = dst + ".tmp"
+    try:
+        shutil.copyfile(src, staged)
+        with open(staged, "rb+") as handle:
+            os.fsync(handle.fileno())
+        os.replace(staged, dst)
+    finally:
+        try:
+            os.remove(staged)
+        except FileNotFoundError:
+            pass
 
 
 class ConfigError(Exception):
@@ -269,11 +280,6 @@ def _validate_document(doc: Any, code: str) -> None:
         validator(value, code)
 
 
-def _reject_json_constant(literal: str) -> Any:
-    """json parse_constant 钩子：文件含 NaN/Infinity 字面量即拒绝（02）。"""
-    raise ValueError("config 文档含非法常量 %s（禁 NaN/Infinity）" % literal)
-
-
 def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any], path: str,
                 code: str) -> Dict[str, Any]:
     """深合并（§5.4d）：对象递归合并、标量替换、数组整体替换；未知字段拒绝。"""
@@ -373,8 +379,8 @@ class ConfigService:
             raise ConfigError("DATA_CORRUPT", "config.json 读取失败：%s" % exc) from exc
         try:
             text = raw.decode("utf-8")
-            doc = json.loads(text, parse_constant=_reject_json_constant)
-        except ValueError as exc:
+            doc = strict_loads(text)
+        except (ValueError, RecursionError) as exc:
             return self._recover_from_backup("config.json 解析失败（%s）" % exc)
         try:
             _validate_document(doc, code="DATA_CORRUPT")
@@ -401,11 +407,9 @@ class ConfigService:
         try:
             with open(self._backup_path, "rb") as handle:
                 backup_raw = handle.read()
-            backup_doc = json.loads(
-                backup_raw.decode("utf-8"), parse_constant=_reject_json_constant
-            )
+            backup_doc = strict_loads(backup_raw.decode("utf-8"))
             _validate_document(backup_doc, code="DATA_CORRUPT")
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, RecursionError) as exc:
             self._state = self.STATE_READ_ONLY_FAILED
             self._log("%s；备份同样不可用（%s），进入只读失败态" % (reason, exc))
             raise ConfigError("DATA_CORRUPT", "%s；备份同样损坏" % reason) from exc

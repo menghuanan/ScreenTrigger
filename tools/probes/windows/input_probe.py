@@ -24,7 +24,7 @@ import ctypes.wintypes as wt
 import sys
 import time
 sys.path.insert(0, __file__.rsplit("\\", 1)[0] if "\\" in __file__ else ".")
-from common import (INPUT_KEYBOARD, INPUT_MOUSE, KEYEVENTF_KEYUP,  # noqa: E402
+from common import (GA_ROOT, INPUT_KEYBOARD, INPUT_MOUSE, KEYEVENTF_KEYUP,  # noqa: E402
                     HWND_TOPMOST, KEYEVENTF_UNICODE, MOUSEEVENTF_ABSOLUTE,
                     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE,
                     MOUSEEVENTF_VIRTUALDESK, MiniWindow, SWP_NOMOVE, SWP_NOSIZE,
@@ -97,19 +97,37 @@ def mouse_event(x: int, y: int, vs: dict, down=False, up=False) -> INPUT:
 class Gate:
     """M05 输入闸门最小语义原型：open 派发计数，closed 拒绝计数。"""
 
-    def __init__(self):
+    def __init__(self, hwnd, virtual_screen):
+        self.hwnd = hwnd
+        self.vs = virtual_screen
         self.open = True
         self.dispatched = 0
         self.rejected = 0
         self.held: list[INPUT] = []
+        self.mouse_down = False
+
+    def owns_target(self, item):
+        if user32.GetForegroundWindow() != self.hwnd:
+            return False
+        if item.type != INPUT_MOUSE:
+            return True
+        x = self.vs["x"] + round(item.mi.dx * (self.vs["w"] - 1) / 65535)
+        y = self.vs["y"] + round(item.mi.dy * (self.vs["h"] - 1) / 65535)
+        hit = user32.WindowFromPoint(wt.POINT(x, y))
+        return bool(hit and user32.GetAncestor(hit, GA_ROOT) == self.hwnd)
 
     def dispatch(self, items: list[INPUT]) -> bool:
-        if not self.open:
+        if not self.open or not all(self.owns_target(item) for item in items):
             self.rejected += len(items)
             return False
         sent = user32.SendInput(len(items), (INPUT * len(items))(*items),
                                 ctypes.sizeof(INPUT))
         self.dispatched += sent
+        for item in items[:sent]:
+            if item.type == INPUT_MOUSE and item.mi.dwFlags & MOUSEEVENTF_LEFTDOWN:
+                self.mouse_down = True
+            elif item.type == INPUT_MOUSE and item.mi.dwFlags & MOUSEEVENTF_LEFTUP:
+                self.mouse_down = False
         return sent == len(items)
 
     def close(self):
@@ -118,9 +136,15 @@ class Gate:
     def release_owned(self):
         for item in reversed(self.held):
             item.ki.dwFlags |= KEYEVENTF_KEYUP
-            if self.open:
-                user32.SendInput(1, (INPUT * 1)(item), ctypes.sizeof(INPUT))
+            if user32.SendInput(1, (INPUT * 1)(item), ctypes.sizeof(INPUT)) != 1:
+                raise OSError("释放探针持有的键失败")
         self.held.clear()
+        if self.mouse_down:
+            release = INPUT(type=INPUT_MOUSE)
+            release.mi.dwFlags = MOUSEEVENTF_LEFTUP
+            if user32.SendInput(1, (INPUT * 1)(release), ctypes.sizeof(INPUT)) != 1:
+                raise OSError("释放探针持有的鼠标键失败")
+            self.mouse_down = False
 
 
 def make_foreground(hwnd) -> bool:
@@ -162,8 +186,10 @@ def main() -> int:
     user32.GetCursorPos(ctypes.byref(pt))
     saved_cursor = (pt.x, pt.y)
 
-    gate = Gate()
     win = MiniWindow("ST-TASK002-INPUT-PROBE", 120, 120, 360, 220)
+    user32.WindowFromPoint.argtypes = [wt.POINT]
+    user32.WindowFromPoint.restype = wt.HWND
+    gate = Gate(win.hwnd, vs)
     edit = create_edit_child(win.hwnd, "", 10, 10, 330, 32)
     win.pump(200)
     # 对探针窗口禁用 IME：合成 VK 字母否则会被输入法组合拦截（本机实测事实）
@@ -187,12 +213,10 @@ def main() -> int:
         win.pump(120)
 
     try:
-        # 前台守卫只约束键盘派发；鼠标事件按光标位置路由，不需要前台
         scenarios["foreground_guard"] = {
-            "expected": "键盘派发前必须探针窗口==前台（安全边界）",
+            "expected": "派发前探针窗口须为前台，鼠标命中点须位于该窗口",
             "actual": {"make_foreground": focused,
-                       "note": "前台获取失败时跳过键盘派发，防止合成输入落到用户应用；"
-                               "鼠标场景不依赖前台，照常执行"},
+                       "note": "每批事件重新核对前台窗口和鼠标命中窗口"},
             "pass": foreground_ok,
         }
         if foreground_ok:
@@ -216,8 +240,8 @@ def main() -> int:
             edit_set_text(edit, "")
             win.pump(100)
             shift_down = vk_event(VK_SHIFT)
-            gate.held.append(shift_down)
-            gate.dispatch([shift_down])
+            if not user32.GetAsyncKeyState(VK_SHIFT) & 0x8000 and gate.dispatch([shift_down]):
+                gate.held.append(shift_down)
             win.pump(100)
             gate.dispatch([vk_event(0x41), vk_event(0x41, up=True)])
             win.pump(150)
@@ -234,12 +258,18 @@ def main() -> int:
                 "pass": after_combo == "Aa" and not gate.held,
             }
 
-        # --- 鼠标场景：不依赖前台，按光标位置路由 ---
+        # 越界动作必须在送入系统前被拒绝。
+        before = gate.dispatched
+        outside = gate.dispatch([mouse_event(ox - 40, oy - 40, vs, down=True)])
+        scenarios["outside_guard"] = {"expected": "窗口外的动作被拒绝", "actual": outside,
+                                      "pass": not outside and gate.dispatched == before and foreground_ok}
         # 场景3：拖拽取消
         win.motions.clear()
         win.pump(100)
         sx, sy = ox + 20, oy + 150
         gate.open = True
+        if user32.GetAsyncKeyState(1) & 0x8000:
+            raise RuntimeError("鼠标左键已被按住，无法开始隔离拖拽测试")
         gate.dispatch([mouse_event(sx, sy, vs, down=True)])
         step_x = 300 // 8
         for i in range(8):
@@ -250,13 +280,13 @@ def main() -> int:
         received_motion = len(win.motions)
         gate.dispatch([mouse_event(sx, sy, vs, up=True)])  # gate 关，应被拒
         win.pump(80)
-        gate.open = True
-        gate.dispatch([mouse_event(sx, sy, vs, up=True)])  # 恢复按键状态（抬起）
+        gate.release_owned()
         scenarios["drag_cancel"] = {
             "expected": "8 步拖拽第 4 步关闸：收到部分 motion（<8），关闸后无新增派发",
             "actual": {"motions_received": received_motion,
                        "dispatched": gate.dispatched, "rejected": gate.rejected},
-            "pass": 0 < received_motion < 8 and gate.rejected > 0,
+            "pass": 0 < received_motion < 8 and gate.rejected > 0 and not gate.mouse_down
+                    and not (user32.GetAsyncKeyState(1) & 0x8000),
         }
 
         # --- 场景4：停止后输入计数 ---
@@ -271,6 +301,16 @@ def main() -> int:
                        "rejected_total": gate.rejected},
             "pass": gate.dispatched == dispatched_before and gate.rejected >= 5,
         }
+        other = MiniWindow("ST-TASK002-FOCUS-GUARD", 520, 420, 180, 80)
+        try:
+            changed = make_foreground(other.hwnd)
+            gate.open = True
+            refused = not gate.dispatch([vk_event(0x41), vk_event(0x41, up=True)])
+            scenarios["focus_guard"] = {"expected": "另一专用窗口获得焦点后拒绝输入",
+                "actual": {"changed": changed, "refused": refused, "dispatched": gate.dispatched},
+                "pass": changed and refused and gate.dispatched == dispatched_before}
+        finally:
+            other.destroy()
     finally:
         gate.release_owned()
         win.destroy()

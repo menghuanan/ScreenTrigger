@@ -1,0 +1,28 @@
+{
+  "scope": "P0 TASK-002 through TASK-006 Windows x64 development",
+  "architecture": "x64",
+  "dotnet_sdk": "11.0.100",
+  "dotnet_runtime": "10.0.15",
+  "target_framework": "net10.0-windows10.0.26100.0",
+  "windows_sdk": "10.0.26100.0",
+  "msvc_tools": "14.52.37025",
+  "rust": "1.100.0",
+  "cargo": "1.100.0",
+  "rust_target": "x86_64-pc-windows-msvc",
+  "direct_nuget": {
+    "Microsoft.WindowsAppSDK.WinUI": {"version": "2.7.0", "license": "Microsoft Windows App SDK license.txt"},
+    "Microsoft.Windows.SDK.BuildTools": {"version": "10.0.28000.2957", "license": "Microsoft Windows SDK license", "build_only": true},
+    "WinUIEx": {"version": "2.9.3", "license": "MIT", "scope": "selection probe transparent backdrop"}
+  },
+  "dependency_locks": [
+    "desktop/ScreenTrigger/packages.lock.json",
+    "tools/probes/windows/SelectionProbe/packages.lock.json",
+    "native/host/Cargo.lock",
+    "manifest/probes-cp313-win-x64.txt"
+  ],
+  "declared_target_platform_min_build": 17763,
+  "tested_windows_builds": [26300],
+  "tested_capture_min_build": 26300,
+  "product_minimum_build": null,
+  "deployment": "Unpackaged development application with app-local Windows App SDK, .NET 10 x64 and a separate CPython 3.13 sidecar. Offline installer acceptance pending TASK-027."
+}

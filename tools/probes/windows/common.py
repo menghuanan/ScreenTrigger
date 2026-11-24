@@ -75,9 +75,11 @@ def set_per_monitor_v2() -> int:
     except Exception:
         pass  # 较旧系统无此 API，回落 SetProcessDPIAware
     if hasattr(user32, "GetAwarenessFromDpiAwarenessContext"):
+        user32.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+        user32.GetAwarenessFromDpiAwarenessContext.argtypes = [ctypes.c_void_p]
         ctx = user32.GetThreadDpiAwarenessContext()
         return user32.GetAwarenessFromDpiAwarenessContext(ctx)
-    return user32.GetProcessDPIAware()
+    return int(bool(user32.IsProcessDPIAware()))
 
 
 class MONITORINFOEXW(ctypes.Structure):
@@ -150,18 +152,18 @@ def json_dumps(obj) -> bytes:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True).encode("utf-8")
 
 
-def geometry_revision(client_rect: dict, device: str, dpi: int) -> str:
-    blob = json_dumps((client_rect, device, dpi))
-    return hashlib.sha256(blob).hexdigest()[:16]
-
-
 def base_environment(awareness: int) -> dict:
     monitors = enumerate_monitors()
+    user32.GetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+    user32.AreDpiAwarenessContextsEqual.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    per_monitor_v2 = user32.AreDpiAwarenessContextsEqual(
+        user32.GetThreadDpiAwarenessContext(), DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
     return {
         "os": platform.platform(),
         "architecture": platform.machine(),
         "python": sys.version.replace("\n", " "),
         "dpi_awareness_status": awareness,  # 2 = PER_MONITOR_AWARE
+        "per_monitor_v2": bool(per_monitor_v2),
         "monitors": monitors,
         "virtual_screen": virtual_screen(),
         "topology_revision": topology_revision(monitors),
@@ -175,11 +177,8 @@ def write_report(path: str, result: dict) -> str:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=1)
-    h = hashlib.sha256(open(path, "rb").read()).hexdigest()
-    result["report_sha256"] = h
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=1)
-    return h
+    with open(path, "rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 # ---------------- 最小 Win32 窗口框架（无 tkinter 依赖） ----------------
@@ -271,7 +270,7 @@ class MiniWindow:
 
 def create_edit_child(parent_hwnd, text: str, x, y, w, h) -> int:
     return user32.CreateWindowExW(
-        0, "EDIT", text, WS_CHILD | WS_VISIBLE | 0x80000000,  # WS_BORDER
+        0, "EDIT", text, WS_CHILD | WS_VISIBLE | 0x00800000,  # WS_BORDER
         x, y, w, h, parent_hwnd, None, kernel32.GetModuleHandleW(None), None)
 
 

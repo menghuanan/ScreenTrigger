@@ -106,6 +106,9 @@
         "data": {},
         "error": {"$ref": "#/definitions/error"}
       },
+      "if": {"properties": {"success": {"const": true}}},
+      "then": {"required": ["data"]},
+      "else": {"required": ["error"]},
       "additionalProperties": false
     },
     "eventEnvelope": {
@@ -164,6 +167,9 @@
         "data": {},
         "error": {"$ref": "#/definitions/error"}
       },
+      "if": {"properties": {"success": {"const": true}}},
+      "then": {"required": ["data"]},
+      "else": {"required": ["error"]},
       "additionalProperties": false
     }
   },

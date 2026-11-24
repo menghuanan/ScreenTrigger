@@ -20,7 +20,6 @@ Python 异常经 lupa 回调传播为 Lua error，count hook 借此实现忙循�
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -34,14 +33,6 @@ COUNT_HOOK_MAX_EVENTS = 50   # 50 × 10000 指令后必须取消
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def sha256_file(path: str) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def lua_type_name(rt, value) -> str:
@@ -267,9 +258,6 @@ def main() -> int:
         result["lua_abi"]["_version"] = result["scenarios"].get("version", {}).get("detail")
 
     os.makedirs(os.path.dirname(args.json_out) or ".", exist_ok=True)
-    with open(args.json_out, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=1)
-    result["report_sha256"] = sha256_file(args.json_out)
     with open(args.json_out, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=1)
 

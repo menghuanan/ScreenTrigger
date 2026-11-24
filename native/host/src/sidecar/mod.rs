@@ -18,10 +18,11 @@
 pub mod job;
 pub mod protocol;
 pub mod transport;
+mod writer;
 
 use std::collections::VecDeque;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -238,9 +239,15 @@ fn for_each_line_lossy<R: BufRead>(
     let mut buf: Vec<u8> = Vec::new();
     loop {
         buf.clear();
-        match reader.read_until(b'\n', &mut buf) {
+        // Bound memory before a newline arrives. Drain the remainder without retaining it.
+        match reader.by_ref().take((MAX_FRAME_BYTES + 2) as u64).read_until(b'\n', &mut buf) {
             Ok(0) => return Ok(()), // EOF
             Ok(_) => {
+                if buf.len() == MAX_FRAME_BYTES + 2 && !buf.ends_with(b"\n") {
+                    let remaining = reader.skip_until(b'\n')?;
+                    if !on_line(Err(buf.len().saturating_add(remaining))) { return Ok(()); }
+                    continue;
+                }
                 // 去除行尾 \r\n（先判 \n 再剥连续 \r，兼容 \r\n 与 \r）
                 while matches!(buf.last(), Some(b'\n') | Some(b'\r')) {
                     buf.pop();
@@ -266,7 +273,7 @@ fn for_each_line_lossy<R: BufRead>(
 /// begin_start 的结果。
 enum StartOutcome {
     /// 本次调用发起新启动，返回 stdout 接收端（启动代数经 Supervisor 状态读取）。
-    Initiated { rx: Receiver<StdoutMessage> },
+    Initiated { generation: u64, rx: Receiver<StdoutMessage> },
     /// 幂等：Starting/Ready/Stopping 直接返回当前状态。
     AlreadyRunning,
     /// 解析/创建失败：状态已落 Exited(last_error=spawn_failed: ...)。
@@ -291,7 +298,7 @@ struct Supervisor {
     child: Option<Child>,
     job: Option<job::JobObject>,
     /// 父进程 stdin 写端（命名管道 client；关闭即子进程 EOF——修订-01）
-    stdin_client: Option<File>,
+    stdin_client: Option<writer::SessionWriter>,
     /// 父进程 stdout 读端（命名管道 server；移交 drain 线程）
     stdout_pipe: Option<File>,
     /// 父进程 stderr 读端（命名管道 server；移交 drain 线程）
@@ -380,6 +387,19 @@ impl Supervisor {
     }
 
     /// `engine_status` / `engine_start` / `engine_stop` 返回视图（§4.1）。
+    fn start_result(&self, generation: u64) -> Result<EngineStatusView, String> {
+        if self.generation != generation {
+            return Err("启动请求已被新会话取代".into());
+        }
+        // The watchdog can finish cleanup before the handshake thread wakes up.
+        if self.state == EngineState::Exited {
+            if let Some(reason) = &self.last_error {
+                return Err(reason.clone());
+            }
+        }
+        Ok(self.status())
+    }
+
     fn status(&self) -> EngineStatusView {
         let running = matches!(self.state, EngineState::Starting | EngineState::Ready | EngineState::Stopping);
         EngineStatusView {
@@ -444,10 +464,16 @@ impl Supervisor {
             .stdin_client
             .as_mut()
             .ok_or_else(|| "stdin 已关闭（进程不在运行）".to_string())?;
-        let mut line = serde_json::to_string(envelope).map_err(|e| e.to_string())?;
-        line.push('\n'); // 03：LF 分帧
-        stdin.write_all(line.as_bytes()).map_err(|e| format!("stdin 写入失败: {e}"))?;
-        stdin.flush().map_err(|e| format!("stdin flush 失败: {e}"))
+        if envelope.get("session_id").and_then(|v| v.as_str()) != self.session_id.as_deref() {
+            return Err("会话已结束".into());
+        }
+        let mut line = serde_json::to_vec(envelope).map_err(|e| e.to_string())?;
+        if line.len() > MAX_FRAME_BYTES { return Err("PROTOCOL_ERROR: 消息超过 2 MiB".into()); }
+        line.push(b'\n');
+        // Cancel must stay behind the request it cancels. Stop closes the local gate before enqueue.
+        let priority = matches!(envelope["command"].as_str(), Some("stop_script" | "ping"))
+            || envelope["type"] == "host_response";
+        stdin.send(line, priority)
     }
 
     /// 发送 hello 请求（§2.3 步骤 9，03：第一请求 hello）。
@@ -699,12 +725,11 @@ impl SupervisorHandle {
     /// 首事件经事件总线投递（UI seq 重分配，见 start 阶段三装配）。
     pub fn start(&self) -> Result<EngineStatusView, String> {
         // 阶段一（持锁）：幂等检查 → 解析命令 → Job Object → spawn → 3 线程
-        let rx = match self.begin_start() {
+        let (generation, rx) = match self.begin_start() {
             StartOutcome::AlreadyRunning => return Ok(lock_sup(&self.inner).status()),
             StartOutcome::Failed(reason) => return Err(reason),
-            StartOutcome::Initiated { rx } => rx,
+            StartOutcome::Initiated { generation, rx } => (generation, rx),
         };
-        let generation = lock_sup(&self.inner).generation;
 
         // 阶段二（不持锁）：握手循环。30s 启动期限 = 看门狗 deadline（06：启动 30s）；
         // 独立看门狗线程兜底（begin_start 中启动），此处 deadline 为主动判定。
@@ -785,20 +810,13 @@ impl SupervisorHandle {
         // 阶段三：成功 → 装配 Router（per-session；TASK-005 §2.2/§4.1）+ frame
         // bridge 线程（持续 drain stdout 直到 EOF，R10：drain 不停歇）；
         // 失败/被中止 → 返回当前状态与原因。
-        let should_wire = {
-            let sup = lock_sup(&self.inner);
-            sup.state == EngineState::Ready && sup.generation == generation
-        };
-        if should_wire {
-            self.wire_router(ready_envelope);
+        if self.wire_router(generation, ready_envelope) {
             let inner = self.inner.clone();
-            std::thread::spawn(move || frame_bridge_loop(inner, rx));
+            std::thread::spawn(move || frame_bridge_loop(inner, generation, rx));
             Ok(lock_sup(&self.inner).status())
         } else {
-            match outcome {
-                Ok(()) => Ok(lock_sup(&self.inner).status()),
-                Err(reason) => Err(reason),
-            }
+            outcome?;
+            lock_sup(&self.inner).start_result(generation)
         }
     }
 
@@ -809,17 +827,17 @@ impl SupervisorHandle {
     /// - events = IpcOutlet{EventBus, HostBridge}（契约④：system_ready 经总线
     ///   重分配 UI seq 后到达 UI；host_request 骨架期 CAPABILITY_DENIED）。
     /// 装配后注入 system_ready 为 Router 首事件。
-    fn wire_router(&self, ready_envelope: Option<ProtocolEnvelope>) {
-        let (session_id, emit) = {
-            let mut sup = lock_sup(&self.inner);
-            let session_id = sup.session_id.clone().unwrap_or_default();
-            // 旧会话 Router 残余（防御：cleanup 已 Shutdown/take）
-            if let Some(old) = sup.router.take() {
-                old.shutdown();
-            }
-            sup.router_tx.take();
-            (session_id, sup.event_emitter.take())
-        };
+    fn wire_router(&self, generation: u64, ready_envelope: Option<ProtocolEnvelope>) -> bool {
+        let mut sup = lock_sup(&self.inner);
+        if sup.generation != generation || sup.state != EngineState::Ready {
+            return false;
+        }
+        let session_id = sup.session_id.clone().unwrap_or_default();
+        let emit = sup.event_emitter.clone();
+        if let Some(old) = sup.router.take() {
+            old.shutdown();
+        }
+        sup.router_tx.take();
         let emit = emit.unwrap_or_else(|| {
             eprintln!(
                 "[supervisor] 事件出口未注入（宿主初始化缺 set_event_emitter），事件仅记日志"
@@ -893,14 +911,12 @@ impl SupervisorHandle {
                 session_id.clone(),
             ),
         ));
-        {
-            let mut sup = lock_sup(&self.inner);
-            sup.router = Some(handle);
-            sup.router_tx = Some(tx.clone());
-        }
+        sup.router = Some(handle);
+        sup.router_tx = Some(tx.clone());
         if let Some(envelope) = ready_envelope {
             let _ = tx.send(RouterInput::Frame(envelope));
         }
+        true
     }
 
     /// 阶段一实现（持锁调用）。失败路径统一落 `Exited(last_error=spawn_failed: ...)`。
@@ -997,6 +1013,9 @@ impl SupervisorHandle {
         // 参数数组 spawn（§2.3 步骤 5：无 shell，03：非用户控制字符串拼 shell）。
         // cwd = 仓库根（B1 发现：backend.ipc 包导入依赖仓库根 sys.path；main.py
         // 已有引导逻辑，此处双保险——B3 接线约定）。
+        #[cfg(all(windows, debug_assertions))]
+        let mut cmd = development_venv_command(&program).unwrap_or_else(|| Command::new(&program));
+        #[cfg(not(all(windows, debug_assertions)))]
         let mut cmd = Command::new(&program);
         cmd.args(&args)
             .current_dir(sidecar_working_dir())
@@ -1065,7 +1084,11 @@ impl SupervisorHandle {
         let stdin_client = pipes.take_stdin_client().expect("stdin client 未被消费");
         let stdout_server = pipes.take_stdout_server().expect("stdout server 未被消费");
         let stderr_server = pipes.take_stderr_server().expect("stderr server 未被消费");
-        sup.stdin_client = Some(stdin_client);
+        let (tx, rx) = mpsc::channel::<StdoutMessage>();
+        let writer_error = tx.clone();
+        sup.stdin_client = Some(writer::SessionWriter::new(stdin_client, move || {
+            let _ = writer_error.send(StdoutMessage::Eof);
+        }));
         sup.stdout_pipe = Some(stdout_server);
         sup.stderr_pipe = Some(stderr_server);
         drop(pipes); // 剩余未消费句柄关闭（应已全部取走）
@@ -1102,7 +1125,6 @@ impl SupervisorHandle {
         // - 行字节 >2MiB：不解析、计数、PROTOCOL_ERROR 日志（§6.5 接收侧）；
         // - 有效行经 unbounded channel 送握手/bridge 线程（永不阻塞发送）；
         //   发送端仅存活于 drain 线程内：接收端退出后 recv Disconnected 兜底。
-        let (tx, rx) = mpsc::channel::<StdoutMessage>();
         let tx_for_thread = tx.clone();
         let stdout_count = sup.stdout_event_count.clone();
         let malformed_count = sup.malformed_line_count.clone();
@@ -1161,6 +1183,9 @@ impl SupervisorHandle {
                             StdoutLineVerdict::Malformed(log) => malformed!(log),
                         }
                     }
+                    Err(n) if n > MAX_FRAME_BYTES => malformed!(format!(
+                        "[supervisor] PROTOCOL_ERROR: stdout 行 {n} 字节超 2MiB 上限，已丢弃"
+                    )),
                     Err(n) => malformed!(format!(
                         "[supervisor] 畸形 stdout 字节流（非 UTF-8，{n} 字节），已跳过"
                     )),
@@ -1189,7 +1214,7 @@ impl SupervisorHandle {
             }
         });
 
-        StartOutcome::Initiated { rx }
+        StartOutcome::Initiated { generation, rx }
     }
 
     /// `engine_stop`（§4.1 幂等：非运行态直接返回当前状态）。
@@ -1250,11 +1275,7 @@ impl SupervisorHandle {
         command: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, crate::ipc::IpcError> {
-        let router = lock_sup(&self.inner).router.clone();
-        match router {
-            Some(router) => router.request(id, command, params),
-            None => Err(crate::ipc::IpcError::engine_unavailable("引擎未运行（Router 未装配）")),
-        }
+        self.session_router(None)?.request(id, command, params)
     }
 
     /// `ipc_cancel`（TASK-005 §5.1）：幂等；data = {cancelled, reason}（03）。
@@ -1262,11 +1283,16 @@ impl SupervisorHandle {
         &self,
         request_id: &str,
     ) -> Result<serde_json::Value, crate::ipc::IpcError> {
-        let router = lock_sup(&self.inner).router.clone();
-        match router {
-            Some(router) => router.cancel(request_id),
-            None => Err(crate::ipc::IpcError::engine_unavailable("引擎未运行（Router 未装配）")),
+        self.session_router(None)?.cancel(request_id)
+    }
+
+    /// Bind the request to the same router while checking its session under the lock.
+    pub(crate) fn session_router(&self, expected: Option<&str>) -> Result<RouterHandle, crate::ipc::IpcError> {
+        let supervisor = lock_sup(&self.inner);
+        if expected.is_some() && expected != supervisor.session_id.as_deref() {
+            return Err(crate::ipc::IpcError::engine_unavailable("请求所属的引擎会话已结束"));
         }
+        supervisor.router.clone().ok_or_else(|| crate::ipc::IpcError::engine_unavailable("引擎未运行（Router 未装配）"))
     }
 
     /// 注入 UI 事件出口（桌面入口初始化时调用一次；事件名 = 协议 name，payload = 重分配 seq 后完整信封）。
@@ -1297,8 +1323,12 @@ fn sidecar_working_dir() -> PathBuf {
 /// 持续消费 stdout 消息直到 EOF（R10：drain 不停歇），有效帧改投 Router
 /// 命令通道（RouterInput::Frame）；EOF / 连续畸形溢出 → 既有清理序列
 /// （§5.2：stdout 断流不自动重启；§6.5：连续畸形关会话）。
-fn frame_bridge_loop(inner: Arc<Mutex<Supervisor>>, rx: Receiver<StdoutMessage>) {
+fn frame_bridge_loop(inner: Arc<Mutex<Supervisor>>, generation: u64, rx: Receiver<StdoutMessage>) {
     while let Ok(msg) = rx.recv() {
+        let mut sup = lock_sup(&inner);
+        if sup.generation != generation || sup.state != EngineState::Ready {
+            break;
+        }
         match msg {
             StdoutMessage::Line(envelope) => {
                 // DEF-TASK008-01：同步内部调用通道优先消化其响应帧（不经 Router，
@@ -1309,30 +1339,19 @@ fn frame_bridge_loop(inner: Arc<Mutex<Supervisor>>, rx: Receiver<StdoutMessage>)
                 }
                 // 投递 Router；发送失败 = Router 已 Shutdown（清理完成）→
                 // 迟到帧只丢弃（§5.3：停止期间迟到消息不复活状态）
-                let router_tx = lock_sup(&inner).router_tx.clone();
-                if let Some(tx) = router_tx {
+                if let Some(tx) = &sup.router_tx {
                     let _ = tx.send(RouterInput::Frame(envelope));
                 }
             }
             StdoutMessage::Eof => {
-                let mut sup = lock_sup(&inner);
-                if sup.state == EngineState::Ready {
-                    let reason = sup.eof_failure_reason();
-                    eprintln!("[supervisor] stdout 断流（{reason}），执行清理序列");
-                    sup.run_cleanup_locked(Some(reason));
-                }
-                // 非 Ready（Stopping/Exited）：清理已由触发方完成（§5.3）
+                let reason = sup.eof_failure_reason();
+                eprintln!("[supervisor] stdout 断流（{reason}），执行清理序列");
+                sup.run_cleanup_locked(Some(reason));
                 break;
             }
             StdoutMessage::MalformedOverflow => {
-                let mut sup = lock_sup(&inner);
-                if sup.state == EngineState::Ready {
-                    eprintln!(
-                        "[supervisor] 连续畸形帧达 {} 阈值，关闸门并关闭会话（§6.5）",
-                        CONSECUTIVE_MALFORMED_LIMIT
-                    );
-                    sup.run_cleanup_locked(Some("protocol_error: 连续畸形帧达阈值".to_string()));
-                }
+                eprintln!("[supervisor] 连续畸形帧达 {} 阈值，关闸门并关闭会话（§6.5）", CONSECUTIVE_MALFORMED_LIMIT);
+                sup.run_cleanup_locked(Some("protocol_error: 连续畸形帧达阈值".to_string()));
                 break;
             }
         }
@@ -1418,15 +1437,7 @@ pub fn resolve_sidecar_command(session_id: &str) -> Result<(PathBuf, Vec<String>
     #[cfg(debug_assertions)]
     {
         let repo_root = sidecar_working_dir();
-        let python = std::env::var("SIDECAR_PYTHON").ok().map(PathBuf::from).unwrap_or_else(|| {
-            repo_root.join(".venv").join("Scripts").join("python.exe")
-        });
-        if !python.is_file() {
-            return Err(format!(
-                "开发态 sidecar 解释器不存在（探测路径：{}；可设 SIDECAR_PYTHON 环境变量覆盖）",
-                python.display()
-            ));
-        }
+        let python = dev_python_path(&repo_root, std::env::var_os("SIDECAR_PYTHON").map(PathBuf::from))?;
         let script = repo_root.join("backend").join("main.py");
         if !script.is_file() {
             return Err(format!(
@@ -1472,6 +1483,44 @@ pub fn resolve_sidecar_command(session_id: &str) -> Result<(PathBuf, Vec<String>
 // ---------------------------------------------------------------------------
 // 故障注入参数构造（TEST-016 触发路径；§6.4 mock 边界：只诱导故障，不制造成功假象）
 // ---------------------------------------------------------------------------
+
+#[cfg(any(debug_assertions, test))]
+fn dev_python_path(root: &std::path::Path, override_path: Option<PathBuf>) -> Result<PathBuf, String> {
+    let python = override_path.unwrap_or_else(|| root.join(".venv/Scripts/python.exe"));
+    if python.is_file() {
+        Ok(python)
+    } else {
+        Err(format!("开发态 sidecar 解释器不存在（探测路径：{}；可设 SIDECAR_PYTHON 环境变量覆盖）", python.display()))
+    }
+}
+
+/// The CPython Windows venv redirector keeps inherited pipe handles until its child exits.
+/// Start the same interpreter with the same venv identity, so the host sees a real stdout EOF.
+#[cfg(all(windows, debug_assertions))]
+fn development_venv_command(program: &std::path::Path) -> Option<Command> {
+    let launcher = std::path::absolute(program).ok()?;
+    let scripts = launcher.parent()?;
+    if !launcher.file_name()?.to_str()?.eq_ignore_ascii_case("python.exe")
+        || !scripts.file_name()?.to_str()?.eq_ignore_ascii_case("Scripts") {
+        return None;
+    }
+    let config = std::fs::read_to_string(scripts.parent()?.join("pyvenv.cfg")).ok()?;
+    let home = config.lines().filter_map(|line| line.split_once('='))
+        .find(|(key, _)| key.trim().eq_ignore_ascii_case("home"))?.1.trim();
+    let home = std::path::Path::new(home);
+    let base = home.join("python.exe");
+    if !home.is_absolute() || !base.is_file() {
+        return None;
+    }
+    // Preserve custom executables and explicit interpreter overrides. Only unwrap CPython's own launcher.
+    let template = home.join("Lib/venv/scripts/nt/venvlauncher.exe");
+    if std::fs::read(template).ok()? != std::fs::read(&launcher).ok()? {
+        return None;
+    }
+    let mut command = Command::new(base);
+    command.env("__PYVENV_LAUNCHER__", launcher);
+    Some(command)
+}
 
 /// `--fault-scenario` 合法枚举（与 docs §4.2 / backend/main.py FAULT_SCENARIOS 逐字对齐）。
 #[cfg_attr(not(debug_assertions), allow(dead_code))]
@@ -1756,7 +1805,7 @@ mod tests {
         }
         let (tx, rx) = mpsc::channel::<StdoutMessage>();
         let inner = Arc::clone(&sup_arc);
-        let bridge = std::thread::spawn(move || frame_bridge_loop(inner, rx));
+        let bridge = std::thread::spawn(move || frame_bridge_loop(inner, 1, rx));
 
         // 1) 有效帧 → RouterInput::Frame 投递（drain→Router 链路）
         tx.send(StdoutMessage::Line(frame_envelope("script_state_changed")))
@@ -1797,7 +1846,7 @@ mod tests {
         }
         let (tx, rx) = mpsc::channel::<StdoutMessage>();
         let inner = Arc::clone(&sup_arc);
-        let bridge = std::thread::spawn(move || frame_bridge_loop(inner, rx));
+        let bridge = std::thread::spawn(move || frame_bridge_loop(inner, 1, rx));
 
         // §6.5：连续畸形溢出信号 → 关闸门 + 关会话（last_error=protocol_error）
         tx.send(StdoutMessage::MalformedOverflow).expect("发送溢出信号");
@@ -1944,13 +1993,26 @@ mod tests {
 
     #[test]
     fn resolve_dev_sidecar_reports_missing_python_clearly() {
-        // 开发态测试环境无 .venv 且未设 SIDECAR_PYTHON 时，应返回含探测路径的
-        // 明确错误（而不是 panic / 回退系统 python）。
-        if std::env::var("SIDECAR_PYTHON").is_ok() {
-            return; // 环境被显式配置时跳过默认路径断言
-        }
-        let err = resolve_sidecar_command("session-test").unwrap_err();
-        assert!(err.contains("python.exe"), "错误信息应包含探测路径: {err}");
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let err = dev_python_path(&root, None).unwrap_err();
+        assert!(err.contains(&root.join(".venv/Scripts/python.exe").display().to_string()));
+    }
+
+    #[test]
+    fn old_frame_bridge_cannot_stop_restarted_engine() {
+        let sup = ready_supervisor();
+        let (tx, rx) = mpsc::channel();
+        tx.send(StdoutMessage::Eof).unwrap();
+        frame_bridge_loop(Arc::clone(&sup), 0, rx);
+        assert_eq!(lock_sup(&sup).state, EngineState::Ready);
+    }
+
+    #[test]
+    fn completed_watchdog_reports_failure_to_start_caller() {
+        let mut sup = Supervisor::new();
+        sup.state = EngineState::Starting;
+        sup.run_cleanup_locked(Some("startup_timeout".into()));
+        assert_eq!(sup.start_result(sup.generation).err().as_deref(), Some("startup_timeout"));
     }
 
     // ---- 故障注入参数构造（§6.2/§6.4；env 以替身 Option 传入，

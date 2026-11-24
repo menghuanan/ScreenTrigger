@@ -202,8 +202,11 @@ impl Router {
     /// query_request 本地应答（03：{status:pending/completed/unknown,
     /// response:object或null}；params 缺 request_id → INVALID_PARAMS）。
     fn answer_query_local(&self, params: &Value) -> Result<Value, IpcError> {
+        if let Some(key) = params.as_object().and_then(|object| object.keys().find(|key| *key != "request_id")) {
+            return Err(IpcError::invalid_params("未声明的查询字段").with_details(json!({"field": key})));
+        }
         let Some(request_id) = params.get("request_id").and_then(Value::as_str) else {
-            return Err(IpcError::invalid_params("缺少 request_id（string）"));
+            return Err(IpcError::invalid_params("缺少 request_id（string）").with_details(json!({"field":"request_id"})));
         };
         if request_id.is_empty() {
             return Err(IpcError::invalid_params("request_id 不能为空"));

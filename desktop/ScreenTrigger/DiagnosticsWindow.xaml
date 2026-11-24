@@ -1,0 +1,12 @@
+<Window x:Class="ScreenTrigger.DiagnosticsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="ScreenTrigger · 引擎诊断">
+    <ScrollViewer Padding="24" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <StackPanel Spacing="12">
+            <TextBlock Text="引擎诊断" Style="{ThemeResource SubtitleTextBlockStyle}" />
+            <TextBlock x:Name="Snapshot" Text="正在读取诊断…" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                       AutomationProperties.LiveSetting="Polite" />
+            <Button x:Name="RefreshButton" Content="刷新诊断" Click="RefreshClicked" AutomationProperties.AutomationId="RefreshDiagnostics" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>

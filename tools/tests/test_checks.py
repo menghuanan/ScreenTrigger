@@ -22,7 +22,7 @@ class GateTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         for name in ("README.md", "AGENTS.md"):
             shutil.copy2(ROOT / name, self.root / name)
-        for name in ("docs", "tools"):
+        for name in ("docs", "tools", "manifest"):
             shutil.copytree(ROOT / name, self.root / name, ignore=shutil.ignore_patterns("__pycache__", "check-state.json"))
         self.model = build(self.root)
         self.state = {
@@ -109,6 +109,20 @@ class GateTests(unittest.TestCase):
         self.assertEqual(self.model["tasks"]["TASK-002"]["dependencies"], [])
         self.assertIn("TASK-001", self.model["tasks"]["TASK-012"]["dependencies"])
         self.assertTrue(all(t["tests"] for t in self.model["tasks"].values()))
+
+    def test_baseline_excludes_nested_output_without_excluding_source_siblings(self):
+        tree = self.root / "sample"
+        ignored = tree / "nested" / "dist"
+        ignored.mkdir(parents=True)
+        source = tree / "nested" / "app.cs"
+        source.write_bytes(b"source")
+        before = baseline(tree)
+        (ignored / "app.cs").write_bytes(b"generated")
+        (tree / "target").write_bytes(b"ignored file name")
+        self.assertEqual(baseline(tree), before)
+        self.assertEqual(set(before["files"]), {"nested/app.cs"})
+        source.write_bytes(b"changed")
+        self.assertNotEqual(baseline(tree)["sha256"], before["sha256"])
 
     def test_desktop_decision_keeps_its_gate_when_rows_move(self):
         path = self.root / "docs/decisions/技术决策.md"

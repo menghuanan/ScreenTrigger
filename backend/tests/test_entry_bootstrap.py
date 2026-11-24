@@ -53,7 +53,7 @@ def _clean_env() -> dict:
     return env
 
 
-def _run(args, timeout: float = 120.0) -> "subprocess.CompletedProcess[str]":
+def _run(args, timeout: float = 120.0, encoding: str | None = None) -> "subprocess.CompletedProcess[str]":
     """在干净环境、仓库根 cwd 下运行子进程，捕获文本 stdout/stderr。"""
     return subprocess.run(
         args,
@@ -63,6 +63,7 @@ def _run(args, timeout: float = 120.0) -> "subprocess.CompletedProcess[str]":
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding=encoding,
         timeout=timeout,
     )
 
@@ -146,7 +147,7 @@ class FileEntryHelpTest(unittest.TestCase):
     """文件入口回归：干净环境下 `python backend/main.py --help` 必须 exit 0。"""
 
     def test_help_exits_zero_in_clean_env(self):
-        result = _run([sys.executable, _MAIN_PY, "--help"])
+        result = _run([sys.executable, _MAIN_PY, "--help"], encoding="utf-8")
         self.assertEqual(
             result.returncode, 0,
             msg="--help 非 0 退出；stderr=%s" % result.stderr,
@@ -159,7 +160,7 @@ class ModuleEntryRegressionTest(unittest.TestCase):
     """模块入口回归：`python -m backend.main --help` 仍 exit 0（引导幂等）。"""
 
     def test_module_entry_help_exits_zero(self):
-        result = _run([sys.executable, "-m", "backend.main", "--help"])
+        result = _run([sys.executable, "-m", "backend.main", "--help"], encoding="utf-8")
         self.assertEqual(
             result.returncode, 0,
             msg="module 入口 --help 非 0 退出；stderr=%s" % result.stderr,

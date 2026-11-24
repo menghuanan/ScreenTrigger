@@ -130,8 +130,8 @@ pub fn parse_line(line: &str) -> Result<ProtocolEnvelope, ProtocolParseError> {
     if trimmed.is_empty() {
         return Err(ProtocolParseError::EmptyLine);
     }
-    let value: Value =
-        serde_json::from_str(trimmed).map_err(|e| ProtocolParseError::MalformedJson(e.to_string()))?;
+    let value = serde_json::from_str::<crate::ipc::strict_json::StrictValue>(trimmed)
+        .map_err(|e| ProtocolParseError::MalformedJson(e.to_string()))?.0;
 
     let protocol_version = value
         .get("protocol_version")
@@ -262,6 +262,9 @@ fn enforce_data_error_exclusive(value: &Value) -> Result<(), ProtocolParseError>
         } else {
             "data/error 必有一"
         }));
+    }
+    if value.get("success").and_then(Value::as_bool) != Some(has_data) {
+        return Err(ProtocolParseError::MissingField("success 与 data/error 不符"));
     }
     Ok(())
 }
@@ -469,6 +472,17 @@ mod tests {
             parse_line(r#"{"protocol_version":1,"session_id":"bogus","type":"event","seq":1,"name":"x","timestamp":"t"}"#),
             Err(ProtocolParseError::InvalidSessionId(_))
         ));
+    }
+
+    #[test]
+    fn response_success_matches_payload_in_both_directions() {
+        for kind in ["response", "host_response"] {
+            for (success, field) in [(true, "error"), (false, "data")] {
+                let mut value = serde_json::json!({"protocol_version":1,"session_id":"s","type":kind,"id":"py-1","success":success});
+                value[field] = serde_json::json!({});
+                assert!(parse_line(&value.to_string()).is_err());
+            }
+        }
     }
 
     #[test]

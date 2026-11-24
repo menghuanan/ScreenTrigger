@@ -6,6 +6,7 @@ edition = "2021"
 
 [lib]
 name = "screen_trigger_lib"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 serde = { version = "=1.0.229", features = ["derive"] }

@@ -51,6 +51,7 @@ struct BusState {
 /// 事件总线（契约④）。
 pub struct EventBus {
     session_id: String,
+    delivery: Arc<Mutex<()>>,
     state: Arc<Mutex<BusState>>,
     emit: EmitFn,
     clock: ClockFn,
@@ -70,6 +71,7 @@ impl EventBus {
     pub fn without_flusher(session_id: &str, emit: EmitFn, clock: ClockFn) -> Self {
         EventBus {
             session_id: session_id.to_string(),
+            delivery: Arc::new(Mutex::new(())),
             state: Arc::new(Mutex::new(BusState {
                 next_seq: 1,
                 merge_slots: HashMap::new(),
@@ -85,18 +87,23 @@ impl EventBus {
         let state = Arc::clone(&self.state);
         let stop = Arc::clone(&self.stop_flusher);
         let emit = Arc::clone(&self.emit);
+        let delivery = Arc::clone(&self.delivery);
         let clock = Arc::clone(&self.clock);
         std::thread::spawn(move || loop {
             if stop.load(Ordering::Relaxed) != 0 {
                 return;
             }
             std::thread::sleep(MERGE_WINDOW);
+            let _delivery = delivery.lock().unwrap_or_else(|p| p.into_inner());
+            if stop.load(Ordering::Acquire) != 0 { return; }
             flush_due_locked(&state, &emit, &clock);
         });
     }
 
     /// 事件投递入口（Router 经 `EventHandler::on_frame` 调用；仅 event 帧）。
     pub fn on_event(&mut self, envelope: &ProtocolEnvelope) {
+        let delivery = Arc::clone(&self.delivery);
+        let _delivery = delivery.lock().unwrap_or_else(|p| p.into_inner());
         let Some(name) = envelope.name.as_deref() else {
             return; // 解析层保证 event 必有 name；防御性忽略
         };
@@ -127,6 +134,7 @@ impl EventBus {
             }
             // 窗口外：开新窗口（发送在锁外进行——emit 回调不得持锁）
             state.windows.insert(name.to_string(), now);
+            state.merge_slots.remove(name);
         }
         let seq = self.alloc_seq();
         let mut envelope = envelope.clone();
@@ -137,6 +145,7 @@ impl EventBus {
 
     /// flusher / 测试驱动：补发窗口期满的合并槽（槽内最新值；seq 发送时刻分配）。
     pub fn flush_due(&mut self) {
+        let _delivery = self.delivery.lock().unwrap_or_else(|p| p.into_inner());
         flush_due_locked(&self.state, &self.emit, &self.clock);
     }
 
@@ -150,6 +159,7 @@ impl EventBus {
     /// 会话重建锚（§6.4：引擎重启 = 新会话）：seq 归零（下一事件 seq=1）、
     /// 清空合并槽与窗口（旧会话事件不得泄漏进新会话）。
     pub fn reset_session(&mut self, session_id: &str) {
+        let _delivery = self.delivery.lock().unwrap_or_else(|p| p.into_inner());
         self.session_id = session_id.to_string();
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         state.next_seq = 1;

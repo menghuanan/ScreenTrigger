@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../ScreenTrigger/Contracts/*.cs" Link="Contracts/%(Filename)%(Extension)" />
+    <Compile Include="../ScreenTrigger/Host/*.cs" Link="Host/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../schema/types.schema.json" LogicalName="ScreenTrigger.types.json" />
+    <EmbeddedResource Include="../../schema/config.schema.json" LogicalName="ScreenTrigger.config.json" />
+    <Content Include="../../dist/native-host/debug/screen_trigger_lib.dll" Link="screen_trigger_lib.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

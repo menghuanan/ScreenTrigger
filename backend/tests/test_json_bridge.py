@@ -163,7 +163,12 @@ class JsonBridgeTest(unittest.TestCase):
     # -- 深度 / 大小 ---------------------------------------------------------
 
     def test_depth_limit_32_ok_33_rejected(self):
-        self.assertEqual(self.bridge.lua_to_json(self.kit.nested_arrays(32)), [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]])
+        value = self.bridge.lua_to_json(self.kit.nested_arrays(32))
+        for _ in range(32):
+            self.assertIsInstance(value, list)
+            self.assertEqual(len(value), 1)
+            value = value[0]
+        self.assertEqual(value, 0)
         self._assert_rejects(self.kit.nested_arrays(33))
 
     def test_depth_rejection_is_serialization_error_not_depth_exceeded(self):

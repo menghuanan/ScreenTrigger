@@ -14,6 +14,7 @@ stderr 日志、不计畸形帧；畸形判定 = JSON 非法/非对象/缺必填
 from __future__ import annotations
 
 import json
+from backend.strict_json import loads as strict_loads
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
@@ -78,7 +79,7 @@ def encode_envelope(envelope: Dict[str, Any]) -> str:
 
     超过 MAX_FRAME_BYTES 抛 FrameTooLargeError（调用方负责拒绝发送并记 stderr）。
     """
-    text = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+    text = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     frame = text + "\n"
     size = len(frame.encode("utf-8"))
     if size > MAX_FRAME_BYTES:
@@ -109,9 +110,11 @@ def parse_frame(line: str) -> Dict[str, Any]:
     （stderr 记日志，不计畸形，用户冻结契约③）。
     """
     text = line.rstrip("\n")
+    if len(text.encode("utf-8")) > MAX_FRAME_BYTES:
+        raise MalformedFrameError("PROTOCOL_ERROR: frame_too_large")
     try:
-        value = json.loads(text)
-    except json.JSONDecodeError:
+        value = strict_loads(text)
+    except (ValueError, RecursionError):
         raise MalformedFrameError("invalid_json") from None
     if not isinstance(value, dict):
         raise MalformedFrameError("not_an_object")
@@ -119,10 +122,10 @@ def parse_frame(line: str) -> Dict[str, Any]:
         if field not in value:
             raise MalformedFrameError("missing_field:" + field)
     protocol_version = value["protocol_version"]
-    if isinstance(protocol_version, bool) or protocol_version != PROTOCOL_VERSION:
+    if type(protocol_version) is not int or protocol_version != PROTOCOL_VERSION:
         raise MalformedFrameError("unsupported_protocol_version")
     msg_type = value["type"]
-    required = TYPE_REQUIRED_FIELDS.get(msg_type)
+    required = TYPE_REQUIRED_FIELDS.get(msg_type) if isinstance(msg_type, str) else None
     if required is None:
         raise MalformedFrameError("unsupported_type:" + str(msg_type))
     for field in required:
@@ -149,6 +152,8 @@ def parse_frame(line: str) -> Dict[str, Any]:
         # data/error 互斥必有一（§5.4；03：成功含 data、失败含 error）
         if ("data" in value) == ("error" in value):
             raise MalformedFrameError("data_error_exclusive")
+        if value["success"] != ("data" in value):
+            raise MalformedFrameError("success_payload_mismatch")
     return value
 
 

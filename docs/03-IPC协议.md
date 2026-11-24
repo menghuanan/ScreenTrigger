@@ -10,6 +10,10 @@ WinUI 客户端通过 P/Invoke 装入版本化的 x64 宿主 DLL。启动校验 
 
 系统文件选择器归属当前 WinUI 主窗，只有受信任的选择器适配器可把用户选择交给 Rust 签发会话令牌。业务页面与脚本只获得令牌。宿主本地还提供选区拖动上报和按图像引用拉取预览。图像像素走受大小限制的本地缓冲区。窗口、文件选择器与预览是宿主内部适配，沿用下方公开业务命令目录及 Rust/Python 信封。UI 无直接签发令牌、启动 Python 或发送 OS 输入的入口。
 
+已实现的 x64 C ABI v1 使用 cdecl。`st_host_abi_version()` 返回 1。`st_host_open(1, event_callback)` 返回进程内唯一宿主的句柄。版本不匹配、回调为空或已有宿主时返回空指针。`st_host_call(handle, utf8, length, response_callback)` 在调用线程上返回一次结果。两类回调均接收字节指针和字节数，C# 在回调内复制 JSON，事件随后进入 DispatcherQueue。合法响应包含 `success` 和 `data` 或 `error`。调用参数无效时函数返回负值。入参上限 2 MiB。
+
+ABI 消息的 `op` 可为 `start`、`stop`、`status`、`diagnostics`、`request` 或 `cancel`。`request` 传入 `id/command/params`，`cancel` 传入 `request_id`。引擎握手仍通过下方 NDJSON 协议。关闭前停止分配请求，调用 `st_host_begin_close` 退订并排空在途事件回调、关闭引擎。已有同步调用全部返回后调用一次 `st_host_close` 释放句柄与托管委托。实现与调用方分别见 `native/host/src/desktop_abi.rs`、`desktop/ScreenTrigger/Host/HostClient.cs`。
+
 ## 消息封装
 
 UTF-8 一行一个 JSON、LF 分帧，内容换行用 JSON 转义。stdout 只放协议，库日志及诊断重定向 stderr；不使用 `EVENT:` 文本前缀。单帧最大 2MiB，超限中止该消息并报告 PROTOCOL_ERROR；连续 10 帧畸形（中间出现任何合法帧即清零计数）则关闭会话，双端对称执行（Python 侧达阈值以退出码 3 结束）。大图使用 ImageRef，不把完整 base64 图塞进请求/事件。
@@ -188,3 +192,9 @@ Breakpoint=`{id,script_id,source_hash,line,enabled}`，line 为 ≥1 的可执�
 ## 已移除的原稿歧义
 
 不保留无 ID 同步请求、EVENT 前缀、路径调用脚本、`normal` 与 `run_once` 双枚举、可写 evaluate_expression、裸 UI 输入命令或三份错误码表。前端迁移沿用现有协议、数据版本和 Lua 脚本契约。升级测试应从既有数据根加载目标、脚本、图片与配置。
+
+## P0 原生客户端
+
+每个 WinUI 应用共用一个 HostClient。BeginRequest 返回会话、请求 ID 和完成任务，查询及取消沿用原会话。原生 ABI 在同一把锁内检查会话并取得对应路由。普通请求最多 32 个在途，控制请求和停止命令各有独立容量。Rust 的单写线程可在命名管道上等待，停止输入与关闭进程树可同时执行。
+
+两个窗口通过同一 DispatcherQueue 收取事件。关闭副窗会退订并丢弃仍在等待的界面更新。遇到序号缺口，客户端重读配置、分页目标列表及已知在运行的执行状态。结束的执行不会因迟来的状态通知重新出现。GetConfigAsync、UpdateConfigAsync、ResetConfigAsync 返回已解包的 ConfigDocument。更新和重置传原修订号，错误保留 code、message、details、retryable。

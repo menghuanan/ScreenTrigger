@@ -22,11 +22,17 @@ import hashlib
 import json
 import os
 import platform
+from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.vision.providers.ocr_models import REPO_CATALOG_PATH, OcrModelCatalog, resolve_library_root
+from backend.vision.types import RecognitionError
 
 # 候选依赖与用途、许可证（与 requirements-probe.txt.template 保持一致）
 CANDIDATES = [
@@ -37,7 +43,7 @@ CANDIDATES = [
     {"import": "PIL", "dist": "pillow", "role": "图像编解码", "license": "HPND/MIT-CMU"},
 ]
 
-REQUIRED_FOR_OCR = ["paddlepaddle", "paddleocr", "numpy", "PIL"]
+REQUIRED_FOR_OCR = ["paddlepaddle", "paddleocr", "numpy", "pillow"]
 
 # 包版本、模型版本分开记录（TASK-001.DESIGN.02）；模型 manifest 在模型实际安装后填充。
 MODEL_MANIFEST_PLACEHOLDER = {
@@ -121,6 +127,8 @@ def check_packages() -> list[dict]:
 
 def normalize_ocr_error(exc: Exception) -> str:
     """供应商异常归一为 MODEL_UNAVAILABLE / RECOGNITION_FAILED（07-实现细节清单 §2）。"""
+    if isinstance(exc, RecognitionError):
+        return exc.code
     text = f"{type(exc).__name__}: {exc}"
     lowered = text.lower()
     if "no such file" in lowered or "not found" in lowered or "missing" in lowered or "load" in lowered:
@@ -131,7 +139,7 @@ def normalize_ocr_error(exc: Exception) -> str:
 def make_images():
     """生成场景输入图（无第三方库时用 PPM 手写位图，保证探针在最小环境也能跑缺模型场景）。"""
     try:
-        from PIL import Image, ImageDraw
+        from PIL import Image, ImageDraw, ImageFont
         have_pil = True
     except Exception:
         have_pil = False
@@ -140,6 +148,8 @@ def make_images():
     if have_pil:
         white = (255, 255, 255)
         black = (0, 0, 0)
+        font_path = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/msyh.ttc"
+        font = ImageFont.truetype(str(font_path), 24) if font_path.is_file() else ImageFont.load_default(size=24)
         img = Image.new("RGB", (200, 200), white)
         scenes["empty"] = img  # 纯色空图
         img = Image.new("RGB", (400, 200), white)
@@ -149,28 +159,28 @@ def make_images():
         img = Image.new("RGB", (600, 300), white)
         d = ImageDraw.Draw(img)
         for i, line in enumerate(["first line", "second line", "third line"]):
-            d.text((30, 40 + i * 60), line, fill=black)
+            d.text((30, 40 + i * 60), line, fill=black, font=font)
         scenes["multiline"] = img
         img = Image.new("RGB", (600, 300), white)
         d = ImageDraw.Draw(img)
-        d.text((100, 100), "rotated sample", fill=black)
+        d.text((100, 100), "rotated sample", fill=black, font=font)
         scenes["rotated"] = img.rotate(30, expand=True, fillcolor=white)
         img = Image.new("RGB", (600, 200), white)
         d = ImageDraw.Draw(img)
-        d.text((30, 80), "ScreenTrigger 2026 自动化 screen 自动", fill=black)
+        d.text((30, 80), "ScreenTrigger 2026 自动化 screen 自动", fill=black, font=font)
         scenes["mixed_lang"] = img
         img = Image.new("RGB", (400, 200), white)
         d = ImageDraw.Draw(img)
-        d.text((30, 80), "0123456789", fill=black)
+        d.text((30, 80), "0123456789", fill=black, font=font)
         scenes["digits"] = img
         img = Image.new("RGB", (400, 200), white)
         d = ImageDraw.Draw(img)
-        d.text((30, 80), "Hello, world! 你好吗？", fill=black)
+        d.text((30, 80), "Hello, world! 你好吗？", fill=black, font=font)
         scenes["punctuation"] = img
     return scenes, have_pil
 
 
-def run_ocr_scenarios(result: dict) -> None:
+def run_ocr_scenarios(result: dict, library: str) -> None:
     """OCR 场景矩阵。栈不可用时逐场景标 unavailable（MODEL_UNAVAILABLE）。"""
     rows = {}
     stack_ok = all(
@@ -182,30 +192,35 @@ def run_ocr_scenarios(result: dict) -> None:
         for scene in ["empty", "no_text", "multiline", "rotated", "mixed_lang", "digits", "punctuation"]:
             rows[scene] = {"status": "unavailable", "error": "MODEL_UNAVAILABLE",
                            "reason": f"missing packages: {missing}"}
-        rows["missing_model"] = {
-            "status": "expected_pass",  # 缺模型场景的目标是：报 MODEL_UNAVAILABLE 且无静默下载
-            "error": None,
-            "reason": "OCR 栈本身缺失，缺模型行为与栈缺失合并；栈可用后需单独复验",
-        }
+        for scene in ("missing_model", "damaged_model"):
+            rows[scene] = {"status": "NOT_RUN", "reason": "安装推理栈后需单独验证模型预检"}
         result["ocr_scenarios"] = rows
         return
 
     # 完整栈已安装：先记录默认配置事实，再用已验证可用的配置执行场景
     scenes, _ = make_images()
-    tmpdir = tempfile.mkdtemp(prefix="st-probe-")
+    temp = tempfile.TemporaryDirectory(prefix="st-probe-")
+    tmpdir = temp.name
     result.setdefault("runtime_notes", {})
     try:
+        catalog = OcrModelCatalog.load(REPO_CATALOG_PATH)
+        engine = next(e for e in catalog.engines if "zh" in e.languages)
+        catalog.verify(library, (engine.detection_model, engine.recognition_model))
+        local_models = dict(text_detection_model_name=engine.detection_model,
+                            text_detection_model_dir=os.path.join(library, engine.detection_model),
+                            text_recognition_model_name=engine.recognition_model,
+                            text_recognition_model_dir=os.path.join(library, engine.recognition_model))
+        os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
         from paddleocr import PaddleOCR
         # 默认配置（MKLDNN 开启）兼容性检查：paddle 3.3.1 Windows PIR onednn 已知不兼容
         try:
             _digits_path = os.path.join(tmpdir, "_default_cfg.png")
-            _scenes_probe, _ = make_images()
-            _scenes_probe["digits"].save(_digits_path)
+            scenes["digits"].save(_digits_path)
             _default_ocr = PaddleOCR(
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,
-                lang="ch",
+                **local_models,
             )
             _default_ocr.predict(_digits_path)
             result["runtime_notes"]["mkldnn_default"] = "pass（默认配置可推理）"
@@ -220,8 +235,11 @@ def run_ocr_scenarios(result: dict) -> None:
             use_doc_unwarping=False,
             use_textline_orientation=False,
             enable_mkldnn=False,
-            lang="ch",
+            **local_models,
         )
+        expected_tokens = {"multiline": ("first", "second", "third"), "rotated": ("rotated",),
+                           "mixed_lang": ("ScreenTrigger", "自动"), "digits": ("0123456789",),
+                           "punctuation": ("Hello", ",", "world", "!", "你好吗")}
         for name, img in scenes.items():
             path = os.path.join(tmpdir, f"{name}.png")
             img.save(path)
@@ -230,32 +248,40 @@ def run_ocr_scenarios(result: dict) -> None:
                 texts = []
                 for r in res:
                     texts += list(r.get("rec_texts") or [])
-                rows[name] = {"status": "pass", "texts": [str(t) for t in texts], "error": None}
+                texts = [str(t) for t in texts]
+                joined = " ".join(texts)
+                matched = (not texts if name in ("empty", "no_text")
+                           else all(token in joined for token in expected_tokens[name]))
+                rows[name] = {"status": "pass" if matched else "fail", "texts": texts,
+                              "expected_tokens": expected_tokens.get(name, ()), "error": None}
             except Exception as exc:
                 rows[name] = {"status": "fail", "error": normalize_ocr_error(exc),
                               "detail": f"{type(exc).__name__}: {exc}"[:400]}
-        # 缺模型场景：指向不存在的模型目录，期望 MODEL_UNAVAILABLE 且无静默下载
-        try:
-            PaddleOCR(
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
-                enable_mkldnn=False,
-                text_recognition_model_dir=os.path.join(tmpdir, "no_such_model"),
-            )
-            rows["missing_model"] = {"status": "fail", "error": None,
-                                     "detail": "缺模型目录未报错，可能触发隐式下载或使用默认模型"}
-        except Exception as exc:
-            rows["missing_model"] = {"status": "pass", "error": normalize_ocr_error(exc),
-                                     "detail": f"{type(exc).__name__}: {exc}"[:200]}
+        # Exercise the same preflight used before starting offline inference.
+        rec = engine.recognition_model
+        for scene, expected in (("missing_model", "MODEL_UNAVAILABLE"), ("damaged_model", "DATA_CORRUPT")):
+            if scene == "damaged_model":
+                copy = Path(tmpdir) / rec
+                shutil.copytree(Path(library) / rec, copy)
+                with (copy / "inference.pdiparams").open("r+b") as weights:
+                    first = weights.read(1)
+                    weights.seek(0)
+                    weights.write(bytes([first[0] ^ 1]))
+            try:
+                catalog.verify(tmpdir, (rec,))
+                rows[scene] = {"status": "fail", "error": None}
+            except RecognitionError as exc:
+                rows[scene] = {"status": "pass" if exc.code == expected else "fail",
+                               "error": exc.code, "detail": str(exc)}
     except Exception as exc:
         for name in ["empty", "no_text", "multiline", "rotated", "mixed_lang", "digits", "punctuation"]:
             rows[name] = {"status": "fail", "error": normalize_ocr_error(exc),
                           "detail": f"{type(exc).__name__}: {exc}"[:400]}
-        rows["missing_model"] = {"status": "fail", "error": normalize_ocr_error(exc),
-                                 "detail": "栈初始化失败，缺模型场景未单独验证"}
+        for name in ("missing_model", "damaged_model"):
+            rows[name] = {"status": "NOT_RUN", "detail": "栈初始化失败，未单独验证模型预检"}
     finally:
         result["ocr_scenarios"] = rows
+        temp.cleanup()
 
 
 def build_capability_list(result: dict) -> dict:
@@ -275,9 +301,8 @@ def build_capability_list(result: dict) -> dict:
     }
 
 
-def collect_model_manifest() -> dict:
+def collect_model_manifest(base: str) -> dict:
     """扫描本机已下载的 PaddleX 官方模型目录，生成模型 manifest（family/名称/文件 sha256）。"""
-    base = os.path.join(os.path.expanduser("~"), ".paddlex", "official_models")
     manifest = {"base_dir": base, "models": []}
     if not os.path.isdir(base):
         manifest["note"] = "模型目录不存在（未下载）"
@@ -303,39 +328,36 @@ def collect_model_manifest() -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="TASK-001 Python/OCR 兼容探针")
     parser.add_argument("--json-out", default="reports/TASK-001/probe-result.json")
+    parser.add_argument("--model-library", default=None, help="已下载并可按仓库目录校验的离线权重根")
     args = parser.parse_args()
+    library, _ = resolve_library_root(args.model_library)
 
     result = {
         "probe": "python_ocr_probe",
         "task": "TASK-001",
-        "rebuild_command": "python tools/probes/python_ocr_probe.py --json-out " + args.json_out,
+        "rebuild_command": subprocess.list2cmdline([sys.executable, __file__, "--json-out", args.json_out,
+                                                    "--model-library", library]),
         "recorded_at": utc_now(),
         "environment": collect_environment(),
         "packages": check_packages(),
         "model_manifest": dict(MODEL_MANIFEST_PLACEHOLDER),
         "offline_test": {
             "status": "NOT_RUN",
-            "reason": "本机无法物理断网；以『推理阶段无网络调用』日志证据替代，物理断网测试留待测试机执行",
+            "reason": "本命令使用本地模型路径；测试机网络状态须单独取证",
         },
         "ocr_scenarios": None,
         "alternatives": ALTERNATIVES,
     }
 
-    run_ocr_scenarios(result)
+    run_ocr_scenarios(result, library)
     result["capability"] = build_capability_list(result)
-    result["model_manifest"] = collect_model_manifest()
+    result["model_manifest"] = collect_model_manifest(library)
     result["limitations"] = [
-        "mixed_lang/punctuation 场景使用 PIL 默认位图字体，该字体无中文字形，"
-        "实际图内仅含拉丁/数字/标点；中文字形与真实多语言样本复验属 TEST-002 数据集范围",
-        "物理断网测试 NOT_RUN（本机无法断网），以推理阶段无网络调用替代记录",
-        "lang='ch' 单语言验证；其余语言包未安装，首批语言清单待 TASK-003 决策",
-        "旋转场景识别结果 'rolated sampte'（原文 rotated sample）——旋转文本准确率有限，如实记录",
+        "本探针使用含中文的检测/识别模型对。每个样本的识别文本见 ocr_scenarios。",
+        "多语言 CER 和真实断网安装须在对应数据集和环境另行验证。",
     ]
 
     os.makedirs(os.path.dirname(args.json_out) or ".", exist_ok=True)
-    with open(args.json_out, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=1)
-    result["report_sha256"] = sha256_file(args.json_out)
     with open(args.json_out, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=1)
 
@@ -346,6 +368,9 @@ def main() -> int:
     statuses = {v["status"] for v in (result["ocr_scenarios"] or {}).values()}
     if "fail" in statuses:
         return 1
+    if (sys.version_info[:2] != (3, 13) or platform.system() != "Windows"
+            or platform.machine().lower() != "amd64" or sys.maxsize <= 2**32):
+        return 2
     if result["capability"]["ocr"] == "unavailable":
         return 2
     return 0

@@ -32,11 +32,6 @@ if _REPO_ROOT not in sys.path:
 #: 引擎依赖是否可用（受管 Python：None；探针 venv：可用）——能力披露断言据此**环境分支**。
 _HAS_ENGINE = importlib.util.find_spec("cv2") is not None
 
-#: OCR 真实栈是否可用：paddleocr 已安装**且**权重库存在（探针 venv）。
-#: 受管 Python 无 paddleocr → 走诚实降级分支；两分支**都真实执行**（非 skip）。
-_OCR_LIBRARY = os.path.join(os.path.expanduser("~"), ".paddlex", "official_models")
-_HAS_OCR_STACK = importlib.util.find_spec("paddleocr") is not None and os.path.isdir(_OCR_LIBRARY)
-
 from backend.image.store import SessionImageStore  # noqa: E402
 from backend.main import SidecarApp, SidecarArgs, build_catalog_services  # noqa: E402
 from backend.tests._vision_fakes import (  # noqa: E402
@@ -47,10 +42,26 @@ from backend.tests._vision_fakes import (  # noqa: E402
 from backend.vision.ports import SessionPixelReader  # noqa: E402
 from backend.vision.providers.base import FakeProvider  # noqa: E402
 from backend.vision.providers.ocr import OCREngineProvider  # noqa: E402
+from backend.vision.providers.ocr_models import OcrModelCatalog, REPO_CATALOG_PATH, resolve_library_root  # noqa: E402
+from backend.vision.types import RecognitionError  # noqa: E402
 from backend.vision.registry import ProviderRegistry, build_default_vision_service  # noqa: E402
 
 _VISION_DIR = os.path.join(_REPO_ROOT, "backend", "vision")
 _PROVIDERS_DIR = os.path.join(_VISION_DIR, "providers")
+
+
+def _has_ocr_stack():
+    if importlib.util.find_spec("paddleocr") is None:
+        return False
+    root, _ = resolve_library_root()
+    try:
+        OcrModelCatalog.load(REPO_CATALOG_PATH).verify(root)
+    except RecognitionError:
+        return False
+    return True
+
+
+_HAS_OCR_STACK = _has_ocr_stack()
 
 # 全局禁令（AST）：第三方输入/输入注入相关模块名片段
 _GLOBAL_FORBIDDEN = (
@@ -239,7 +250,7 @@ class AssemblySharingTest(unittest.TestCase):
             self.assertIs(ready._pixels, vision_service.pixels)  # noqa: SLF001
             self.assertIs(ready._pixels._store, self.image_store)  # noqa: SLF001
             self.assertEqual(ready.models_dir, expected_models_dir)
-            self.assertEqual(ready.library_root, os.path.abspath(_OCR_LIBRARY))
+            self.assertEqual(ready.library_root, resolve_library_root()[0])
         else:
             self.assertIsNone(registry.ready_providers.get("builtin.ocr"))
 

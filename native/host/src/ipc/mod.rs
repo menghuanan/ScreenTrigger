@@ -19,6 +19,7 @@ pub mod eventbus;
 pub mod hostbridge;
 pub mod hostcall;
 pub mod pending;
+pub(crate) mod strict_json;
 pub mod types;
 
 #[cfg(test)]

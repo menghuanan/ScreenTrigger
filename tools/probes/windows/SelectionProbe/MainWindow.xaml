@@ -1,0 +1,25 @@
+<Window x:Class="SelectionProbe.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="ScreenTrigger · 框选探针">
+    <Grid Padding="24" RowSpacing="16" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="屏幕框选" Style="{ThemeResource TitleTextBlockStyle}" />
+        <ComboBox x:Name="Displays" Grid.Row="1" Header="显示器" MinWidth="300"
+                  AutomationProperties.AutomationId="Displays" DropDownOpened="RefreshDisplays" />
+        <Button x:Name="StartButton" Grid.Row="2" Content="开始框选" Click="StartSelection"
+                AutomationProperties.AutomationId="StartSelection" Style="{StaticResource AccentButtonStyle}" />
+        <ScrollViewer Grid.Row="3">
+            <StackPanel Spacing="8">
+                <TextBlock x:Name="Status" Text="拖动选择区域，最小尺寸为 10 × 10 物理像素。"
+                           TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                <Image x:Name="ResultImage" HorizontalAlignment="Left" MaxWidth="320" MaxHeight="160" Stretch="Uniform" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>
