@@ -130,6 +130,9 @@ impl GateTable {
             .per_exec
             .entry(execution_id.to_string())
             .or_insert_with(|| reason.to_string());
+        if reason == "stop_script" {
+            crate::measurements::mark("closed", execution_id);
+        }
     }
 
     /// 关闭全局闸门（应用退出/引擎清理；幂等）。
@@ -158,7 +161,11 @@ impl GateTable {
         if state.paused.contains(execution) {
             return Err(crate::ipc::IpcError::window_unavailable("执行已暂停"));
         }
-        send()
+        let result = send();
+        if result.is_ok() {
+            crate::measurements::mark("submitted", execution);
+        }
+        result
     }
 
     /// 闸门是否对该执行开放（全局关或该执行关 → false）。

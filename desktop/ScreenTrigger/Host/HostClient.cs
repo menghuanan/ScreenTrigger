@@ -95,6 +95,7 @@ internal sealed class HostClient : IAsyncDisposable
     public SessionEvents Events { get; }
     public RecoverySnapshot? Recovered { get; private set; }
     public event Action<Exception>? RecoveryFailed;
+    public event Action<RecoverySnapshot>? RecoveryCompleted;
 
     public HostClient(Func<Action, bool> dispatch)
     {
@@ -221,13 +222,26 @@ internal sealed class HostClient : IAsyncDisposable
                 if (items.GetArrayLength() == 0) break;
                 foreach (var item in items.EnumerateArray()) targets.Add(WireContracts.Read<Target>(item, "target"));
             } while (targets.Count < total && Interlocked.Read(ref recoveryVersion) == version);
+            var active = executions.ToHashSet();
+            try
+            {
+                // A gap can include the very first event for a new root. The archive holds 100 terminal and at most 3 active roots.
+                var recent = await RequestIn(session, "list_execution_history", new { offset = 0, limit = 103 }).Completion.ConfigureAwait(false);
+                foreach (var item in recent.GetProperty("items").EnumerateArray())
+                    if (item.GetProperty("status").GetString() is "starting" or "running" or "paused" or "debug_paused" or "stopping")
+                        active.Add(item.GetProperty("execution_id").GetString()!);
+            }
+            catch (HostException ex) when (ex.Error.Code == "UNKNOWN_COMMAND") { /* Engines without history can still answer known execution IDs. */ }
             var states = new Dictionary<string, JsonElement>();
-            foreach (var id in executions)
+            foreach (var id in active)
                 states[id] = (await RequestIn(session, "query_execution", new { execution_id = id }).Completion.ConfigureAwait(false)).GetProperty("state");
             dispatch(() =>
             {
                 if (Events.Session == session && Interlocked.Read(ref recoveryVersion) == version)
+                {
                     Recovered = new(session, sequence, config, targets, states);
+                    RecoveryCompleted?.Invoke(Recovered);
+                }
             });
         }
         catch (Exception ex) { dispatch(() => { if (Events.Session == session) RecoveryFailed?.Invoke(ex); }); }

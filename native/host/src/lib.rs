@@ -5,6 +5,7 @@ mod desktop_abi;
 mod desktop_windows;
 pub mod import;
 pub mod input;
+mod measurements;
 pub mod ipc;
 pub mod selection;
 pub mod sidecar;

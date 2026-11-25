@@ -3,12 +3,35 @@ import ctypes
 import hashlib
 from ctypes import wintypes as wt
 import json
+import math
+import os
 from pathlib import Path
+import re
 import sys
 import subprocess
 
 from common import enumerate_monitors, set_per_monitor_v2, user32
 from verify_selection import TimerTarget, drag, invoke, own_window, require
+
+
+def measure_preview(target, folder):
+    trace = folder / "stderr-1.log"
+    pattern = re.compile(r"\[preview-timing\] (\d+) (\d+) (\d+) (\d+) (\d+)")
+    def first_presentations():
+        palette = {tuple(frame["rgb"]): frame for frame in target.frames}
+        seen = {}
+        for ticks, frequency, red, green, blue in pattern.findall(trace.read_text("utf-8", errors="replace")):
+            frame = palette.get((int(red), int(green), int(blue)))
+            if frame and int(ticks) >= frame["started_ticks"]:
+                seen.setdefault(frame["seq"], (int(ticks) - frame["started_ticks"]) * 1000 / int(frequency))
+        if len(seen) >= 105:
+            return list(seen.items())[:105]
+    observed = target.wait(first_presentations, 80)
+    values = sorted(ms for _, ms in observed[5:])
+    stats = {f"p{p}": values[math.ceil(len(values)*p/100)-1] for p in (50,95,99,100)}
+    result = dict(warmup=5, samples=observed[5:], latency_ms=stats)
+    (folder / "preview-latency.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    require(stats["p95"] <= 200, str(stats))
 
 
 def verify_assets(folder):
@@ -70,6 +93,8 @@ $root.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Co
         controls = read_controls()
         (folder/"overlay-after-drag.json").write_text(json.dumps(controls, ensure_ascii=False), encoding="utf8")
         target.wait(lambda:len(target.frames) >= 5, 3)
+        if os.environ.get("ST_MEASURE_TIMING") == "1":
+            measure_preview(target, folder)
         def confirm_when_enabled():
             try:
                 invoke(overlay, "ConfirmSelection")

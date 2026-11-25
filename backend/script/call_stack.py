@@ -41,9 +41,13 @@ def call(root, script_id, args=None):
         raise StorageError("RESOURCE_LIMIT", "根执行的 Lua 内存已用尽")
     vm = LuaVm(root.gate, memory_limit_mb=memory)
     root.stack.append((script_id, vm))
+    installed = False
     try:
         vm.build()
         root.api.install(vm)
+        if root.debugger:
+            root.debugger.install(vm, script)
+            installed = True
         return vm.run_source(source, script_id, params, script_id=script_id, execution_id=root.id)
     except StorageError as exc:
         exc.details.setdefault("script_id", script_id)
@@ -53,5 +57,7 @@ def call(root, script_id, args=None):
             exc.details.setdefault("line", int(line.group(1)))
         raise
     finally:
+        if installed:
+            root.debugger.leave()
         root.stack.pop()
         vm.close()

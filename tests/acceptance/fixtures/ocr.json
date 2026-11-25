@@ -1,0 +1,2030 @@
+{
+  "zh": {
+    "font": "msyh.ttc",
+    "font_sha256": "d79c55e68b1131eea0cc1c47be4f572d964f28c682e143db2ad09c1e4cb07a3f",
+    "model": "PP-OCRv6_medium_rec",
+    "samples": [
+      {
+        "reference": "开始",
+        "font_size": 34,
+        "image_sha256": "ca4c14b0b933233777d9035c74ac21594f5797fe88da7d3bcdf590fcf959b401"
+      },
+      {
+        "reference": "确定",
+        "font_size": 34,
+        "image_sha256": "092338d9a494a03d4ae5fb075ce4dd47ac2b0f8d32ef041f8f5c86b3758638ee"
+      },
+      {
+        "reference": "取消",
+        "font_size": 34,
+        "image_sha256": "daa7ab5550cdb0102c663f400374683633addd39641d4c2ff2c705dc057d79ee"
+      },
+      {
+        "reference": "保存",
+        "font_size": 34,
+        "image_sha256": "f491adeb5156fcdb1dcfe4547e447ce7018c150f78ada3c1521013e125c330bf"
+      },
+      {
+        "reference": "文件",
+        "font_size": 34,
+        "image_sha256": "99cde69e49f61012fd44275b780c7712c092eb593e43a5d14baa9186aed5e3a0"
+      },
+      {
+        "reference": "编辑",
+        "font_size": 34,
+        "image_sha256": "6d06f6afacfa9e2970062132dafa9700101202fae24a6fe53b327a4e5e7a5cb1"
+      },
+      {
+        "reference": "视图",
+        "font_size": 34,
+        "image_sha256": "f6834835a5d0868952c2c90fc9e4102960ebb50783279fc212428d1bb29a558b"
+      },
+      {
+        "reference": "帮助",
+        "font_size": 34,
+        "image_sha256": "0997d2661747953cdd9716c983bb74a919789762eec1d089394cb08ce9d6bf7b"
+      },
+      {
+        "reference": "设置",
+        "font_size": 34,
+        "image_sha256": "cd0a814bd370d19a6e369acef3f41bb0550de2f6bb89e169f584feb5f178ecf3"
+      },
+      {
+        "reference": "退出",
+        "font_size": 34,
+        "image_sha256": "7a26bcfda2fa95d6dc7206cfb3140185c56a3883c7bd1e368ed058cfad7ce0a2"
+      },
+      {
+        "reference": "新建",
+        "font_size": 34,
+        "image_sha256": "122bb0dd4e75fdd883ce3addbf0aca97bfe7aa6b098a9de35a8e18fdcbf3d8f3"
+      },
+      {
+        "reference": "打开",
+        "font_size": 34,
+        "image_sha256": "ffbead6f48ba6f6d98237731f42ba48b402f8584985b07d9506a36db7ce2b1ce"
+      },
+      {
+        "reference": "关闭",
+        "font_size": 34,
+        "image_sha256": "e07d95109ef4f85ad2a15ff6c7c2b6f6bb5571011aea531b6ca18929caf3a44e"
+      },
+      {
+        "reference": "复制",
+        "font_size": 34,
+        "image_sha256": "6def5f68be8350435c6ac824c837fb16800f2901d88039caa37b2ab1f9bbb0dc"
+      },
+      {
+        "reference": "粘贴",
+        "font_size": 34,
+        "image_sha256": "316404acd01f0394ab82532ddd866d27f814fc76aa394dd422bd55857628a74d"
+      },
+      {
+        "reference": "删除",
+        "font_size": 34,
+        "image_sha256": "d2d826c752e521002084dbdae47ce906414162ec7c0e46efed726d0e8b69cba9"
+      },
+      {
+        "reference": "搜索",
+        "font_size": 34,
+        "image_sha256": "2e36d06fcd13813c217f0e21c71e4fb21efb9ad67785332f54ffe6e98e32aa2a"
+      },
+      {
+        "reference": "下载",
+        "font_size": 34,
+        "image_sha256": "504e5c1477b6e04a525c2eb2d129bfdb3b97cc3f173ada8707bc41060d47cdbd"
+      },
+      {
+        "reference": "上传",
+        "font_size": 34,
+        "image_sha256": "91139a750e82d82050ab8c96907a8c117c692f1b7ae7b5e514f4cf5c87e3008f"
+      },
+      {
+        "reference": "刷新",
+        "font_size": 34,
+        "image_sha256": "e364e57e50e8b0a332a141943221d99aeb1c731f510af35b7267b2db0731dac6"
+      },
+      {
+        "reference": "登录",
+        "font_size": 34,
+        "image_sha256": "7483b301037da4c089aad842182ab2bf762fedbab9aedf57f07ade73e3f80de6"
+      },
+      {
+        "reference": "注册",
+        "font_size": 34,
+        "image_sha256": "f73536cdfb3d4bbd0804024b5812a261ae9d4b010546da844e9f8a5424555e03"
+      },
+      {
+        "reference": "用户名",
+        "font_size": 34,
+        "image_sha256": "6a38df78ea6a5dc6c540e9b943418be9f8d7ceab701de4c5d4512f4b68280e13"
+      },
+      {
+        "reference": "密码",
+        "font_size": 34,
+        "image_sha256": "96c4018f22472972abe92a095f137a159164035c0f8e8a83b8b42e285837c9ca"
+      },
+      {
+        "reference": "提示信息",
+        "font_size": 34,
+        "image_sha256": "20b1f4087e9f2932f373121aaad953e36c84c3bd72765acb9c59db8aad4f555b"
+      },
+      {
+        "reference": "操作失败",
+        "font_size": 34,
+        "image_sha256": "c3b12d63d98f0f40bec4c1fd349a591e0c0dd94cd458706c8dc59a1d00dab8a8"
+      },
+      {
+        "reference": "网络连接异常",
+        "font_size": 34,
+        "image_sha256": "40e056d35a2e272c0332b759dc311bfc25642609618e4037d64b1f8f500dd05b"
+      },
+      {
+        "reference": "订单号 20261013",
+        "font_size": 34,
+        "image_sha256": "37ed0fec473ba07544240e4f20fe9fb5e2c70ab2b4a34a7f5c31c448bc306f78"
+      },
+      {
+        "reference": "总计 128 元",
+        "font_size": 34,
+        "image_sha256": "d841fa26b9ec9ba029e595df7b9d4f404b98fc4364b72245b009bc1887181148"
+      },
+      {
+        "reference": "版本 v1.2.3",
+        "font_size": 34,
+        "image_sha256": "9fdfa7dff1dbf0127a7c18bcd7dabadcd0b10c43bee126288d70d1c4e39b8fac"
+      },
+      {
+        "reference": "开始 030",
+        "font_size": 34,
+        "image_sha256": "2d9b1105373d5645f116461823ab90c597163f9006877ab01296fcd4a986f7f7"
+      },
+      {
+        "reference": "确定 031",
+        "font_size": 32,
+        "image_sha256": "acb949fd0f186af565b3d3090719321935984e72b0d068a596818c8a29456ef9"
+      },
+      {
+        "reference": "取消 032",
+        "font_size": 30,
+        "image_sha256": "7a23db53e46316020b646d8e7d46be4df0b5de4169463f846ddf4d3c6a5a093c"
+      },
+      {
+        "reference": "保存 033",
+        "font_size": 28,
+        "image_sha256": "7a3e8f6b6336c572482d36f5a3122857fee05b1763d10ec994a94bf1ecb72e9a"
+      },
+      {
+        "reference": "文件 034",
+        "font_size": 26,
+        "image_sha256": "265fcf03c46bead631e00dc95c761636811e4be8fbd49b7a6b763dba50da57fd"
+      },
+      {
+        "reference": "编辑 035",
+        "font_size": 34,
+        "image_sha256": "8bc8d68fca3b7113ffe94e1c167e562be7a74c12abbdf47b49a4e4b14755251c"
+      },
+      {
+        "reference": "视图 036",
+        "font_size": 32,
+        "image_sha256": "9581f2c1ae7720ddf337d110943cf5830c67eca800e437528c3dd5c73789ce20"
+      },
+      {
+        "reference": "帮助 037",
+        "font_size": 30,
+        "image_sha256": "3e1ed02f773b1c4596035957446325f53e1e7aac25303a971d7067a1a56696e6"
+      },
+      {
+        "reference": "设置 038",
+        "font_size": 28,
+        "image_sha256": "c67d296f154e0cdf0ac6987478ec467c2df86fc46c9e221f76f47a7ec0d21b08"
+      },
+      {
+        "reference": "退出 039",
+        "font_size": 26,
+        "image_sha256": "e627e2a4b913bde0f032ba2c67e0c23055b4dca5ecfda9352d0a083a05eb2ac8"
+      },
+      {
+        "reference": "新建 040",
+        "font_size": 34,
+        "image_sha256": "e164488f005112525830499817d63c51e372f22dea1dbaf7391229f74b44de4c"
+      },
+      {
+        "reference": "打开 041",
+        "font_size": 32,
+        "image_sha256": "33f3504882368f888ac31ce1893b8a93dfcb1fb951cd263e00fea4b97689ba9d"
+      },
+      {
+        "reference": "关闭 042",
+        "font_size": 30,
+        "image_sha256": "a5f74bf9b5f9965a54c54b6034fac1d602058d04f442355a6da9afcbd2957d60"
+      },
+      {
+        "reference": "复制 043",
+        "font_size": 28,
+        "image_sha256": "fc34c43510953bc987cc2134acc78fd28fdf8ac6e66e14d10fe6bffe9cd990d1"
+      },
+      {
+        "reference": "粘贴 044",
+        "font_size": 26,
+        "image_sha256": "c2d98a2df9f993c92b1383a4c8ae0a02ffc4d270435e8ca2b9aa72845efd8ca3"
+      },
+      {
+        "reference": "删除 045",
+        "font_size": 34,
+        "image_sha256": "e3b657577001406f3cfdc51a55e52a2d29cfa5a2ba426a9b29f6588cfa482835"
+      },
+      {
+        "reference": "搜索 046",
+        "font_size": 32,
+        "image_sha256": "1d619f72c43318875cbeb6f3d8b1872187f23e360cc35ae17f0d0e87ba9c6657"
+      },
+      {
+        "reference": "下载 047",
+        "font_size": 30,
+        "image_sha256": "67bc31fa29149d8d2928bf8b0707757c1d6c9135f79d9a327a03b37e0f986ca8"
+      },
+      {
+        "reference": "上传 048",
+        "font_size": 28,
+        "image_sha256": "9e9803a560b344d6d12f660fbd902951e778e3133de4bd37f402122484709a3c"
+      },
+      {
+        "reference": "刷新 049",
+        "font_size": 26,
+        "image_sha256": "552d1a16239cb223886c0fdfe74714a9fdc93d5781b581c2082054f4c54a89e3"
+      },
+      {
+        "reference": "登录 050",
+        "font_size": 34,
+        "image_sha256": "9eb9512948f989a2a2a7a2a8220879f66acd6abaccda415a7f9cc2560cc85f7c"
+      },
+      {
+        "reference": "注册 051",
+        "font_size": 32,
+        "image_sha256": "1f766cdc83523444856ade9365d458c3b3a32fa441a08ba17865f32f72b116af"
+      },
+      {
+        "reference": "用户名 052",
+        "font_size": 30,
+        "image_sha256": "16866c662554a73fd4180aaded5054f6537c02cce4a929181958a6b546e81124"
+      },
+      {
+        "reference": "密码 053",
+        "font_size": 28,
+        "image_sha256": "777c2ff1f31ea5ff2dc44a7e732914007d327327d71483b38789812b660368b3"
+      },
+      {
+        "reference": "提示信息 054",
+        "font_size": 26,
+        "image_sha256": "e68a8652e609e016aac91e3baa8f90c9e22b74ee2a17662f2106d6cd2a7a0a50"
+      },
+      {
+        "reference": "操作失败 055",
+        "font_size": 34,
+        "image_sha256": "18438110f0e089d93fea24bf98fdbdf661117ac24909092c9f429926a6f35c83"
+      },
+      {
+        "reference": "网络连接异常 056",
+        "font_size": 32,
+        "image_sha256": "b776ce99e72da86413e32ae55a550a7353507854f0efb7967fa661aa385716a4"
+      },
+      {
+        "reference": "订单号 20261013 057",
+        "font_size": 30,
+        "image_sha256": "c60f26d1a32502450f591841827b8020e438057aaf76898354a53d9c645f8ecb"
+      },
+      {
+        "reference": "总计 128 元 058",
+        "font_size": 28,
+        "image_sha256": "11e1e3ee04b366f3435325ca9fef83dae0459556a47c1f717683d7e4f07856e8"
+      },
+      {
+        "reference": "版本 v1.2.3 059",
+        "font_size": 26,
+        "image_sha256": "f7d9b46e6f50e753223ce7986a0bb4a379c8786f13f335cec58048548cc05943"
+      },
+      {
+        "reference": "060 / 开始",
+        "font_size": 34,
+        "image_sha256": "0e122851c82770f7bad6109cb457c984511cb7e8bd9b7adb4f9c29f2bc9e0d18"
+      },
+      {
+        "reference": "061 / 确定",
+        "font_size": 32,
+        "image_sha256": "e90f32045fddb131e3f13dc2fb7d1e3f892940843ae244e2eb30563d0b0aa35f"
+      },
+      {
+        "reference": "062 / 取消",
+        "font_size": 30,
+        "image_sha256": "17ac1283966a255d85822877b120e52d4f657b9a3d2182a2280da3d18d04bf83"
+      },
+      {
+        "reference": "063 / 保存",
+        "font_size": 28,
+        "image_sha256": "ccac5aa84e53a8649c13eb2b5c1ef35b1374b1f75e473cb41567922b0eb8cfac"
+      },
+      {
+        "reference": "064 / 文件",
+        "font_size": 26,
+        "image_sha256": "71e5f172ccf26b1ff6acdc69f78f2788458b38914978f304a05f91e37887c3da"
+      },
+      {
+        "reference": "065 / 编辑",
+        "font_size": 34,
+        "image_sha256": "4c35e8ef8594c9e0a89a6edc2ccc820f89a8faa6812f73a1c1bce85d5ff562f4"
+      },
+      {
+        "reference": "066 / 视图",
+        "font_size": 32,
+        "image_sha256": "7fb549b85a0ccf50e2bc2966b441fb4ae70ef67b3428ac3d01f0e361f6d61d98"
+      },
+      {
+        "reference": "067 / 帮助",
+        "font_size": 30,
+        "image_sha256": "e583e6320b610998d63d79a6d2b7a47bacbd2c6df3d19725c4166e9fd4a39e99"
+      },
+      {
+        "reference": "068 / 设置",
+        "font_size": 28,
+        "image_sha256": "bc129f04a7feaeaa949cb4e84dc209e1c83bd4d46f31a3f6894eb3f4a1216184"
+      },
+      {
+        "reference": "069 / 退出",
+        "font_size": 26,
+        "image_sha256": "d62ae43bedc5d3570296836bed69593f34e5bcec6e1ca26187fa0cf72e4d356b"
+      },
+      {
+        "reference": "070 / 新建",
+        "font_size": 34,
+        "image_sha256": "aa74f69a2df0c9e5ca5bfc72a05d2ea3686c8636c01dedc813fcf052bf46611e"
+      },
+      {
+        "reference": "071 / 打开",
+        "font_size": 32,
+        "image_sha256": "2c704ca2afc66c8d0b69935a4e71806c02ddb98cf7ae678baa378743d3e4a77c"
+      },
+      {
+        "reference": "072 / 关闭",
+        "font_size": 30,
+        "image_sha256": "9f9607f48d77b492b0b380e0954fa3fece1b03c470de2c84b6d21964b0289c85"
+      },
+      {
+        "reference": "073 / 复制",
+        "font_size": 28,
+        "image_sha256": "5cea5419e120849fd6482cd235244b5b80a33402afc13404f3e0393925f80749"
+      },
+      {
+        "reference": "074 / 粘贴",
+        "font_size": 26,
+        "image_sha256": "c2bc5f0a361fb8219bd7ebbae50e3ff94e58f1ae7d8c6e2fd3162edf1e939e2d"
+      },
+      {
+        "reference": "075 / 删除",
+        "font_size": 34,
+        "image_sha256": "d41d1721e7c023f03e14b155a23b2ce04884af9ea43ea5d88de923ed84db3f3e"
+      },
+      {
+        "reference": "076 / 搜索",
+        "font_size": 32,
+        "image_sha256": "f160de3cc05e2c7b71cdce0084260c2cf48be6d9483eafadca68ba1dde970a1b"
+      },
+      {
+        "reference": "077 / 下载",
+        "font_size": 30,
+        "image_sha256": "21534d57187024673b88a8d4ebb6d9cfe1e3e67da7caf5d0f7cdd4dd67a416a0"
+      },
+      {
+        "reference": "078 / 上传",
+        "font_size": 28,
+        "image_sha256": "b295bca2ac1acb922e21ff72ec854a915f9a2010d6b9dcc0ad43c66ee04c1417"
+      },
+      {
+        "reference": "079 / 刷新",
+        "font_size": 26,
+        "image_sha256": "4c03e28dd95312043e0a7ac0569c6f546c5b1107164d85107421d5438817e2d1"
+      },
+      {
+        "reference": "080 / 登录",
+        "font_size": 34,
+        "image_sha256": "8d00ebb9898b2de000669278a0b9521f32c27bd4adb39bdd90b356e922c9270f"
+      },
+      {
+        "reference": "081 / 注册",
+        "font_size": 32,
+        "image_sha256": "d2a693962c49ac743c91e5e861a3c2aa617677deddf4e8291a2be85849cf54ff"
+      },
+      {
+        "reference": "082 / 用户名",
+        "font_size": 30,
+        "image_sha256": "f8bb98f80fc9ccc61166a3ad62575a7aca44d714cda4251ff22403f4f58948e8"
+      },
+      {
+        "reference": "083 / 密码",
+        "font_size": 28,
+        "image_sha256": "bcf1e6a8c5d959c377452f848abdd79fdc94b174eac96767b65933e0aa164c60"
+      },
+      {
+        "reference": "084 / 提示信息",
+        "font_size": 26,
+        "image_sha256": "67cf3954876341d3aa146d092dded65c6b1f545acaee8ac25b3991ea9e39254e"
+      },
+      {
+        "reference": "操作失败 (85.9)",
+        "font_size": 34,
+        "image_sha256": "5f72cc9ff9a541db1af87db21c447d076170fcbb576600c1119136cd368fa173"
+      },
+      {
+        "reference": "网络连接异常 (86.9)",
+        "font_size": 32,
+        "image_sha256": "8aed7734b5217ed829175037fdbfd6b9e8481d553fd194266cfe79996182963b"
+      },
+      {
+        "reference": "订单号 20261013 (87.9)",
+        "font_size": 30,
+        "image_sha256": "98dab04c62b03c177f160df9e1658cda2be6c69287978c605463bdb5217816cd"
+      },
+      {
+        "reference": "总计 128 元 (88.9)",
+        "font_size": 28,
+        "image_sha256": "0f424e327a6cb11d38641166a505671ddba3cbb7f7d65db35ef9dbaef5b86757"
+      },
+      {
+        "reference": "版本 v1.2.3 (89.9)",
+        "font_size": 26,
+        "image_sha256": "0bdf88481a2501ef156831318d7280f6a26c9e8c80dffec0cbec33cd479f1d39"
+      },
+      {
+        "reference": "开始 (90.9)",
+        "font_size": 34,
+        "image_sha256": "7a7b17770176bb0b760e85dbb77ba28729a4a9c602716bfb7cb2d4b9e98ebd19"
+      },
+      {
+        "reference": "确定 (91.9)",
+        "font_size": 32,
+        "image_sha256": "b1b10583cf257578117ca97a08e6ac1fb28574ca0204d46f66ceed44b77603ac"
+      },
+      {
+        "reference": "取消 (92.9)",
+        "font_size": 30,
+        "image_sha256": "6d46b5ae49e9c948573839dfc201c640f21473f503e380a909ad73ef5a6bc57c"
+      },
+      {
+        "reference": "保存 (93.9)",
+        "font_size": 28,
+        "image_sha256": "e3591f83647ae6657c4101b83e63d1c5feb14a458d3657eb4720b5d8b45976bf"
+      },
+      {
+        "reference": "文件 (94.9)",
+        "font_size": 26,
+        "image_sha256": "2763d17aff0b7c9351c52186fe93c75637d0960799716aed48668dc85e3ffae1"
+      },
+      {
+        "reference": "编辑 (95.9)",
+        "font_size": 34,
+        "image_sha256": "827201af1acd3b98d2e49509d386bafaec06840906d4640062a05274a7fa6a9f"
+      },
+      {
+        "reference": "视图 (96.9)",
+        "font_size": 32,
+        "image_sha256": "457f403335a92581fa125f38f987e7aa77f36c99f5270d6d98b47eb8cdae70c9"
+      },
+      {
+        "reference": "帮助 (97.9)",
+        "font_size": 30,
+        "image_sha256": "9d9bb6dc679035a1afb55e7b25045461573e42f0087c4f22ee26eee8e222b055"
+      },
+      {
+        "reference": "设置 (98.9)",
+        "font_size": 28,
+        "image_sha256": "9b9fd36fbece6416f53b564ff463c5f477b31fa58f121967d462a27c036ba8aa"
+      },
+      {
+        "reference": "退出 (99.9)",
+        "font_size": 26,
+        "image_sha256": "a9ead61f89d42ed99d36d9a5acc8629c27ffeebb875d3a413e25adfb8f1bbd90"
+      }
+    ]
+  },
+  "en": {
+    "font": "arial.ttf",
+    "font_sha256": "edfbd22a3d088fc2f5d7c79b8c9c732df6dc878a60f0a80be0f92a3c7a634404",
+    "model": "PP-OCRv6_medium_rec",
+    "samples": [
+      {
+        "reference": "Start",
+        "font_size": 36,
+        "image_sha256": "5e6f13021368387bbe9e58373381f6b0e2986904eaa8e19565d2f4c6924f2aca"
+      },
+      {
+        "reference": "Confirm",
+        "font_size": 36,
+        "image_sha256": "c1f2ba3301ab419edcfcfeebc918c65278479f85598ad95d19b665954f28ce61"
+      },
+      {
+        "reference": "Cancel",
+        "font_size": 36,
+        "image_sha256": "0a9feec700e43d3e62a8bc3b8a0e6302df3960639ffc7a712735458810cd9fff"
+      },
+      {
+        "reference": "Save",
+        "font_size": 36,
+        "image_sha256": "6283193c3c57a53214c0e0d8af48f60962f8b31ce8c70050c84f6d59159a89cf"
+      },
+      {
+        "reference": "File",
+        "font_size": 36,
+        "image_sha256": "c6c5014d74b4ae64c0f0232f889d310f10d31c98303caa51c3a081f9e2cd4257"
+      },
+      {
+        "reference": "Edit",
+        "font_size": 36,
+        "image_sha256": "3ae493cae4b181f6c685ab0f81e16bcb44bf931aa933eb8614dad522ffd25341"
+      },
+      {
+        "reference": "View",
+        "font_size": 36,
+        "image_sha256": "a9f80c328f8c9d3526147f094fe21b61e05902f3db4c3d859b0a6333afa17a2d"
+      },
+      {
+        "reference": "Help",
+        "font_size": 36,
+        "image_sha256": "ed7cae7fa8880b2849df7633ffe286d309be50beb262bd9891039a96f4404c7c"
+      },
+      {
+        "reference": "Settings",
+        "font_size": 36,
+        "image_sha256": "ac497fb85b09999bb43bcd7ca9aec3cef468fa4f74f4192d8267ee0b2c8d71d4"
+      },
+      {
+        "reference": "Exit",
+        "font_size": 36,
+        "image_sha256": "8a2e21ab69e056c5faeab5fa3dea5c311fd4e076e50955cbb713c859ea5c6f9a"
+      },
+      {
+        "reference": "New",
+        "font_size": 36,
+        "image_sha256": "30b21b877361a05bb477ee48673c58d2b941bfd03520305dd7c3bd9a7ea99081"
+      },
+      {
+        "reference": "Open",
+        "font_size": 36,
+        "image_sha256": "da83269c403f2c8b32d6ce730608c0e18796846d1e985dd2f8adef3e1012ad95"
+      },
+      {
+        "reference": "Close",
+        "font_size": 36,
+        "image_sha256": "1f788623ce9756c347b8d8cc34250cead26a0232e84b222daba83a529cf635e3"
+      },
+      {
+        "reference": "Copy",
+        "font_size": 36,
+        "image_sha256": "32132d81d0d4df445d61bcfe2614585fe0b7a95b788d8a5f0ec116135ba00fef"
+      },
+      {
+        "reference": "Paste",
+        "font_size": 36,
+        "image_sha256": "7cf5b003c8179e8b0a22fb7ce659d2da44033ef0a89aa03776aad21c7e26c15f"
+      },
+      {
+        "reference": "Delete",
+        "font_size": 36,
+        "image_sha256": "3faabf31c07e196ea002085f68d08e7c3e0b3b72edc594a5da803d4aca782386"
+      },
+      {
+        "reference": "Search",
+        "font_size": 36,
+        "image_sha256": "3acac4e0f8ded64e378c554cc8aa2122e56df43c65061d68d4c4f8ee2e9ab4f2"
+      },
+      {
+        "reference": "Download",
+        "font_size": 36,
+        "image_sha256": "f1e5ce5c0433a4142fb0faae569c5e6bfa8035555693b73827ee7145b873e4c2"
+      },
+      {
+        "reference": "Upload",
+        "font_size": 36,
+        "image_sha256": "fb94e663db5fec9482e5eb016d8280d855b1202db4490bfa88c6649db9885922"
+      },
+      {
+        "reference": "Refresh",
+        "font_size": 36,
+        "image_sha256": "0c0bed6df74b64e2661e237a239dd2a3d2e5e15ca92d5a3e3f4c549a0d05f437"
+      },
+      {
+        "reference": "Sign in",
+        "font_size": 36,
+        "image_sha256": "f2b68c87fb4c4374f4ab71da74cc00abbbd57120c512851a48c6aaa453175346"
+      },
+      {
+        "reference": "Register",
+        "font_size": 36,
+        "image_sha256": "f747d13b93f2ecceb19b8c44d890b0ecde61fb31c936d5c520386d9d0c0dcd54"
+      },
+      {
+        "reference": "Username",
+        "font_size": 36,
+        "image_sha256": "b25bfd78ef2f6dcfcb011dddc11e53f8917f17ee1cac27a47078b58513ed8846"
+      },
+      {
+        "reference": "Password",
+        "font_size": 36,
+        "image_sha256": "95581c980041eea1a47154f41237e0981f6ec5a2a013e0ac1f463672b02e3cdb"
+      },
+      {
+        "reference": "Warning message",
+        "font_size": 36,
+        "image_sha256": "28537a0ad70b01313d4fe5fff9dbb643fef26a97e7e6573c3240c85fa6323183"
+      },
+      {
+        "reference": "Operation failed",
+        "font_size": 36,
+        "image_sha256": "6f31aacc566bf71e5167cc26fbab10732285a5fcef0cdc96e00e484be1ce55f3"
+      },
+      {
+        "reference": "Network error",
+        "font_size": 36,
+        "image_sha256": "ab5bfbcbbe280bb45593c4a1a6a2bbcc2ca15140aa20e28744ffc8ffdccff275"
+      },
+      {
+        "reference": "Order 20261013",
+        "font_size": 36,
+        "image_sha256": "4d17e1ad1fb5bc2014db66486dc6e19ac7181924aad80010468b8dcf94bac435"
+      },
+      {
+        "reference": "Total $128.00",
+        "font_size": 36,
+        "image_sha256": "0ce318661fa3279c1d45fc670ef481fd6cc0c141f054a3e537de88b259d65c94"
+      },
+      {
+        "reference": "Version v1.2.3",
+        "font_size": 36,
+        "image_sha256": "076e73abd64d14f470561bf94ad45d375d86c6c426de2a9ba583ad33e564504f"
+      },
+      {
+        "reference": "Start 030",
+        "font_size": 36,
+        "image_sha256": "29038aeaf4abd183010577a6aec30264098b7850b05d990483518a59d3216dba"
+      },
+      {
+        "reference": "Confirm 031",
+        "font_size": 34,
+        "image_sha256": "eb74e1368f603450fd79e74b8587e086aecbc04dc5015ce4077bd1a7b108d4d5"
+      },
+      {
+        "reference": "Cancel 032",
+        "font_size": 32,
+        "image_sha256": "90da525b6abce021e5c1dd925d0dd254f2b33ef11b1f621f53be9eeaf1838ba1"
+      },
+      {
+        "reference": "Save 033",
+        "font_size": 30,
+        "image_sha256": "95d4be2959189c3df661d52fa654f63957d8d9cad181697ff380bbd9f6c55966"
+      },
+      {
+        "reference": "File 034",
+        "font_size": 28,
+        "image_sha256": "ec312706ee205f8e98f7c7e966f18a2b94bfbd885b07ae03bf98b45f4a6d9f48"
+      },
+      {
+        "reference": "Edit 035",
+        "font_size": 36,
+        "image_sha256": "490dfaa3ae15e8705d4e9d369091203022ba94532536c07fce55e0554e098007"
+      },
+      {
+        "reference": "View 036",
+        "font_size": 34,
+        "image_sha256": "f0352266ff75874aba23720e14f2669f2e1762d3e97f2de479e133a849960561"
+      },
+      {
+        "reference": "Help 037",
+        "font_size": 32,
+        "image_sha256": "7e2bc1e451f12fb480d17b2072c9b768abab6c3f6a4d997f54542f5e43dd8309"
+      },
+      {
+        "reference": "Settings 038",
+        "font_size": 30,
+        "image_sha256": "0d9d9024516ad00a97df55feb8500963215ddf172658dd1a3454ea749849aa3f"
+      },
+      {
+        "reference": "Exit 039",
+        "font_size": 28,
+        "image_sha256": "7d2763f2d04b20d340c404354a476e5559d54907f4daf0e910d4f2eb28f04da8"
+      },
+      {
+        "reference": "New 040",
+        "font_size": 36,
+        "image_sha256": "686a0fdfe12009f5b0de9eb8e407bd1944d1ee67eb255d724a8631c1ef70c8e1"
+      },
+      {
+        "reference": "Open 041",
+        "font_size": 34,
+        "image_sha256": "c25b8c800fa47ed127aa884299a3b6e908e22c4defbf6663252f28f73b053845"
+      },
+      {
+        "reference": "Close 042",
+        "font_size": 32,
+        "image_sha256": "f9dc26cf96e86f76d9a3a840571fc4ca9adee83e31a325b3c3585f87b460cb11"
+      },
+      {
+        "reference": "Copy 043",
+        "font_size": 30,
+        "image_sha256": "d4e85f362899fd7d650ade46983d42128b406343efa8485a7be35dc5e6336f02"
+      },
+      {
+        "reference": "Paste 044",
+        "font_size": 28,
+        "image_sha256": "c2bdb058508461d7ae9f757206175f6566768e7af386f598f2e6275ae6b4e38a"
+      },
+      {
+        "reference": "Delete 045",
+        "font_size": 36,
+        "image_sha256": "df682569424b76f85946ea39bda413eea589dbbd90d4740fb569b81e6edaf87d"
+      },
+      {
+        "reference": "Search 046",
+        "font_size": 34,
+        "image_sha256": "8ae5d80793ff1f28958460abe43b2792defa85d1ce22d29d3ea0ae61ebe99262"
+      },
+      {
+        "reference": "Download 047",
+        "font_size": 32,
+        "image_sha256": "ae62ca8685760e89f3f6004b6bbc7e23e40e3f114344e39650dfbd73d4cc13dd"
+      },
+      {
+        "reference": "Upload 048",
+        "font_size": 30,
+        "image_sha256": "fec12e88c0044913299833c0197c9b9c3f67323d3e876a3223426cfe85225c8b"
+      },
+      {
+        "reference": "Refresh 049",
+        "font_size": 28,
+        "image_sha256": "f21dce6aedcd5f19a3229a44589c4e91f5a1406e14e1e93d82de4e138dd7143d"
+      },
+      {
+        "reference": "Sign in 050",
+        "font_size": 36,
+        "image_sha256": "76d4df89129936bf66f1dc89b8307cf69f5d79ab18074431b3b9e74b4461648f"
+      },
+      {
+        "reference": "Register 051",
+        "font_size": 34,
+        "image_sha256": "8aff5561e4fa04f1809b35dbdd9e291264c2ddcc1001634bea674ffc13a4f576"
+      },
+      {
+        "reference": "Username 052",
+        "font_size": 32,
+        "image_sha256": "b35346eee1935bf46711b1f22def1bcb950ee7130268bab1c17e3b4bbf445963"
+      },
+      {
+        "reference": "Password 053",
+        "font_size": 30,
+        "image_sha256": "07052e3e2d5828f86a2cf4048de800ef58ec93742f5709487899d982c73623a1"
+      },
+      {
+        "reference": "Warning message 054",
+        "font_size": 28,
+        "image_sha256": "24c91047eeb4d5d1b9d6b0abf993ba5d46bf9afe5e3392d3df2b1f3143bdfb4d"
+      },
+      {
+        "reference": "Operation failed 055",
+        "font_size": 36,
+        "image_sha256": "e61b8ac3b487358cb9b01653947c0d417b72ad9779b64528d57cd65aedcce657"
+      },
+      {
+        "reference": "Network error 056",
+        "font_size": 34,
+        "image_sha256": "fa94f7947f78c97510410be3d450661db7ae21b0eb40ecac07424066329ff813"
+      },
+      {
+        "reference": "Order 20261013 057",
+        "font_size": 32,
+        "image_sha256": "79473c1dc9620b2898980b57790c0919f633b4aca4a7577bbcf7dcfda2b9426b"
+      },
+      {
+        "reference": "Total $128.00 058",
+        "font_size": 30,
+        "image_sha256": "271c069332f01041ab014a8de0a6529085ba6a3ef1937975602407b6c5d9042e"
+      },
+      {
+        "reference": "Version v1.2.3 059",
+        "font_size": 28,
+        "image_sha256": "b813befd7734ce7db7489d6ae8cca59fc57ab031019c0c92e9074a92623118a4"
+      },
+      {
+        "reference": "060 / Start",
+        "font_size": 36,
+        "image_sha256": "91476e6c7cc13f5ce775915095a1fe37fecddae43b1e52fafcbefb2b530606ee"
+      },
+      {
+        "reference": "061 / Confirm",
+        "font_size": 34,
+        "image_sha256": "c3be2ed004d40898e134b6e22af5115118cf79cd5500c4825a20e60f9e836547"
+      },
+      {
+        "reference": "062 / Cancel",
+        "font_size": 32,
+        "image_sha256": "d8843589e651a57aa0e5d7ce6d36da2bb89eebdf4a22f5bbd148203619d80e59"
+      },
+      {
+        "reference": "063 / Save",
+        "font_size": 30,
+        "image_sha256": "8e793b47fa82d432dc3f25deb845b9e314aee20a2e20f7cb24440b01f3575129"
+      },
+      {
+        "reference": "064 / File",
+        "font_size": 28,
+        "image_sha256": "3090bb44ee0475cb3500ae08c99036548568d38974bc7f30137f0d6cca5ac588"
+      },
+      {
+        "reference": "065 / Edit",
+        "font_size": 36,
+        "image_sha256": "c5020f7915e2f918e306acb2868d345355fdb27c2051a7795c324d7e0d5ca80b"
+      },
+      {
+        "reference": "066 / View",
+        "font_size": 34,
+        "image_sha256": "703f112b9845164596d28b9c0881dec91e1e6844115b941ff4a0e698b8bd6dd1"
+      },
+      {
+        "reference": "067 / Help",
+        "font_size": 32,
+        "image_sha256": "152142c30f25ebbfc2d797c3d9f06cf68385ce99ff7d4af4dac02cafad77621d"
+      },
+      {
+        "reference": "068 / Settings",
+        "font_size": 30,
+        "image_sha256": "5573ce7ef11f8ad274fde108f706122ad56a68363b6a1b6aafe07f8e0dfb393a"
+      },
+      {
+        "reference": "069 / Exit",
+        "font_size": 28,
+        "image_sha256": "d5dc8b85d679949baadf3e729a79cd3a3f5093dc42a7757d4a2a0f7343f7d2d0"
+      },
+      {
+        "reference": "070 / New",
+        "font_size": 36,
+        "image_sha256": "7b57fda1279cb31fa1da4f549b2c7b519a7d744bd90a4e3c53ca0cea10b29860"
+      },
+      {
+        "reference": "071 / Open",
+        "font_size": 34,
+        "image_sha256": "96606faf51b3b1917c239435f0ac52dae71bf43109a54e531587aacaaab4da04"
+      },
+      {
+        "reference": "072 / Close",
+        "font_size": 32,
+        "image_sha256": "b9cb588d9b5dfd635fe9dc67674c16d643eaf60cb6d3c041d3fc047c802bc14c"
+      },
+      {
+        "reference": "073 / Copy",
+        "font_size": 30,
+        "image_sha256": "d9443b2753ab0d82fb0070d8c55b069803b15cfcd08354e749d8af9efd8b88f2"
+      },
+      {
+        "reference": "074 / Paste",
+        "font_size": 28,
+        "image_sha256": "ccb5aa5bd537e756940ca15a5825e8ece43deb32f1d1310e36c7772346730f67"
+      },
+      {
+        "reference": "075 / Delete",
+        "font_size": 36,
+        "image_sha256": "68681735df5489bc8191fde72478ed4b5fb613d9b19c9755fe1f68c3bcb17181"
+      },
+      {
+        "reference": "076 / Search",
+        "font_size": 34,
+        "image_sha256": "da59deec09033918a93de85724672ce17023fc9f79a3073995c189235b6d9c4f"
+      },
+      {
+        "reference": "077 / Download",
+        "font_size": 32,
+        "image_sha256": "ed5dd62744c4592d68b6ff6829a5cee24119e7ff4d7241a0bd25d65aba2695af"
+      },
+      {
+        "reference": "078 / Upload",
+        "font_size": 30,
+        "image_sha256": "39e167b3f5adc201e8aaef2661daf987257b3f6a791d2a5603567858f9fa0f3e"
+      },
+      {
+        "reference": "079 / Refresh",
+        "font_size": 28,
+        "image_sha256": "aacc2a608c7d093605e387d498afa61fbdf6a279f86eece5977acf62c5f9fa3f"
+      },
+      {
+        "reference": "080 / Sign in",
+        "font_size": 36,
+        "image_sha256": "0ff0085b4b79ab2ae9ba3df7ad1d5968cc3319575baff7cdb468c17d9db1fbf3"
+      },
+      {
+        "reference": "081 / Register",
+        "font_size": 34,
+        "image_sha256": "cf1d9e8dae28768e5be46c296a027fd620553b04f5e03c5eafa920c7e608c493"
+      },
+      {
+        "reference": "082 / Username",
+        "font_size": 32,
+        "image_sha256": "9fe7c6d56f6beba414061fe8e55e211ff63317ebfc2e18ad4199174c1ab20919"
+      },
+      {
+        "reference": "083 / Password",
+        "font_size": 30,
+        "image_sha256": "1157fe9abe61eae26b56572efbb30cd40f1e296bc2875ada42c2d94f791663d6"
+      },
+      {
+        "reference": "084 / Warning message",
+        "font_size": 28,
+        "image_sha256": "13e62b0c95eeec09fe84ac899087acd2c49579d4a25eb99230e36fa57306a44c"
+      },
+      {
+        "reference": "Operation failed (85.9)",
+        "font_size": 36,
+        "image_sha256": "2a8d9ad1a75e11e261193d457e40da00418d6b3f9874a16eb097dbb3f5cbe210"
+      },
+      {
+        "reference": "Network error (86.9)",
+        "font_size": 34,
+        "image_sha256": "5005a381b471674d02b904d411c3391e0524557d904bd7d876ad168a0a88a5c4"
+      },
+      {
+        "reference": "Order 20261013 (87.9)",
+        "font_size": 32,
+        "image_sha256": "61691eceae555c505f1d2ea76bcc84a491d60edd6c07bff5a2080f616874d422"
+      },
+      {
+        "reference": "Total $128.00 (88.9)",
+        "font_size": 30,
+        "image_sha256": "8ca79b77dcd0a9ec4d1e2b259a59ce716d30cb06ffadaf1725b9c0652ff5e18b"
+      },
+      {
+        "reference": "Version v1.2.3 (89.9)",
+        "font_size": 28,
+        "image_sha256": "f9900215221503a25a848bc288c540bbf098768e6f62d18e0ea6500f40197079"
+      },
+      {
+        "reference": "Start (90.9)",
+        "font_size": 36,
+        "image_sha256": "d33340393ebbc88a7708f5396e522764e5f1251ff48f2bc3e898d9373522a1a7"
+      },
+      {
+        "reference": "Confirm (91.9)",
+        "font_size": 34,
+        "image_sha256": "11f5ee8fe44351480706f55f8694456f6646a54f47bc1c58ecc44b2c64129558"
+      },
+      {
+        "reference": "Cancel (92.9)",
+        "font_size": 32,
+        "image_sha256": "125a3c6bc82fde361d8f7681a1ee4939472f4461809f180fb011ffa20610f271"
+      },
+      {
+        "reference": "Save (93.9)",
+        "font_size": 30,
+        "image_sha256": "2a5f0aa84b540e561be990cb7712a83d76255a4ef87a419e15e7a508a58d6eb7"
+      },
+      {
+        "reference": "File (94.9)",
+        "font_size": 28,
+        "image_sha256": "d7c42f2a7efb2c4de4374c2b6d21ebfcdff8e71eadde8fa0557f284bbb6d67be"
+      },
+      {
+        "reference": "Edit (95.9)",
+        "font_size": 36,
+        "image_sha256": "bcc4f13b0914ea05cd7444f77ff7d9eb8b428a2bcb5245076a668e3baf07f6fa"
+      },
+      {
+        "reference": "View (96.9)",
+        "font_size": 34,
+        "image_sha256": "6fa1b369802b646ea3df0515f303029524aa8e530a7b46cba0c74ad5fb910d26"
+      },
+      {
+        "reference": "Help (97.9)",
+        "font_size": 32,
+        "image_sha256": "4343f1cba13fa7159874eeb1910a5cdeaca4e193e9c3b14e5f020b1672f9929f"
+      },
+      {
+        "reference": "Settings (98.9)",
+        "font_size": 30,
+        "image_sha256": "ae46ceea3a1f1945c902850915944c553a55828857a0ddeb7a678cfc8371bcf8"
+      },
+      {
+        "reference": "Exit (99.9)",
+        "font_size": 28,
+        "image_sha256": "cc5e3287e7ad84202a6f9dbc3db0f40b9315054967fde14b30475fa59e88fa50"
+      }
+    ]
+  },
+  "ko": {
+    "font": "malgun.ttf",
+    "font_sha256": "7a183cf1c6c56b9609fcc16eda8b5229fbc11758a21e669ec00343239b02192f",
+    "model": "korean_PP-OCRv5_mobile_rec",
+    "samples": [
+      {
+        "reference": "시작",
+        "font_size": 34,
+        "image_sha256": "cd44bc8ac24f9efa748db521594c849133f43454014b00ffc009fe4e88e03f92"
+      },
+      {
+        "reference": "확인",
+        "font_size": 34,
+        "image_sha256": "654e0c787f96830bdcb9105a979056ae8aa2f63bdca88b89eabc56184240cc66"
+      },
+      {
+        "reference": "취소",
+        "font_size": 34,
+        "image_sha256": "925e73c88a00652e860e1cc797c47a0ba5f508d4581c0f48729d43c6dcd5f1a7"
+      },
+      {
+        "reference": "저장",
+        "font_size": 34,
+        "image_sha256": "9d4ab1ef12e43126a72f05908a33a93d737feb0549db6a2d09b8e1e4d1cfad00"
+      },
+      {
+        "reference": "파일",
+        "font_size": 34,
+        "image_sha256": "3628b805052f0603c45a7c4d04b329292936732ec61e169b20a131eb5a82993c"
+      },
+      {
+        "reference": "편집",
+        "font_size": 34,
+        "image_sha256": "a2829d9d293b26299884782cb225c6b769e172357e3b50f1c1c6cc2857abb27b"
+      },
+      {
+        "reference": "보기",
+        "font_size": 34,
+        "image_sha256": "e182d70959fa48522c666fb9d4e28b7fd608adeb33258981b2db6ed886571ede"
+      },
+      {
+        "reference": "도움말",
+        "font_size": 34,
+        "image_sha256": "627489e7026f79b5a68d8ae948a2c10f2c88f3c232195174f1e37e5ec25af148"
+      },
+      {
+        "reference": "설정",
+        "font_size": 34,
+        "image_sha256": "97f3e29a9dee36bd0f8c8414df2ace1479bb1b173900e30c71a94435244ab290"
+      },
+      {
+        "reference": "종료",
+        "font_size": 34,
+        "image_sha256": "8d5f6b934033d1601888bbcfc1ae77456626cac8b6e67134a2e9fd3f82f9304c"
+      },
+      {
+        "reference": "새로 만들기",
+        "font_size": 34,
+        "image_sha256": "8cc38385ee26102703f813a77fe9b06f127cbc4172bb042dba7256355f561b8f"
+      },
+      {
+        "reference": "열기",
+        "font_size": 34,
+        "image_sha256": "b58b12c24ab197afc34c8271e315f99101ffb5d36116cba96bd907f380e5326f"
+      },
+      {
+        "reference": "닫기",
+        "font_size": 34,
+        "image_sha256": "6f790da95d21ee1e62c8675c91eee73a3751b685a44d17fef49b9e9edb06cd33"
+      },
+      {
+        "reference": "복사",
+        "font_size": 34,
+        "image_sha256": "4e7212728de88a97d7f3b53a9e83b8d508c9a906f2d333cc738cc9907ad1fc4a"
+      },
+      {
+        "reference": "붙여넣기",
+        "font_size": 34,
+        "image_sha256": "b5d771cdc19eb90cad9cd1ed5fc48e7d28be7412b50781c3d569ece408fcfd95"
+      },
+      {
+        "reference": "삭제",
+        "font_size": 34,
+        "image_sha256": "bab7d62516fa563e202bc7faa44a8071c4f686048c18ea1ea1f605f3a6457c78"
+      },
+      {
+        "reference": "검색",
+        "font_size": 34,
+        "image_sha256": "57214bec03680b8ff9fe69caaf6b39c48471872362b43ba3f94e112d133dc251"
+      },
+      {
+        "reference": "다운로드",
+        "font_size": 34,
+        "image_sha256": "ddfeb2e0b2c9c5b3d4cb7e4fbc7975cf1810e472ff3aa56e73ceb108ad0d57c4"
+      },
+      {
+        "reference": "업로드",
+        "font_size": 34,
+        "image_sha256": "ff60d1a8b5a0e8f536046c0b19c1322740d2e7c881b534974646663481aae7e3"
+      },
+      {
+        "reference": "새로 고침",
+        "font_size": 34,
+        "image_sha256": "c434b9585f2897578aa1052be5fbb71ac2afb85b1a6baba3cf509d83f01d767a"
+      },
+      {
+        "reference": "로그인",
+        "font_size": 34,
+        "image_sha256": "c306f7b03b8e076290c9929fa4cda569723bbe71d3bfaa3c59c9f15a07660bc1"
+      },
+      {
+        "reference": "등록",
+        "font_size": 34,
+        "image_sha256": "8fd5cccfbcbc65096404faf226fd4bcd967139d0353aed47025f470bb9322667"
+      },
+      {
+        "reference": "사용자 이름",
+        "font_size": 34,
+        "image_sha256": "820d17ae811c19e8ef554267b2385030b5d72ae8eb24a0d2ba9c2f102b8a0c31"
+      },
+      {
+        "reference": "비밀번호",
+        "font_size": 34,
+        "image_sha256": "1bafc4f5cc304ef14da49de3ba39cfb2c896fee399af1ed551446c1b93a1ad23"
+      },
+      {
+        "reference": "경고 메시지",
+        "font_size": 34,
+        "image_sha256": "3a1f3c9e30c85120710fbb734655db97a27a14cbfb82f53bb97e9787cec6045f"
+      },
+      {
+        "reference": "작업 실패",
+        "font_size": 34,
+        "image_sha256": "173ca7ba17f0a6d751cfc25e58c2420b70e0de8dc1b9eec8e37b388db28629cb"
+      },
+      {
+        "reference": "네트워크 오류",
+        "font_size": 34,
+        "image_sha256": "876410e947c6a3ac8f45920a5ea5c4dca9226d4ccbb87551f2b6ebf86fede376"
+      },
+      {
+        "reference": "주문번호 20261013",
+        "font_size": 34,
+        "image_sha256": "8be742f5a9683097b6e1eee19435bd6a2c978c1424ff9e396d66c3d227204632"
+      },
+      {
+        "reference": "합계 128 원",
+        "font_size": 34,
+        "image_sha256": "68354da1d66530ce3f3e47352a717a7a044457e0fdd10fbe1c084b72a7005e42"
+      },
+      {
+        "reference": "버전 v1.2.3",
+        "font_size": 34,
+        "image_sha256": "1abbde8e145faf1ab2c6a432cdbc95874d529bccc6286ba3dc5d8571aa928fcd"
+      },
+      {
+        "reference": "시작 030",
+        "font_size": 34,
+        "image_sha256": "b0d9623fa27a23aa04eed8086a632d57199b678a454513ec9f03263bdf6e306c"
+      },
+      {
+        "reference": "확인 031",
+        "font_size": 32,
+        "image_sha256": "014f7299963c80cc36c9c0c70a9da3c67ef449ca837d8e30cfe27ec7103f3a80"
+      },
+      {
+        "reference": "취소 032",
+        "font_size": 30,
+        "image_sha256": "8485c36f36ee0f1b1297696dd53ad27051143c6cb4162a780a3fa2654f37fbb7"
+      },
+      {
+        "reference": "저장 033",
+        "font_size": 28,
+        "image_sha256": "2bd73e69c1ab630e36b774d2d24420864f10003a139057c3060c9b763b5589af"
+      },
+      {
+        "reference": "파일 034",
+        "font_size": 26,
+        "image_sha256": "ef03136ade6adc6992db14a8330ed8e0dbc3ef3d157696daf90ca47bf385ebdb"
+      },
+      {
+        "reference": "편집 035",
+        "font_size": 34,
+        "image_sha256": "84430b464005086daf8fa45288907873a2a2222f5fecdfe2ef9cebd4dfb822d0"
+      },
+      {
+        "reference": "보기 036",
+        "font_size": 32,
+        "image_sha256": "fa8ce795cad172a8aee3293c0226f3f24f5244230120b4766f286f070b202f37"
+      },
+      {
+        "reference": "도움말 037",
+        "font_size": 30,
+        "image_sha256": "a91b79e6798aa7a9e7c98df6be6931768f14e0425972a1d5356eaa696e710a21"
+      },
+      {
+        "reference": "설정 038",
+        "font_size": 28,
+        "image_sha256": "70ea4ca1a8824218e89a704503da659654f004727c372ad5c95fe2b4f12cef9c"
+      },
+      {
+        "reference": "종료 039",
+        "font_size": 26,
+        "image_sha256": "5b675a8f9c2c6f481d4d7d6c91fadb26b0a79ad9d285979efc473c44ffc8f2ef"
+      },
+      {
+        "reference": "새로 만들기 040",
+        "font_size": 34,
+        "image_sha256": "5d1a0b13b62dd82a0e9444963b55ec1004a2409e0e6b040b0425994241062462"
+      },
+      {
+        "reference": "열기 041",
+        "font_size": 32,
+        "image_sha256": "19ff46f2361659e0ae2a6578ccc4aa9d44a6f8603238af4d2c7e5f4f86b6c183"
+      },
+      {
+        "reference": "닫기 042",
+        "font_size": 30,
+        "image_sha256": "a334524fba73030a47cf27158f369b03eb06574eeb84c31ffb5b7c4661286b67"
+      },
+      {
+        "reference": "복사 043",
+        "font_size": 28,
+        "image_sha256": "d29f8e19b228884fc0dcfa2903d2e536e06855d839aa748f36838e81618bff2f"
+      },
+      {
+        "reference": "붙여넣기 044",
+        "font_size": 26,
+        "image_sha256": "4a844e122e6d84ffce936237025816ad1fb2b98af74d70824084e445aa6d5406"
+      },
+      {
+        "reference": "삭제 045",
+        "font_size": 34,
+        "image_sha256": "da5336382faf6889da52aa837383a2b7a71bd8f1de0bd3358270dfd92cae72e2"
+      },
+      {
+        "reference": "검색 046",
+        "font_size": 32,
+        "image_sha256": "dde121ac2c69939ae758d4adf32c03d741493698cbc122a66ce4ae78ba5b3412"
+      },
+      {
+        "reference": "다운로드 047",
+        "font_size": 30,
+        "image_sha256": "6b52c6b27bf811ec53b0d22740ed0c0fb6b5302b11e44b02a89a2341cb1683b1"
+      },
+      {
+        "reference": "업로드 048",
+        "font_size": 28,
+        "image_sha256": "32c94f9367a987a122d865882c8f4230fbbe44601db746422cb1477b64343181"
+      },
+      {
+        "reference": "새로 고침 049",
+        "font_size": 26,
+        "image_sha256": "cf2de57d3399ad22ade0cb047afd469b4f1d8f2744fc68d1d538dd0cf442f356"
+      },
+      {
+        "reference": "로그인 050",
+        "font_size": 34,
+        "image_sha256": "d2d2a223c2e0971198eac1525dfbf1b3d6403cea38336a3b9f0542a2d9ae9eae"
+      },
+      {
+        "reference": "등록 051",
+        "font_size": 32,
+        "image_sha256": "34696aefbbbacbccf414a0c39fbd1954de765b18559d94a4a25be5ae9ded87fa"
+      },
+      {
+        "reference": "사용자 이름 052",
+        "font_size": 30,
+        "image_sha256": "623465c92643501fbdae6e11913f75c33b48d9a2cf29028bd8287ae3c162ff5f"
+      },
+      {
+        "reference": "비밀번호 053",
+        "font_size": 28,
+        "image_sha256": "4dd26cca049bc849ff9ace857976a31c8997c76ffe5321e1a871f0ef392614d0"
+      },
+      {
+        "reference": "경고 메시지 054",
+        "font_size": 26,
+        "image_sha256": "5b351e6019d6245ce291b4771ef25c67451e66863cdcb65f32d80d15092a9d23"
+      },
+      {
+        "reference": "작업 실패 055",
+        "font_size": 34,
+        "image_sha256": "997b4fd7c142a9553acf37ebd3e9c0f5f75f5a8a81d90725dc35b0d05fab8b0d"
+      },
+      {
+        "reference": "네트워크 오류 056",
+        "font_size": 32,
+        "image_sha256": "bfbd9edff44d79d31bc732a76267cd47b36a25b7481ab9df4dad5b80a2a06db6"
+      },
+      {
+        "reference": "주문번호 20261013 057",
+        "font_size": 30,
+        "image_sha256": "ad5b338acb9c52950da17e90128fb1d97191431fe4c2a3f91bb368a33b066f27"
+      },
+      {
+        "reference": "합계 128 원 058",
+        "font_size": 28,
+        "image_sha256": "a197dbf76830185155a2e3e69feefbd204ea89d3b8c375758a9375533c38b839"
+      },
+      {
+        "reference": "버전 v1.2.3 059",
+        "font_size": 26,
+        "image_sha256": "2b6b88fb3c61bebc82152969de9aad06c972806c5793af27921273cf0fa04825"
+      },
+      {
+        "reference": "060 / 시작",
+        "font_size": 34,
+        "image_sha256": "48984d3c2e11c7405e39eccbc6609b745395e25238c0940d07f998cf962baaab"
+      },
+      {
+        "reference": "061 / 확인",
+        "font_size": 32,
+        "image_sha256": "cd02df2d82d250347fd7f8963c696f21f8ef522396e3fbbe887951d0305109f2"
+      },
+      {
+        "reference": "062 / 취소",
+        "font_size": 30,
+        "image_sha256": "9bde86d26712121f1642d8f0d400d263ddde486289eccc5df402c2bc60169298"
+      },
+      {
+        "reference": "063 / 저장",
+        "font_size": 28,
+        "image_sha256": "4d1c0d76b622a4fb63ed875df265e32415ae909c56c2708aa3ccca8d1e471a48"
+      },
+      {
+        "reference": "064 / 파일",
+        "font_size": 26,
+        "image_sha256": "f3f7aec0d6ea84b1be75cd3dd19ae436567a90e7b8a335ea95a7c3fa019dfa2c"
+      },
+      {
+        "reference": "065 / 편집",
+        "font_size": 34,
+        "image_sha256": "52ee4486a3936c9e110cd79db6f676898ed69c9cc3273e208d76aa7e12eb854e"
+      },
+      {
+        "reference": "066 / 보기",
+        "font_size": 32,
+        "image_sha256": "05c671266177b9e87a367f97509bdcd81d9bb5fa7f49b8c84f6195725fbde402"
+      },
+      {
+        "reference": "067 / 도움말",
+        "font_size": 30,
+        "image_sha256": "dfd116efce37c6fc1a2d52ea621c588c231cdaf0ab2618c74682df8c3aa9fc0f"
+      },
+      {
+        "reference": "068 / 설정",
+        "font_size": 28,
+        "image_sha256": "d43e187075bd42062852e121f0e68e3d37a873c1c22ade96c13d8a4612626d3a"
+      },
+      {
+        "reference": "069 / 종료",
+        "font_size": 26,
+        "image_sha256": "aa3e9e1051c8987d534fa4c6e9781f70a38b5ead5c9e38e04126f255f2a61533"
+      },
+      {
+        "reference": "070 / 새로 만들기",
+        "font_size": 34,
+        "image_sha256": "f57282c3d7218e56694426c514ea6a189fab8c6fd96bf775fa3d060b57aa055f"
+      },
+      {
+        "reference": "071 / 열기",
+        "font_size": 32,
+        "image_sha256": "44d85dc15ce72a306feb6d1c01c5c7ae4df8e8b2574476ad809031f2e06f3104"
+      },
+      {
+        "reference": "072 / 닫기",
+        "font_size": 30,
+        "image_sha256": "83767bed21bca8ee1b16f07cb5b0a5041a8e65fba24772ddf10b51ef6fa22c7b"
+      },
+      {
+        "reference": "073 / 복사",
+        "font_size": 28,
+        "image_sha256": "30dc9aff55e04115e672f5f24dfd0644dfc5efa38950b3ed33fbfa9f6d588fb2"
+      },
+      {
+        "reference": "074 / 붙여넣기",
+        "font_size": 26,
+        "image_sha256": "16658729d73390a0a2aa72a5a2cfead66b203c07d732898dd9b30a67df978c12"
+      },
+      {
+        "reference": "075 / 삭제",
+        "font_size": 34,
+        "image_sha256": "f75bf3ce5a34d7ac521df7a09d60e77066efbbc69dbe38058a53969d7b182e19"
+      },
+      {
+        "reference": "076 / 검색",
+        "font_size": 32,
+        "image_sha256": "3eb5a32c76729ea4ff88b5e62fb40cae5fd50812796b0a6094dc20842ab3c844"
+      },
+      {
+        "reference": "077 / 다운로드",
+        "font_size": 30,
+        "image_sha256": "241fe75facb0bba942713c123fc967b5c4e0cfa9d56bb0605b5d8b3239d07f6e"
+      },
+      {
+        "reference": "078 / 업로드",
+        "font_size": 28,
+        "image_sha256": "e1ba0914dcfd2ad78c803682ef1f2b5beb5f169209e981c917e2e2dbe05c6ff5"
+      },
+      {
+        "reference": "079 / 새로 고침",
+        "font_size": 26,
+        "image_sha256": "14152ce898a9e8e0998cef9773b69563affffec5f72d2da734d090370da4f1f4"
+      },
+      {
+        "reference": "080 / 로그인",
+        "font_size": 34,
+        "image_sha256": "98ca74ac9a6b5cc7696db4e8b3ed25262eb57cca38a11f58cd9a5e9c67fda287"
+      },
+      {
+        "reference": "081 / 등록",
+        "font_size": 32,
+        "image_sha256": "846d1b0adc4abe49189321b112102d537505903a21b1e9e7c0b405c74b211c7f"
+      },
+      {
+        "reference": "082 / 사용자 이름",
+        "font_size": 30,
+        "image_sha256": "0b72b5feca641fcee32e27d94d458c20e5ce45029be24c0281c0913b1302474f"
+      },
+      {
+        "reference": "083 / 비밀번호",
+        "font_size": 28,
+        "image_sha256": "456441228df1012377ea82d1646545d5edb8c5184e97d1d413add3d84c910c9e"
+      },
+      {
+        "reference": "084 / 경고 메시지",
+        "font_size": 26,
+        "image_sha256": "f6109ba4179f0ae72c3d309568054e197358c0d40a4bf33d93863d9caad9726b"
+      },
+      {
+        "reference": "작업 실패 (85.9)",
+        "font_size": 34,
+        "image_sha256": "30ad7bfc8b709da3c8043733296a1407c495edd1dd1f4f67f5b0f26bf0de0276"
+      },
+      {
+        "reference": "네트워크 오류 (86.9)",
+        "font_size": 32,
+        "image_sha256": "38a7bb1062e749b926aadcf5154c7b343598f2931aea6a4c8623515b0f7d11f4"
+      },
+      {
+        "reference": "주문번호 20261013 (87.9)",
+        "font_size": 30,
+        "image_sha256": "67df81d81f20ccf86837c7aaec61c55b8a13ba6876947af11fdf1e2ba412f3b2"
+      },
+      {
+        "reference": "합계 128 원 (88.9)",
+        "font_size": 28,
+        "image_sha256": "fe07031ee55727b55c622b81b33f9e54d0a85a3f52724cc57597ceece8fe5d38"
+      },
+      {
+        "reference": "버전 v1.2.3 (89.9)",
+        "font_size": 26,
+        "image_sha256": "695c08eae53eac63e4d35dd8f76197eac92e8f8eb9aa181a9769837bedb07378"
+      },
+      {
+        "reference": "시작 (90.9)",
+        "font_size": 34,
+        "image_sha256": "5e572b474b48f33e06d765cc27e3e5fb03ef6b25e9d5058e651bf5116a1e46ae"
+      },
+      {
+        "reference": "확인 (91.9)",
+        "font_size": 32,
+        "image_sha256": "2753f36abbe655a095a180b38b6e726618f05d345194802cd8b2bd028fd7f051"
+      },
+      {
+        "reference": "취소 (92.9)",
+        "font_size": 30,
+        "image_sha256": "2470f1cb271a5666303852df60964adfbfae32f2f0b458f45c66917669acc4a5"
+      },
+      {
+        "reference": "저장 (93.9)",
+        "font_size": 28,
+        "image_sha256": "59431de6a1a8d69920b62a0065bc483633d8fc626018b4e0e8fa19e9b4495380"
+      },
+      {
+        "reference": "파일 (94.9)",
+        "font_size": 26,
+        "image_sha256": "6bfec84e4e78815c5dbcc9582012d4a0f5a5480953c34934cf01e6776df1e0f3"
+      },
+      {
+        "reference": "편집 (95.9)",
+        "font_size": 34,
+        "image_sha256": "7e2be603519735c8cb8ec90b13b23f51ce1633a39ce8d7557693056b9441d9b3"
+      },
+      {
+        "reference": "보기 (96.9)",
+        "font_size": 32,
+        "image_sha256": "4a62af0e7bf5bedd1c194f5fd38bd4b3721ac4bbf8c9bc42da40ac8cbe113842"
+      },
+      {
+        "reference": "도움말 (97.9)",
+        "font_size": 30,
+        "image_sha256": "54bc3cc8323f0415cd15519f9fd4dcc64063c1d85a7bf41427684e52ec5be0ad"
+      },
+      {
+        "reference": "설정 (98.9)",
+        "font_size": 28,
+        "image_sha256": "3f8c98052e785f372da8f988352547b44e544520fb5ed5fe9af6cb9d650d048e"
+      },
+      {
+        "reference": "종료 (99.9)",
+        "font_size": 26,
+        "image_sha256": "51313a36104c4c2d975d5d93a1517c7d52025e826b4df91880754619a70a1b42"
+      }
+    ]
+  },
+  "ja": {
+    "font": "msgothic.ttc",
+    "font_sha256": "4bde3e6392b96910fb59094c6c1a4dbfae18fee78d0bf13dc30616837c4f95db",
+    "model": "PP-OCRv6_medium_rec",
+    "samples": [
+      {
+        "reference": "開始",
+        "font_size": 34,
+        "image_sha256": "05b639b3ac2c88f4fcccc7eb56e5f3695e1c1d11648b0019d053463b53d206c8"
+      },
+      {
+        "reference": "確認",
+        "font_size": 34,
+        "image_sha256": "84eade4d2918450f4c71b4b17e0a672d38e43091d2e6709784543704318d5583"
+      },
+      {
+        "reference": "キャンセル",
+        "font_size": 34,
+        "image_sha256": "f4a42906ccefc4c18e19186e49fce802d518213ee960f333a17b0692ba6b3433"
+      },
+      {
+        "reference": "保存",
+        "font_size": 34,
+        "image_sha256": "54942cd91db65c50f37e23b148cd443286b5dd118cbf55d1d0a3b26b9fb36ece"
+      },
+      {
+        "reference": "開く",
+        "font_size": 34,
+        "image_sha256": "8df94caca02f9dfa4fa0c0cf339235f65d9c3db03797be13715aba01b4c2e6d7"
+      },
+      {
+        "reference": "閉じる",
+        "font_size": 34,
+        "image_sha256": "d5f25e34fe18d7a05ddf7d0b69add08268027cd547e01f3bfaa71efc5b4af09d"
+      },
+      {
+        "reference": "編集",
+        "font_size": 34,
+        "image_sha256": "3d4f7b6dd005fe327c2a112c16023553daa8ae74eac7a95360a2d73bffc06878"
+      },
+      {
+        "reference": "表示",
+        "font_size": 34,
+        "image_sha256": "09aa31378933e9efaf67789b15c964cc978c16e4441bb518e81138159c37bfae"
+      },
+      {
+        "reference": "設定",
+        "font_size": 34,
+        "image_sha256": "ecbf9b35cc0644c01dbac6a35f57e242191af95e3affc6aa4267256b526b68fd"
+      },
+      {
+        "reference": "終了",
+        "font_size": 34,
+        "image_sha256": "883c54aadcdb4a38d8d23726902aae140789cc65d94c1c62c69fe71ed09a988e"
+      },
+      {
+        "reference": "新規作成",
+        "font_size": 34,
+        "image_sha256": "38e19ab20dba3660f46d00118e527b5908f3d892adf784fefcfa040bea443b22"
+      },
+      {
+        "reference": "印刷",
+        "font_size": 34,
+        "image_sha256": "0d6bd677cb7150d80d93614b276aaf4827cb8efaac093c25ee3571492dc4f7d5"
+      },
+      {
+        "reference": "コピー",
+        "font_size": 34,
+        "image_sha256": "ec5037e6fb1e10a2642908c564835851eeea963d66912581042704fc56bb1588"
+      },
+      {
+        "reference": "貼り付け",
+        "font_size": 34,
+        "image_sha256": "0a91781b88dbae2c73bdac21dd8c428b632c402cf5a2b532f4013689a418d278"
+      },
+      {
+        "reference": "削除",
+        "font_size": 34,
+        "image_sha256": "ce2d6a874c36a7909ca72f8703f77995aea42b94467e8ffe57182d9779e26025"
+      },
+      {
+        "reference": "検索",
+        "font_size": 34,
+        "image_sha256": "31eb4461cd74519f176fc3810eae73cddc5c1e21149f09e73e89e02169d0706c"
+      },
+      {
+        "reference": "ダウンロード",
+        "font_size": 34,
+        "image_sha256": "b856ee467e5cd4a678b27fb4ed7936bf8d3cadf29396603fd9390645a118006a"
+      },
+      {
+        "reference": "アップロード",
+        "font_size": 34,
+        "image_sha256": "285d63d9b6e1f4ff2f6f4d269d33340a08bbe526064481eb54c7598210278c0c"
+      },
+      {
+        "reference": "更新",
+        "font_size": 34,
+        "image_sha256": "0a30ef3176f94a8ae4dca5b38a0a9fc4330ff67bad21cb9e1e75042a66e9d984"
+      },
+      {
+        "reference": "次へ",
+        "font_size": 34,
+        "image_sha256": "f0ddf15fc25f50f5491883516ea1036b13bad4bc150f7751397f9f12c1e289ec"
+      },
+      {
+        "reference": "戻る",
+        "font_size": 34,
+        "image_sha256": "685de38d208ff8e4874cd0d6dedbcc50411becf356aa2feeb819b6209f80f0f5"
+      },
+      {
+        "reference": "ログイン",
+        "font_size": 34,
+        "image_sha256": "51c0b1ea43bd7210adbbf7ae5def773ad4fbd368fea466e42fd4522d70468511"
+      },
+      {
+        "reference": "名前",
+        "font_size": 34,
+        "image_sha256": "bf2891c389db5c0a072be11bf643cf7b1319ee70f4e828242cf28ea83d2f8aa4"
+      },
+      {
+        "reference": "ヘルプ",
+        "font_size": 34,
+        "image_sha256": "705ddaeb2e5e52af0bab66e165f83a283d946dfa95240cf988136d4482d5fe00"
+      },
+      {
+        "reference": "注文番号",
+        "font_size": 34,
+        "image_sha256": "0157f8c6896a0acbc1d266042eb3039f99eecc69bd2287d319c8b612e0217f35"
+      },
+      {
+        "reference": "支払い",
+        "font_size": 34,
+        "image_sha256": "0a8ef72944b7d85b50ec16a27e9e666e52bf92bcba9df538ec62dd7d67d45a4d"
+      },
+      {
+        "reference": "処理完了",
+        "font_size": 34,
+        "image_sha256": "a82d4970de7e59a451a23f304d6592d4981bbc36a41fabacad3285e474634819"
+      },
+      {
+        "reference": "再試行",
+        "font_size": 34,
+        "image_sha256": "505534b759ef1ee91a0fb9546b012da0b31ec3554b5095b040b761987d7702e4"
+      },
+      {
+        "reference": "エラー",
+        "font_size": 34,
+        "image_sha256": "c42960701fdaed1ae1d74682a352ab3698c32a8d1f13c80f4a0b89fe1d93b176"
+      },
+      {
+        "reference": "接続",
+        "font_size": 34,
+        "image_sha256": "15bd27a0ff733dd157fa866c70b7a9a6abc4b3d3758928e82811ba56cc17cecd"
+      },
+      {
+        "reference": "開始 030",
+        "font_size": 34,
+        "image_sha256": "1a1226585335daa7afec02bb1cafb934682c203aefda619722b519c705753039"
+      },
+      {
+        "reference": "確認 031",
+        "font_size": 32,
+        "image_sha256": "0a0ce4777f32b501cb4e25cec3736639f65aeb069bc6ef69a906fdecb1e0f060"
+      },
+      {
+        "reference": "キャンセル 032",
+        "font_size": 30,
+        "image_sha256": "0bd03c47452f279891707fbcbae5405472425384e0e698a420d7b3017fb9fea9"
+      },
+      {
+        "reference": "保存 033",
+        "font_size": 28,
+        "image_sha256": "c7d9da1e65633014f9a20204d49fc7c4e919691e719521214c2f31a859bf2590"
+      },
+      {
+        "reference": "開く 034",
+        "font_size": 26,
+        "image_sha256": "a4ce24567e83b23ae8a8693b87e32ad1d106c26abd17545da17c4c511efd8ed5"
+      },
+      {
+        "reference": "閉じる 035",
+        "font_size": 34,
+        "image_sha256": "aeee4a810302524d4d976daebd73d13b528fbde67b89ca28623109c9d0ca644d"
+      },
+      {
+        "reference": "編集 036",
+        "font_size": 32,
+        "image_sha256": "4ad7601ef768222a12870b037a6dde847dc322da65e3e676f0a12a0e6f24c045"
+      },
+      {
+        "reference": "表示 037",
+        "font_size": 30,
+        "image_sha256": "9fe35116ffb0f4332c7e2d7a8b22ecb2a688101c6c19296a75b86da579d32fe5"
+      },
+      {
+        "reference": "設定 038",
+        "font_size": 28,
+        "image_sha256": "6662932dd40430f07a4f74ca7e4e74aa9f42963e9e98a84709e647b9d33b6c82"
+      },
+      {
+        "reference": "終了 039",
+        "font_size": 26,
+        "image_sha256": "8b381c92f1dc5720399e182125e9de402792d806f8d65a4e0b602341f5a3993c"
+      },
+      {
+        "reference": "新規作成 040",
+        "font_size": 34,
+        "image_sha256": "9aa5c3eddf4dc99989315e2eeec53b363689d35e6f0af3824778cc009470eb72"
+      },
+      {
+        "reference": "印刷 041",
+        "font_size": 32,
+        "image_sha256": "f12dc4c3bb4727acc2e7f78d950e2f483e12a8378e13f4288aa4dd8025526f85"
+      },
+      {
+        "reference": "コピー 042",
+        "font_size": 30,
+        "image_sha256": "810abfb6e65b2cdc6c663715ffc935a20ed4d2a4472c15ba7619e5e2f725871c"
+      },
+      {
+        "reference": "貼り付け 043",
+        "font_size": 28,
+        "image_sha256": "aa61b26a136d3c7ece4fd60915c81222085ab52b74d5c3be0fc8f35a203197a6"
+      },
+      {
+        "reference": "削除 044",
+        "font_size": 26,
+        "image_sha256": "6627decde3d9c4104d674c1521c5fe4d66b9cb50265f563e609dfcdb28e18db1"
+      },
+      {
+        "reference": "検索 045",
+        "font_size": 34,
+        "image_sha256": "b29b2b9366841b7a238fc2e7fd5173a8dd8fe18d6e5f7f54ebcb36a4d3f9e0ce"
+      },
+      {
+        "reference": "ダウンロード 046",
+        "font_size": 32,
+        "image_sha256": "142072735436028672875dd6bdf197b1c5921a2c5294cee296c88a3e81128864"
+      },
+      {
+        "reference": "アップロード 047",
+        "font_size": 30,
+        "image_sha256": "64162d46bd190cc7b0140fd275f0b319d6c3c614c43768d52003c9db977756ec"
+      },
+      {
+        "reference": "更新 048",
+        "font_size": 28,
+        "image_sha256": "7fbff6de33248e600dc1d1d3de3298e17e9420e2e845cff1d21e37f9e0162835"
+      },
+      {
+        "reference": "次へ 049",
+        "font_size": 26,
+        "image_sha256": "6b67d2f05701bf8e8f031493c99cde081d39dcd57358738abef25100bea5a31f"
+      },
+      {
+        "reference": "戻る 050",
+        "font_size": 34,
+        "image_sha256": "70bb61d4e6dbbca5082de20194a607bca56603ae70bec8f90bc4c681b9bd33ab"
+      },
+      {
+        "reference": "ログイン 051",
+        "font_size": 32,
+        "image_sha256": "b76634731f93eafd4110ac8a59dc1bf2bec721866f9fdfcafc6b2f3324c24d77"
+      },
+      {
+        "reference": "名前 052",
+        "font_size": 30,
+        "image_sha256": "ea137e0fce5e18f5ae30325739b921b76f7930f3eeb8c358cff2dbbd05452762"
+      },
+      {
+        "reference": "ヘルプ 053",
+        "font_size": 28,
+        "image_sha256": "aacdec0f914a5d323a2697fb5ae191b97ce61f2c1788d4706895ddfc54e4c134"
+      },
+      {
+        "reference": "注文番号 054",
+        "font_size": 26,
+        "image_sha256": "099d1503e931669f327a4d494b75b1a38113e1438f6b3312ba7c5753934e6210"
+      },
+      {
+        "reference": "支払い 055",
+        "font_size": 34,
+        "image_sha256": "46c6626dbf9ec2ec3317e9eecc21155bbf1e0eefb73ba3fa82aedf1ab6e56191"
+      },
+      {
+        "reference": "処理完了 056",
+        "font_size": 32,
+        "image_sha256": "78acb08a818de1455a4d7d37228728a65a6de46d8a47810db6703082414e6d27"
+      },
+      {
+        "reference": "再試行 057",
+        "font_size": 30,
+        "image_sha256": "d15aff2a487965a9e01edd0737a2335be690f1b4d592ce252c45273be1371141"
+      },
+      {
+        "reference": "エラー 058",
+        "font_size": 28,
+        "image_sha256": "27799bb6d8c8c4776d4de95d58f5ee1a519be19e9ffa0ab6ff984e3fe22436dd"
+      },
+      {
+        "reference": "接続 059",
+        "font_size": 26,
+        "image_sha256": "56a946ae4497c9ace42b5ec114e055f96bdac13482323ca8a58f3b865242de73"
+      },
+      {
+        "reference": "060 / 開始",
+        "font_size": 34,
+        "image_sha256": "7cb4a5afc758592f5b212dbb062eccf989bdceb58ab81d55e1b3a74558168551"
+      },
+      {
+        "reference": "061 / 確認",
+        "font_size": 32,
+        "image_sha256": "c97e4bccb13dca1e4373ecee471df9905141d8671a9ad7ff806e6447c4186b38"
+      },
+      {
+        "reference": "062 / キャンセル",
+        "font_size": 30,
+        "image_sha256": "7dda5a5e7255a4084c0281ebae7621140630d305a63346b34a897e9bc2d747c1"
+      },
+      {
+        "reference": "063 / 保存",
+        "font_size": 28,
+        "image_sha256": "34718b8bf066f8dec34c6462fcbb266611faa919245f16f2c3c650a2111478e6"
+      },
+      {
+        "reference": "064 / 開く",
+        "font_size": 26,
+        "image_sha256": "aa28bdc4883d52608759719b269bf793d1767bcbfc296c5c3ed445779ec88459"
+      },
+      {
+        "reference": "065 / 閉じる",
+        "font_size": 34,
+        "image_sha256": "385b0f6cfa2a267d7f1141d3223290bb537a490f7bb52326593d5f457756301d"
+      },
+      {
+        "reference": "066 / 編集",
+        "font_size": 32,
+        "image_sha256": "fc8a229c8326c5e27d3afd4a447193b463711ce4e9349d45b746af58822988f2"
+      },
+      {
+        "reference": "067 / 表示",
+        "font_size": 30,
+        "image_sha256": "0b3f563cbaafffb97ea3dcf6e4241c7ae44e8e70d5545db45a6d399a5051dd5f"
+      },
+      {
+        "reference": "068 / 設定",
+        "font_size": 28,
+        "image_sha256": "cab2b8189b899a32d244ca9ddc63693b055ab5f291ab93cd7d21244e840ebff8"
+      },
+      {
+        "reference": "069 / 終了",
+        "font_size": 26,
+        "image_sha256": "581dcd5dea13f8c984f512fcad9e015cb9a6eaa5f9f0ae88d61ff685ad996d88"
+      },
+      {
+        "reference": "070 / 新規作成",
+        "font_size": 34,
+        "image_sha256": "65d34d23296b766428258430591c8f815902b0cdea5f1fd68bb0404a2f5c7f0f"
+      },
+      {
+        "reference": "071 / 印刷",
+        "font_size": 32,
+        "image_sha256": "b1d858ce5dce1add462ef39fab7152f6adf0261fb2129a6eadd6c4c7210feea3"
+      },
+      {
+        "reference": "072 / コピー",
+        "font_size": 30,
+        "image_sha256": "db336b621258360857ef0f54d56a895816fa754724e94015e04740fefede32d1"
+      },
+      {
+        "reference": "073 / 貼り付け",
+        "font_size": 28,
+        "image_sha256": "7d3efcb45bcbc4400f7ee9ec0947077397565439f583470bfa639ba1787993b7"
+      },
+      {
+        "reference": "074 / 削除",
+        "font_size": 26,
+        "image_sha256": "bd1cee0d37b8a4ea664cef1e741b41dcc269900feb2943fc8480adae2be82863"
+      },
+      {
+        "reference": "075 / 検索",
+        "font_size": 34,
+        "image_sha256": "6f3ce3f72c3b6011ea5504c3a23102e7907c2e987b7fbd1b8d4b1fd5f322dcbf"
+      },
+      {
+        "reference": "076 / ダウンロード",
+        "font_size": 32,
+        "image_sha256": "285c3b737c76c8caec0eb4ecf1045b174706404edf8705420b15f1baf18a2245"
+      },
+      {
+        "reference": "077 / アップロード",
+        "font_size": 30,
+        "image_sha256": "5eff5e19ac5d4b4235a9827ef8698e4c9869f86750a85c9ec277732469afe040"
+      },
+      {
+        "reference": "078 / 更新",
+        "font_size": 28,
+        "image_sha256": "73f5e482e60a71a3dbd09fb54bdea8a552bd3268dbd06ccfd30a3f1a27a259e2"
+      },
+      {
+        "reference": "079 / 次へ",
+        "font_size": 26,
+        "image_sha256": "e9df3c0e171b037d978948438534afbc53acec223b6d2dc62aa5f686362ddd3b"
+      },
+      {
+        "reference": "080 / 戻る",
+        "font_size": 34,
+        "image_sha256": "4331105791a54575e1bcc5deb5b2960173bbf914252b79faac1f0ead82905534"
+      },
+      {
+        "reference": "081 / ログイン",
+        "font_size": 32,
+        "image_sha256": "8648945762ff3739b328ed2fdc501508551101204ac16c1da06796d589782bdb"
+      },
+      {
+        "reference": "082 / 名前",
+        "font_size": 30,
+        "image_sha256": "63a269b1e3e916a3b77af8f248e52d6f951772e5529c9fbba62f694bf85e3bd6"
+      },
+      {
+        "reference": "083 / ヘルプ",
+        "font_size": 28,
+        "image_sha256": "9a1999fe850b0ee03b074b8b0c16b38e304e15d1afd2e41013d9e754ca234658"
+      },
+      {
+        "reference": "084 / 注文番号",
+        "font_size": 26,
+        "image_sha256": "c4e37fac6a194f8baf341238fd0ec0ab1dab804d1ba6d1157faac27fcf9b4452"
+      },
+      {
+        "reference": "支払い (85.9)",
+        "font_size": 34,
+        "image_sha256": "89d72305a4c39c4332ee99bb2b2b3526374e09ca101586d491154981a3734569"
+      },
+      {
+        "reference": "処理完了 (86.9)",
+        "font_size": 32,
+        "image_sha256": "fa72c41ee28869d8937a70a77b124c493c0f3282f1b87134d7a41d9e5b7db51e"
+      },
+      {
+        "reference": "再試行 (87.9)",
+        "font_size": 30,
+        "image_sha256": "d97fc4b0b548c145a7e4d9dee91202c7824f62ca158360901cd6989c44603772"
+      },
+      {
+        "reference": "エラー (88.9)",
+        "font_size": 28,
+        "image_sha256": "b68b9d81b0bc0eb1b2d48f346767519796841d956b7a00ed7368f8d197170098"
+      },
+      {
+        "reference": "接続 (89.9)",
+        "font_size": 26,
+        "image_sha256": "2130a9623717951869de46fe4ac8663bc65ba34cfe17aac07dcd7b889a759c16"
+      },
+      {
+        "reference": "開始 (90.9)",
+        "font_size": 34,
+        "image_sha256": "0cdf904c3507cb64bbbdadd5c30724e63a311321ef73d654296ac419c0a86228"
+      },
+      {
+        "reference": "確認 (91.9)",
+        "font_size": 32,
+        "image_sha256": "9f45e7769bb7d44ce528a2481b324214da38c30d172fbb367efbb4576d8e8eee"
+      },
+      {
+        "reference": "キャンセル (92.9)",
+        "font_size": 30,
+        "image_sha256": "f110fd7d42bd6eec4b9c53244ef930939f5b43999bd82802626065a8be470076"
+      },
+      {
+        "reference": "保存 (93.9)",
+        "font_size": 28,
+        "image_sha256": "04d15910bd9b7e97b7ac9770aa302e26a251fcf8a18b4c5c84b57eb88ad632d8"
+      },
+      {
+        "reference": "開く (94.9)",
+        "font_size": 26,
+        "image_sha256": "3c3790e7645200cfed848343ed688ad41ef72929d1a7083a312a431794849df9"
+      },
+      {
+        "reference": "閉じる (95.9)",
+        "font_size": 34,
+        "image_sha256": "a0415db89a93ae92c15288dd532abdecf8284e1298adb4f44889aecd22220184"
+      },
+      {
+        "reference": "編集 (96.9)",
+        "font_size": 32,
+        "image_sha256": "fb3b01c08db03c941f5a40c10de9a903c0214ff9f7f6a486858f6e1b125804d8"
+      },
+      {
+        "reference": "表示 (97.9)",
+        "font_size": 30,
+        "image_sha256": "0a65d07b2b7e7884fd84005a4bde13f5d0b399c88d8747fb8804ed770982bb36"
+      },
+      {
+        "reference": "設定 (98.9)",
+        "font_size": 28,
+        "image_sha256": "f93124851b15823808ba73e4b01cb6ebb51f4c7b67e2090499c3920a4560d2f7"
+      },
+      {
+        "reference": "終了 (99.9)",
+        "font_size": 26,
+        "image_sha256": "a109fc8a55a2a2ddce87fa075638a6fb579dd05dcb746e4c60b7ba12b24d4680"
+      }
+    ]
+  }
+}

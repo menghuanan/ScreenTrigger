@@ -22,10 +22,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from ...storage.errors import StorageError
+from ...storage.fsops import write_atomic_bytes
 from ...types.capabilities import ModelManifest, validate_model_manifest
 from ..types import RecognitionError
 
@@ -51,6 +53,11 @@ ENV_MODELS_DIR: str = "ST_MODELS_DIR"
 
 #: 单模型 manifest 文件名（02 磁盘布局）。
 MODEL_MANIFEST_NAME: str = "manifest.json"
+
+# Previous unmodified project metadata, normalized to LF for Windows and Git checkouts.
+_PREVIOUS_METADATA = {
+    "PP-OCRv6_medium_rec": "552be2788d627710d2795bf3b21908429c65c7052fc16b82123a31d55890c6c6",
+}
 
 #: ``capabilities[ocr].reason`` 固定规范格式（Q8）的字段顺序。
 REASON_PREFIX: str = "OCR"
@@ -328,7 +335,7 @@ def resolve_library_root(override: Optional[str] = None) -> Tuple[str, str]:
 def seed_repo_model_metadata(models_dir: str) -> List[str]:
     """把仓内 ``models/<id>/manifest.json``（**仅元数据**）落到目标 ``models_dir``。
 
-    幂等：目标已存在则跳过（不覆盖用户/既有数据）。返回本次新增的 model_id 列表。
+    幂等：仅更新与旧版出厂哈希相符的元数据，保留用户文件。返回本次写入的 model_id。
     失败（权限/IO）静默跳过——**不阻断**引擎启动；调用方以返回值为准（可审计）。
     """
     if not isinstance(models_dir, str) or not models_dir:
@@ -342,12 +349,16 @@ def seed_repo_model_metadata(models_dir: str) -> List[str]:
             continue
         target_dir = os.path.join(models_dir, model_id)
         target = os.path.join(target_dir, MODEL_MANIFEST_NAME)
-        if os.path.isfile(target):
-            continue
         try:
-            os.makedirs(target_dir, exist_ok=True)
-            shutil.copyfile(source, target)
-        except OSError:
+            if os.path.isfile(target):
+                previous = _PREVIOUS_METADATA.get(model_id)
+                if not previous or os.path.islink(target):
+                    continue
+                data = Path(target).read_bytes().replace(b"\r\n", b"\n")
+                if hashlib.sha256(data).hexdigest() != previous:
+                    continue
+            write_atomic_bytes(target, Path(source).read_bytes())
+        except (OSError, StorageError):
             continue
         seeded.append(model_id)
     return seeded

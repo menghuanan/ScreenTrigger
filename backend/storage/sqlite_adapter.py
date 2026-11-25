@@ -10,9 +10,21 @@ SQLite 依赖**（不 import sqlite3，避免未实现路径被误用）。
 from __future__ import annotations
 
 import abc
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Protocol, Sequence, Tuple, runtime_checkable
 
 from .catalog import CatalogSnapshot
+
+if TYPE_CHECKING:
+    from backend.targets.repository import CatalogChange, CommitResult
+
+
+@runtime_checkable
+class RepositoryPort(Protocol):
+    """The JSON implementation and a future adapter expose the same snapshot/CAS contract."""
+
+    def read_snapshot(self) -> CatalogSnapshot: ...
+    def commit(self, change: CatalogChange, expected_generation: Optional[str]) -> CommitResult: ...
+    def close(self) -> None: ...
 
 SQLITE_SCHEMA_VERSION: int = 2
 
@@ -65,7 +77,7 @@ MIGRATION_STEPS: Tuple[str, ...] = (
 )
 
 
-class SQLiteAdapter(abc.ABC):
+class SQLiteAdapter(RepositoryPort, abc.ABC):
     """Repository 的 SQLite 实现契约（首版仅接口；须通过同一合约测试）。"""
 
     @abc.abstractmethod

@@ -279,6 +279,25 @@ internal static class Program
             Require(outcomes.All(s=>s is "ok" or "CANCELLED"),string.Join(",",outcomes));
             return new {count=pending.Count,busy,stopResult,cancelled,outcomes};
         });
+        await Check("independent-monitor-stats-and-terminal-state",() =>
+        {
+            var pending = new Queue<Action>();
+            var seen = new List<EngineEvent>();
+            var bus = new SessionEvents(action => { pending.Enqueue(action); return true; }, () => throw new Exception("overflow"));
+            using var listener = bus.Subscribe(seen.Add);
+            void Send(int seq, string name, object payload) => bus.Accept(Data(new {protocol_version=1, type="event", session_id="stats", seq, name, payload}));
+            Send(1, "system_ready", new {});
+            Send(2, "recognition_stats", new {execution_id="a", effective_hz=1});
+            Send(3, "recognition_stats", new {execution_id="b", effective_hz=5});
+            Send(4, "recognition_stats", new {execution_id="a", effective_hz=10});
+            while (pending.TryDequeue(out var drain)) drain();
+            Send(5, "script_state_changed", new {execution_id="a", status="completed"});
+            Send(6, "recognition_stats", new {execution_id="a", effective_hz=30});
+            while (pending.TryDequeue(out var finish)) finish();
+            var stats = seen.Where(e => e.Name == "recognition_stats").Select(e => e.Payload.GetProperty("effective_hz").GetInt32()).ToArray();
+            Require(stats.SequenceEqual(new[]{5, 10}) && seen.Last().Sequence == 5, "Stats crossed roots or survived terminal state");
+            return Task.FromResult<object?>(new {stats, terminal=seen.Last().Sequence});
+        });
         await Check("gap-read-recovery-and-detached-window",async () =>
         {
             string session=host.Events.Session!;

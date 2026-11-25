@@ -268,7 +268,7 @@ const HOST_COMMANDS: [&str; 5] = [
 
 /// 引擎业务命令（§5.2 第三类；转发 Python → 骨架期 UNKNOWN_COMMAND，
 /// 业务 handler 属 M03–M07）。
-const ENGINE_COMMANDS: [&str; 38] = [
+const ENGINE_COMMANDS: [&str; 44] = [
     // 识别测试（异步 job）。TASK-013：6 条识别命令由 Python 侧 register_vision_commands
     // 注册（job result：match_*/detect_color={matches,truncated}（Q4/02）；recognize_text={blocks}；
     // 条件树两命令=RecognitionResult）。无命令集合变更——total==62 断言不变。
@@ -306,6 +306,12 @@ const ENGINE_COMMANDS: [&str; 38] = [
     "get_script_state",
     "query_execution",
     "get_execution_logs",
+    "list_execution_history",
+    "clear_execution_logs",
+    "list_catalog_backups",
+    "create_catalog_backup",
+    "preview_catalog_restore",
+    "restore_catalog_backup",
     "add_breakpoint",
     "remove_breakpoint",
     "list_breakpoints",
@@ -419,7 +425,7 @@ impl StopGate for NullStopGate {
 }
 
 // ---------------------------------------------------------------------------
-// 单元测试（路由表完备性：03 命令目录 62 条全部可路由、分类正确）
+// 单元测试（路由表完备性：03 命令目录 64 条全部可路由、分类正确）
 // ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
@@ -443,15 +449,19 @@ mod tests {
 
     #[test]
     fn routing_table_covers_full_command_catalog() {
-        // 03 命令目录 62 条 = 框架 9（含 config 三命令，TASK-006 §2.3）
+        // 03 命令目录 68 条 = 框架 9（含 config 三命令，TASK-006 §2.3）
         //   + 宿主-Python 7（TASK-007/009 已实现）+ 框选 3（TASK-008 Rust 处理）
-        //   + 窗口 5（TASK-018 前 HostDenied）+ 引擎 38；无重叠、无遗漏
+        //   + 窗口 5（TASK-018 前 HostDenied）+ 引擎 44；无重叠、无遗漏
         let total = FRAMEWORK_COMMANDS.len()
             + HOST_PYTHON_COMMANDS.len()
             + HOST_HANDLED_COMMANDS.len()
             + HOST_COMMANDS.len()
             + ENGINE_COMMANDS.len();
-        assert_eq!(total, 62);
+        assert_eq!(total, 68);
+        for cmd in ["list_execution_history", "clear_execution_logs", "list_catalog_backups",
+                    "create_catalog_backup", "preview_catalog_restore", "restore_catalog_backup"] {
+            assert!(ENGINE_COMMANDS.contains(&cmd));
+        }
         for cmd in FRAMEWORK_COMMANDS
             .iter()
             .chain(HOST_PYTHON_COMMANDS.iter())

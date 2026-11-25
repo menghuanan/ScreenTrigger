@@ -267,7 +267,7 @@ pub fn with_control(
             gate.pause(id);
             crate::input::release_closed();
         }
-        "resume_script" => gate.resume(id),
+        "resume_script" | "continue_execution" | "step_into" | "step_over" | "step_out" => gate.resume(id),
         _ => {}
     }
     let result = submit();

@@ -661,40 +661,64 @@ class SidecarApp:
             register_vision_commands(self.dispatcher, vision_service)
 
         self.executions = None
+        self.history_store = None
+        self._startup_history_warning = None
+
+        def emit(name, payload):
+            self.transport.send({"protocol_version": PROTOCOL_VERSION, "session_id": self.session.session_id,
+                                 "type": "event", "seq": self.health.next_seq(), "name": name,
+                                 "timestamp": format_timestamp(self._clock()), "payload": payload})
+
+        def handler(owner, name):
+            def invoke(envelope):
+                from backend.ipc.dispatcher import DispatcherError
+                try:
+                    return owner.command(name, envelope["params"])
+                except Exception as exc:
+                    error = exc.to_dict() if hasattr(exc, "to_dict") else {}
+                    raise DispatcherError(error.get("code", "INTERNAL_ERROR"), str(exc),
+                                          error.get("details"), error.get("retryable", False)) from exc
+            return invoke
+
+        if script_service is not None and getattr(args, "data_dir", None):
+            from backend.history.store import HistoryStore
+            def history_warning(message):
+                self._log(message)
+                payload = {"error": {"code":"STORAGE_ERROR", "message":message,
+                                     "details":{"service":"history"}, "retryable":True}}
+                if self.health.event_seq:
+                    emit("system_error", payload)
+                else:
+                    self._startup_history_warning = lambda: emit("system_error", payload)
+            self.history_store = HistoryStore(args.data_dir, history_warning)
+            for name in ("list_execution_history", "get_execution_logs", "clear_execution_logs"):
+                self.dispatcher.register(name, handler(self.history_store, name))
+            self.dispatcher.enable_workers("get_execution_logs", "clear_execution_logs")
+
         if script_service is not None and self._lua_version is not None:
             from backend.script.controller import ExecutionController
-            from backend.ipc.dispatcher import DispatcherError
-
+            from backend.debug.service import STEPS, BREAKPOINTS
             def beep(hz, milliseconds):
                 import winsound
                 winsound.Beep(hz, milliseconds)
 
-            def emit(name, payload):
-                self.transport.send({"protocol_version": PROTOCOL_VERSION,
-                                     "session_id": self.session.session_id, "type": "event",
-                                     "seq": self.health.next_seq(), "name": name,
-                                     "timestamp": format_timestamp(self._clock()), "payload": payload})
-
             settings = self.config_service.get_config if self.config_service else dict
             self.executions = ExecutionController(script_service, capture_service, vision_service,
-                                                  self.input_proxy, settings, emit, beep)
+                                                  self.input_proxy, settings, emit, beep, self.history_store)
             script_service.repository.attach_reference_port(self.executions.referenced)
-            def handler(name):
-                def invoke(envelope):
-                    try:
-                        return self.executions.command(name, envelope["params"])
-                    except Exception as exc:
-                        error = exc.to_dict() if hasattr(exc, "to_dict") else {}
-                        raise DispatcherError(error.get("code", "INTERNAL_ERROR"), str(exc),
-                                              error.get("details"), error.get("retryable", False)) from exc
-                return invoke
-            for name in ("execute_script", "get_script_state", "query_execution", "get_execution_logs",
-                         "pause_script", "resume_script", "stop_script"):
-                self.dispatcher.register(name, handler(name))
-            self.dispatcher.enable_workers("resume_script")
+            for name in (*STEPS, *BREAKPOINTS, "get_variables", "get_stack", "execute_script", "start_monitor",
+                         "get_script_state", "query_execution", "pause_script", "resume_script", "stop_script"):
+                self.dispatcher.register(name, handler(self.executions, name))
+            if self.history_store is None:
+                self.dispatcher.register("get_execution_logs", handler(self.executions, "get_execution_logs"))
+            self.dispatcher.enable_workers("resume_script", *STEPS, "add_breakpoint", "start_monitor")
             self.dispatcher.register("stop_active_executions", lambda env: self.executions.stop_all())
             self.dispatcher.register("binding_state_changed",
                                      lambda env: self.executions.binding_changed(env["params"]))
+
+        if script_service is not None and getattr(script_service, "repository", None) is not None:
+            from backend.storage.backup_commands import register_backup_commands
+            register_backup_commands(self.dispatcher, self.jobs, script_service.repository, self.executions, emit)
 
     # -- 日志 ---------------------------------------------------------------
 
@@ -778,6 +802,9 @@ class SidecarApp:
         }
         self.transport.send(envelope)
         self.health.to_ready()
+        if self._startup_history_warning:
+            self._startup_history_warning()
+            self._startup_history_warning = None
         self._log("system_ready 已发送（seq=%d）" % self.health.event_seq)
 
     # -- 框架命令 handler（经 dispatcher 命令表路由） ---------------------------
@@ -824,6 +851,10 @@ class SidecarApp:
         self._shutdown_done = True
         if self.executions is not None:
             self.executions.stop_all("engine_exit")
+            with self.executions.changed:
+                self.executions.changed.wait_for(lambda: not self.executions.roots, timeout=1)
+        if self.history_store is not None:
+            self.history_store.close()
         self.transport.close_stdout()
         self.transport.join_writer(timeout=5.0)
         self._log("sidecar 退出")
@@ -1182,6 +1213,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     """
     configure_stdio()
     args = SidecarArgs.parse(argv)
+    from backend.storage.lock import engine_session
+    from backend.storage.errors import StorageError
+    try:
+        with engine_session(args.data_dir):
+            return _run_engine(args)
+    except StorageError as exc:
+        sys.stderr.write(exc.message + "\n")
+        return 2
+
+
+def _run_engine(args: SidecarArgs) -> int:
     # Terminal replies must be reliable. Losing the output channel ends the owning session
     # so that the host closes the input gate and fails its outstanding requests.
     transport = StdioTransport(stdout=sys.stdout, stdin=sys.stdin, stderr=sys.stderr,

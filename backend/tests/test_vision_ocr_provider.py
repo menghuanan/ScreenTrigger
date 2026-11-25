@@ -23,6 +23,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _REPO_ROOT not in sys.path:
@@ -40,6 +41,7 @@ from backend.vision.cancel import CancelFlag, NullCancelToken  # noqa: E402
 from backend.vision.types import RecognitionError  # noqa: E402
 from backend.vision.providers.ocr import OCREngineProvider  # noqa: E402
 from backend.vision.textmatch import translate_polygon_to_space  # noqa: E402
+from backend.types.region import Rect  # noqa: E402
 
 
 class _ArrayLike:
@@ -144,6 +146,20 @@ class InitializeTest(unittest.TestCase):
 
 
 class RecognizeTest(unittest.TestCase):
+    def test_korean_detector_limit_uses_cropped_long_edge(self):
+        options = {"text_det_limit_type": "max", "text_det_limit_side_len": 512}
+        for language in ("ko", "zh"):
+            provider, reader, _, _ = _make_provider(languages=(language,), primary_language=language)
+            self.addCleanup(provider.close)
+            engine = FakePaddleOCR.instances[0]
+            for width, height, roi, small in ((1024, 32, None, True), (32, 1025, None, False),
+                                             (1025, 32, None, False), (1800, 40, Rect(200, 0, 1024, 40), True)):
+                with self.subTest(language=language, width=width, height=height, roi=roi):
+                    reader.add("src", width=width, height=height)
+                    with patch.object(engine, "predict", wraps=engine.predict) as prediction:
+                        provider.recognize(make_frame(image_id="src"), {"model_id": "fake_rec"}, NullCancelToken(), roi)
+                    self.assertEqual(prediction.call_args.kwargs, options if language == "ko" and small else {})
+
     def test_text_block_conversion(self):
         provider, reader, _lib, _models = _make_provider(
             scripted=_script(["Hello"], [0.9], [[[0, 0], [8, 0], [8, 8], [0, 8]]])

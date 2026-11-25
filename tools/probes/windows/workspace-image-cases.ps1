@@ -90,5 +90,5 @@ function Test-PersistedTarget {
     Invoke-Element PauseExecution
     Wait-Text RunStatus '运行中' | Out-Null
     Invoke-Element StopExecution
-    $observations.ui_stop = Wait-Text RunStatus '已停止'
+    $observations.ui_stop = Wait-Text RunStatus '已取消'
 }

@@ -5,7 +5,8 @@
   "sources": [
     "reports/TASK-001/probe-result.json",
     "reports/TASK-003/ocr-lang-probe.json",
-    "reports/raw/TASK-015/q12-lang-dirs.json"
+    "reports/raw/TASK-015/q12-lang-dirs.json",
+    "docs/decisions/技术决策.md#p3-ja-mapping"
   ],
   "library_root_hint": "~/.paddlex/official_models",
   "first_batch_languages": [
@@ -16,6 +17,7 @@
   ],
   "verified_languages": [
     "en",
+    "ja",
     "ko",
     "zh"
   ],
@@ -29,6 +31,7 @@
       "recognition_model": "PP-OCRv6_medium_rec",
       "languages": [
         "en",
+        "ja",
         "zh"
       ]
     },
@@ -220,6 +223,7 @@
       "kind": "rec",
       "languages": [
         "en",
+        "ja",
         "zh"
       ],
       "primary_language": null,

@@ -57,10 +57,6 @@ pub const DIAGNOSTICS_TAIL_LINES: usize = 50;
 /// 连续畸形帧关会话阈值（TASK-005 设计 §6.5：03 只有规则无数值，取 10；
 /// 中间插入任何合法帧即清零；§9-D1 随文档同步冻结）。
 pub const CONSECUTIVE_MALFORMED_LIMIT: usize = 10;
-/// 打包态 sidecar 可执行名（PyInstaller 产物，TASK-014 接入）。
-/// 仅 release 构建使用（debug 下允许未使用告警豁免）。
-#[cfg_attr(debug_assertions, allow(dead_code))]
-const PACKAGED_SIDECAR_NAME: &str = "screentrigger-engine-x86_64-pc-windows-msvc.exe";
 
 // ---------------------------------------------------------------------------
 // 视图结构（§4.1，serde snake_case，与 IPC/数据契约风格一致）
@@ -847,6 +843,16 @@ impl SupervisorHandle {
                 eprintln!("[supervisor] [事件未投递] {name}: {value}");
             })
         });
+        // Close the input path and release owned keys before exposing a breakpoint to any window.
+        let emit: crate::ipc::eventbus::EmitFn = Arc::new(move |name, value| {
+            if name == "script_state_changed" && value["payload"]["status"] == "debug_paused" {
+                if let (Some(gate), Some(id)) = (crate::input::shared_gate(), value["payload"]["execution_id"].as_str()) {
+                    gate.pause(id);
+                    crate::input::release_closed();
+                }
+            }
+            emit(name, value);
+        });
         let now = Instant::now;
         let bus = EventBus::new(
             &session_id,
@@ -1024,6 +1030,17 @@ impl SupervisorHandle {
         let mut cmd = development_venv_command(&program).unwrap_or_else(|| Command::new(&program));
         #[cfg(not(all(windows, debug_assertions)))]
         let mut cmd = Command::new(&program);
+        #[cfg(not(debug_assertions))]
+        {
+            let resources = sidecar_working_dir().join("resources");
+            cmd.env("ST_OCR_MODELS_DIR", resources.join("weights"))
+                .env("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+                .env("PADDLE_PDX_CACHE_HOME", resolve_data_dir().join("cache").join("paddlex"))
+                .env_remove("ST_MODELS_DIR")
+                .env_remove("PYTHONPATH")
+                .env_remove("PYTHONHOME")
+                .env_remove("__PYVENV_LAUNCHER__");
+        }
         cmd.args(&args)
             .current_dir(sidecar_working_dir())
             .stdin(child_stdio.stdin)
@@ -1444,8 +1461,7 @@ fn localappdata_root() -> PathBuf {
 ///
 /// - 开发态：`SIDECAR_PYTHON` 环境变量优先；未设置时默认
 ///   `<仓库根>/.venv/Scripts/python.exe`；脚本为 `<仓库根>/backend/main.py`。
-/// - 打包态：`<资源目录>/binaries/screentrigger-engine-*.exe`（PyInstaller 产物，
-///   TASK-014 接入）；未找到时返回明确错误，**不回退系统 python**（07 §4）。
+/// - 打包态使用程序目录中的 CPython 与引擎入口。
 ///
 /// 返回（程序路径，参数数组——`--session-id` 与 `--data-dir`（TASK-006 §2.5，
 /// Python 侧必填）已注入）。
@@ -1477,22 +1493,16 @@ pub fn resolve_sidecar_command(session_id: &str) -> Result<(PathBuf, Vec<String>
             .parent()
             .ok_or("无法定位当前可执行目录")?
             .to_path_buf();
-        let sidecar = exe_dir.join("resources").join("binaries").join(PACKAGED_SIDECAR_NAME);
-        if !sidecar.is_file() {
-            return Err(format!(
-                "打包态 sidecar 尚未构建（期望路径：{}）——不回退系统 python（docs/07 §4）",
-                sidecar.display()
-            ));
+        let resources = exe_dir.join("resources");
+        let sidecar = resources.join("python/python.exe");
+        let script = resources.join("backend/main.py");
+        for path in [&sidecar, &script] {
+            if !path.is_file() {
+                return Err(format!("安装文件缺失，请修复安装：{}", path.display()));
+            }
         }
-        // 打包态不读取 SIDECAR_FAULT_SCENARIO（§4.2：--fault-scenario 仅测试路径使用）；
-        // PyInstaller exe 不带脚本路径参数，直接注入 --session-id + --data-dir
-        let mut args = vec![
-            "--session-id".to_string(),
-            session_id.to_string(),
-            "--data-dir".to_string(),
-            data_dir.to_string_lossy().to_string(),
-        ];
-        args.shrink_to_fit();
+        let mut args = vec!["-I".to_owned(), "-B".to_owned(), "-u".to_owned()];
+        args.extend(build_sidecar_args(&script, session_id, None, &data_dir));
         Ok((sidecar, args))
     }
 }

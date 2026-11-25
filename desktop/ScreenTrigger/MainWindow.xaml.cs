@@ -46,6 +46,7 @@ public sealed partial class MainWindow : Window
             host.AttachWindow(HandleWindowAction);
             mainSubscription = host.Events.Subscribe(ReceiveEvent);
             host.RecoveryFailed += ShowError;
+            host.RecoveryCompleted += RecoverExecutions;
             DiagnosticsButton.IsEnabled = true;
             healthTimer.Start();
             StartEngine(this, args);
@@ -55,9 +56,25 @@ public sealed partial class MainWindow : Window
 
     private async void ReceiveEvent(EngineEvent message)
     {
-        if (!closing && message.Name == "system_ready") RefreshHealth();
+        if (closing) return;
+        if (message.Name == "system_ready") RefreshHealth();
+        if (message.Name == "system_error" && message.Payload.TryGetProperty("error", out var fault))
+            Notice($"{fault.GetProperty("code")} · {fault.GetProperty("message")}");
+        if (ActiveExecution.SelectedItem is CatalogItem active &&
+            message.Payload.TryGetProperty("execution_id", out var eid) && active.Id == eid.GetString())
+        {
+            if (message.Name == "recognition_stats") RunStatus.Text = "监控 · " + Status.RunFeedback.Stats(message.Payload);
+            if (message.Name == "target_detected") RunStatus.Text = Status.RunFeedback.Match(message.Payload.GetProperty("result"));
+        }
         if (!closing && message.Name == "script_state_changed")
         {
+            var execution = message.Payload.GetProperty("execution_id").GetString()!;
+            runSequences[execution] = message.Sequence;
+            if (message.Payload.GetProperty("status").GetString() is "completed" or "failed" or "cancelled")
+            {
+                terminalSequenceOrder.Enqueue(execution);
+                if (terminalSequenceOrder.Count > 1000) runSequences.Remove(terminalSequenceOrder.Dequeue());
+            }
             try { await UpdateRun(message.Payload); } catch (Exception ex) { RunStatus.Text = ex.Message; }
         }
         if (!closing && message.Name == "selection_completed")
@@ -70,6 +87,17 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception ex) { ImageStatus.Text = ex.Message; }
         }
+    }
+
+    private async void RecoverExecutions(RecoverySnapshot snapshot)
+    {
+        try
+        {
+            foreach (var (id, state) in snapshot.Executions)
+                if (!closing && host?.Events.Session == snapshot.Session && runSequences.GetValueOrDefault(id) <= snapshot.Sequence)
+                    await UpdateRun(state);
+        }
+        catch (Exception ex) { if (!closing) ShowError(ex); }
     }
 
     private async void RefreshHealth()
@@ -116,6 +144,7 @@ public sealed partial class MainWindow : Window
         SetWorkspaceAvailability(ready, status.GetProperty("capabilities"));
         Health.Text = state switch { "ready" => "引擎就绪", "idle" => "引擎未启动", "starting" => "正在启动…",
             "stopping" => "正在停止…", "exited" => "引擎已退出", _ => state };
+        ServiceStatus.Text = Health.Text;
         StartButton.IsEnabled = state is "idle" or "exited";
         StopButton.IsEnabled = ready;
         var error = status.GetProperty("last_error");
@@ -199,8 +228,12 @@ public sealed partial class MainWindow : Window
             var ids = manifests.SelectMany(m => m.ModelIds).Distinct().ToArray();
             var verified = manifests.SelectMany(m => m.SupportedLanguages).Distinct().ToArray();
             string[] firstBatch = ["zh", "en", "ja", "ko"];
-            static string Describe(IEnumerable<string> ids) => string.Join("、", ids.Select(id =>
-                id switch { "zh" => "中文", "en" => "英文", "ja" => "日文", "ko" => "韩文", _ => id }));
+            static string Describe(IEnumerable<string> ids)
+            {
+                var labels = ids.Select(id => id switch { "zh" => "中文", "en" => "英文", "ja" => "日文", "ko" => "韩文", _ => id });
+                var description = string.Join("、", labels);
+                return description.Length == 0 ? "无" : description;
+            }
             ModelList.Text = ids.Length == 0 ? "引擎未返回已安装的 OCR 模型。" :
                 $"已验证语言：{Describe(verified)}\n待验证语言：{Describe(firstBatch.Except(verified))}\n{string.Join("\n", ids)}";
             ModelList.Visibility = Visibility.Visible;

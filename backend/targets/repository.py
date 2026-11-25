@@ -145,7 +145,6 @@ class Repository:
         if not isinstance(data_dir, str) or not data_dir:
             raise ValueError("data_dir 必须为非空字符串")
         self._root = DataRoot(data_dir)
-        self._lock = DataRootLock(data_dir)
         self._catalog = Catalog(
             self._root,
             logger=logger,
@@ -220,7 +219,7 @@ class Repository:
         """
         if not isinstance(change, CatalogChange):
             raise invalid_params("change", "change 必须为 CatalogChange")
-        with self._lock:
+        with DataRootLock(self._root.root):
             # S1：读 current + 冲突校验（实体 revision 先于 generation，Q5）
             current = self._catalog.read_current()
             current_gen = current["generation"] if current else None

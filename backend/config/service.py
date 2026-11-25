@@ -325,6 +325,7 @@ class ConfigService:
         self._backup_path: str = os.path.join(data_dir, "backups", "config.json.bak")
         self._state: str = self.STATE_UNINITIALIZED
         self._doc: Optional[Dict[str, Any]] = None
+        self.recovered_revision: Optional[int] = None
         self._lock = threading.RLock()
         if logger is not None:
             self._log: Logger = logger
@@ -423,6 +424,7 @@ class ConfigService:
         except ConfigError as exc:
             self._state = self.STATE_READ_ONLY_FAILED
             raise
+        self.recovered_revision = backup_doc["revision"]
         self._doc = backup_doc
         self._state = self.STATE_READY
         self._log("%s；已从备份恢复（revision=%d）" % (reason, backup_doc["revision"]))
@@ -436,6 +438,13 @@ class ConfigService:
             return copy.deepcopy(self._load_from_disk())
 
     # -- 写（§5.4 算法） ---------------------------------------------------------
+
+    def describe(self):
+        with self._lock:
+            result = {"config": self.get_config(), "data_root": os.path.abspath(self._data_dir)}
+            if self.recovered_revision is not None:
+                result["recovery"] = {"revision": self.recovered_revision}
+            return result
 
     def update_config(self, patch: Any, expected_revision: Any) -> Dict[str, Any]:
         with self._lock:
@@ -580,7 +589,7 @@ def register_config_commands(dispatcher: Any, service: ConfigService) -> None:
         return _handler
 
     dispatcher.register(
-        "get_config", _wrap("get_config", lambda params: {"config": service.get_config()})
+        "get_config", _wrap("get_config", lambda params: service.describe())
     )
     dispatcher.register(
         "update_config",

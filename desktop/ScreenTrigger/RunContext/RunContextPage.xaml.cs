@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using ScreenTrigger.Host;
+using Windows.UI.ViewManagement;
 
 namespace ScreenTrigger.RunContext;
 
@@ -13,13 +15,37 @@ public sealed partial class RunContextPage : UserControl
     private string? bindingId;
     private long configRevision;
     private string? lastRunConfig, clientRunId;
+    private long? pointerPress;
+    private (long Press, string Config)? acceptedPointerRun;
+    private readonly UISettings inputSettings = new();
     private readonly bool canExecute;
 
-    internal RunContextPage(HostClient client, bool luaAvailable)
+    private readonly bool monitor;
+    private string? selectionId, executionId;
+
+    internal RunContextPage(HostClient client, bool luaAvailable, bool monitorMode, bool ocrAvailable)
     {
         InitializeComponent();
+        Execute.AddHandler(PointerPressedEvent, new PointerEventHandler((_, e) =>
+        {
+            if (e.GetCurrentPoint(Execute).Properties.IsLeftButtonPressed)
+                pointerPress = Environment.TickCount64;
+        }), true);
+        Execute.AddHandler(KeyDownEvent, new KeyEventHandler((_, _) => pointerPress = null), true);
+        Execute.PointerCanceled += (_, _) => pointerPress = null;
         host = client;
         canExecute = luaAvailable;
+        monitor = monitorMode;
+        Heading.Text = monitor ? "区域监控" : "运行设置";
+        OcrNotice.Visibility = ocrAvailable ? Visibility.Collapsed : Visibility.Visible;
+        if (monitor)
+        {
+            Scripts.Visibility = Mode.Visibility = Arguments.Visibility = Visibility.Collapsed;
+            Targets.Header = "监控目标";
+            Targets.Visibility = Policy.Visibility = Visibility.Visible;
+            Execute.Content = "启动监控";
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(Execute, "StartMonitor");
+        }
         Arguments.Text = "{}";
         commands = new(client, this, Feedback);
         Loaded += OnLoaded;
@@ -29,10 +55,31 @@ public sealed partial class RunContextPage : UserControl
     {
         subscription ??= host.Events.Subscribe(message =>
         {
+            if (selectionId != null && message.Payload.TryGetProperty("selection_id", out var sid) && sid.GetString() == selectionId)
+            {
+                if (message.Name == "selection_completed")
+                {
+                    Region.Text = message.Payload.GetProperty("region").GetRawText();
+                    selectionId = null;
+                    PickRegion.Focus(FocusState.Programmatic);
+                }
+                else if (message.Name == "selection_cancelled")
+                {
+                    selectionId = null;
+                    PickRegion.Focus(FocusState.Programmatic);
+                }
+            }
+            if (executionId != null && message.Payload.TryGetProperty("execution_id", out var run) && run.GetString() == executionId)
+            {
+                if (message.Name == "recognition_stats") Observation.Text = Status.RunFeedback.Stats(message.Payload);
+                if (message.Name == "target_detected") Feedback.Text = Status.RunFeedback.Match(message.Payload.GetProperty("result"));
+                if (message.Name == "script_state_changed") _ = ReadRun(executionId);
+            }
             if (message.Name == "window_changed" && message.Payload.GetProperty("binding_id").GetString() == bindingId)
                 Feedback.Text = $"窗口状态 {message.Payload.GetProperty("state")} · 几何修订 {message.Payload.GetProperty("geometry_revision")}";
         });
         Refresh(sender, args);
+        if (executionId != null) _ = ReadRun(executionId);
     }
     private async void Refresh(object sender, RoutedEventArgs args) => await commands.Run(async () =>
     {
@@ -49,7 +96,9 @@ public sealed partial class RunContextPage : UserControl
         Fill(Displays, screens);
         await LoadCatalog(Scripts, "list_scripts");
         await LoadCatalog(Targets, "list_targets");
-        Execute.IsEnabled = canExecute && Scripts.SelectedItem != null;
+        Policy.SetScripts((List<CatalogItem>)Scripts.ItemsSource);
+        Execute.IsEnabled = canExecute && (monitor ? Targets.SelectedItem != null : Scripts.SelectedItem != null);
+        if (!Execute.IsEnabled) Feedback.Text = !canExecute ? "执行引擎不可用。" : monitor ? "请先在目标库保存一个目标。" : "请先保存脚本。";
         await ReadKeys();
     });
     private async Task ReadBinding()
@@ -58,6 +107,8 @@ public sealed partial class RunContextPage : UserControl
         var bound = data.GetProperty("binding");
         bindingId = bound.ValueKind == JsonValueKind.Object ? bound.GetProperty("binding_id").GetString() : null;
         Displays.IsEnabled = bindingId == null;
+        PickRegion.IsEnabled = bindingId == null;
+        PickRegion.Content = bindingId == null ? "在显示器上框选区域" : "绑定窗口使用客户区坐标，请在上方指定区域";
         if (bindingId == null) { BindingLabel.Text = "未绑定窗口。键盘输入发往当前前台窗口。"; return; }
         var info = await commands.Call("get_window_info", new { window_id = bound.GetProperty("window_id").GetString() });
         var w = info.GetProperty("window");
@@ -87,37 +138,87 @@ public sealed partial class RunContextPage : UserControl
     private string? RunMode => (Mode.SelectedItem as ComboBoxItem)?.Tag as string;
     private void ChangeMode(object sender, SelectionChangedEventArgs args)
     {
-        if (Count == null || Targets == null) return;
+        if (Count == null || Targets == null || monitor) return;
         Count.Visibility = RunMode == "count" ? Visibility.Visible : Visibility.Collapsed;
         Targets.Visibility = RunMode == "until_target" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void StartRun(object sender, RoutedEventArgs args) => await commands.Run(async () =>
     {
-        if (Scripts.SelectedItem is not CatalogItem script) return;
-        using var parameters = JsonDocument.Parse(Arguments.Text);
+        var press = pointerPress;
+        pointerPress = null;
         using var region = JsonDocument.Parse(string.IsNullOrWhiteSpace(Region.Text) ? "null" : Region.Text);
         var config = new Dictionary<string, object?> {
-            ["script_id"] = script.Id, ["args"] = parameters.RootElement, ["mode"] = RunMode,
-            ["iterations"] = RunMode == "count" ? Count.Value : null,
-            ["stop_target_id"] = RunMode == "until_target" ? (Targets.SelectedItem as CatalogItem)?.Id : null,
             ["display_id"] = bindingId == null ? (Displays.SelectedItem as CatalogItem)?.Id : null,
             ["binding_id"] = bindingId, ["allow_exit"] = AllowExit.IsChecked == true, ["region"] = region.RootElement,
-            ["frequency_hz"] = Frequency.Value, ["total_timeout_ms"] = Timeout.Value
+            ["debug"] = EnableDebug.IsChecked == true, ["frequency_hz"] = Frequency.Value, ["total_timeout_ms"] = Timeout.Value
         };
+        if (monitor)
+        {
+            config["target_id"] = (Targets.SelectedItem as CatalogItem)?.Id;
+            Policy.Apply(config);
+        }
+        else
+        {
+            config["script_id"] = (Scripts.SelectedItem as CatalogItem)?.Id;
+            config["args"] = JsonSerializer.Deserialize<JsonElement>(Arguments.Text);
+            config["mode"] = RunMode;
+            config["iterations"] = RunMode == "count" ? Count.Value : null;
+            config["stop_target_id"] = RunMode == "until_target" ? (Targets.SelectedItem as CatalogItem)?.Id : null;
+        }
         var signature = JsonSerializer.Serialize(config);
+        // A fast local reply may re-enable the button before Windows delivers the second click.
+        if (press is long current && acceptedPointerRun is { } previous && previous.Config == signature &&
+            current - previous.Press <= inputSettings.DoubleClickTime)
+            return;
         if (signature != lastRunConfig || clientRunId == null) clientRunId = Guid.NewGuid().ToString();
         lastRunConfig = signature;
         config["client_run_id"] = clientRunId;
-        var result = await commands.Call("execute_script", config);
+        var result = await commands.Call(monitor ? "start_monitor" : "execute_script", config);
+        executionId = result.GetProperty("execution_id").GetString();
+        acceptedPointerRun = press is long accepted ? (accepted, signature) : null;
         clientRunId = null;
-        Feedback.Text = $"已受理执行 {result.GetProperty("execution_id")}";
+        Feedback.Text = $"已受理执行 {executionId}";
+        await ReadRun(executionId!);
     });
+
+    private async Task ReadRun(string id)
+    {
+        try
+        {
+            var data = await commands.Call("get_script_state", new { execution_id = id });
+            if (id == executionId) Observation.Text = Status.RunFeedback.State(data.GetProperty("state"));
+        }
+        catch (Exception ex) { if (id == executionId) Feedback.Text = ex.Message; }
+    }
+
+    private async void SelectRegion(object sender, RoutedEventArgs args) => await commands.Run(async () =>
+    {
+        if (Displays.SelectedItem is not CatalogItem display) return;
+        var accepted = await commands.Call("start_selection_mode", new { display_id = display.Id });
+        selectionId = accepted.GetProperty("selection_id").GetString();
+    });
+
+    private void ResetDraft(object sender, RoutedEventArgs args)
+    {
+        Mode.SelectedIndex = 0; Count.Value = Frequency.Value = 1; Timeout.Value = 0;
+        Arguments.Text = "{}"; Region.Text = ""; AllowExit.IsChecked = EnableDebug.IsChecked = false;
+        Scripts.SelectedIndex = Targets.SelectedIndex = Displays.SelectedIndex = 0;
+        Policy.Reset(); lastRunConfig = clientRunId = null;
+        Feedback.Text = "已恢复本次草稿的默认值。";
+    }
 
     private async Task ReadKeys()
     {
         var data = await commands.Call("get_config", new { });
-        ShowKeys(data.GetProperty("config"));
+        var config = data.GetProperty("config");
+        if (configRevision == 0)
+        {
+            Frequency.Value = config.GetProperty("recognition").GetProperty("default_frequency_hz").GetDouble();
+            Timeout.Value = config.GetProperty("execution").GetProperty("total_timeout_ms").GetDouble();
+            AllowExit.IsChecked = config.GetProperty("input").GetProperty("allow_exit").GetBoolean();
+        }
+        ShowKeys(config);
     }
 
     private void ShowKeys(JsonElement config)

@@ -8,13 +8,15 @@ namespace ScreenTrigger.Scripts;
 public sealed partial class ScriptsPage : UserControl
 {
     private readonly WorkspaceCommands commands;
+    private readonly HostClient host;
+    private Debug.DebugPanel? debugger;
     private CatalogItem? edited;
     private int offset;
     private string original = "";
 
     internal ScriptsPage(HostClient host)
     {
-        InitializeComponent(); commands = new(host, this, Feedback);
+        InitializeComponent(); this.host = host; commands = new(host, this, Feedback);
         original = Snapshot();
         Loaded += Initialize;
     }
@@ -35,12 +37,24 @@ public sealed partial class ScriptsPage : UserControl
         commands.Confirm("放弃脚本草稿？", "更换脚本后，尚未保存的源码和参数将丢失。", "放弃草稿");
     private void Edit(CatalogItem? item, string source)
     {
+        if (edited?.Id != item?.Id || edited?.Revision != item?.Revision) { DebugTools.Content = null; debugger = null; }
         edited = item;
         ScriptName.Text = item?.Label ?? "";
         Source.Text = source;
         Parameters.Text = item?.Document.GetProperty("parameters").GetRawText() ?? "[]";
         original = Snapshot();
     }
+
+    private Debug.DebugPanel ShowDebugger()
+    {
+        debugger ??= new Debug.DebugPanel(host, () => original == Snapshot() ? edited : null, _ => Source.Focus(FocusState.Programmatic));
+        DebugTools.Content = debugger;
+        debugger.StartBringIntoView();
+        return debugger;
+    }
+    private void OpenDebug(object sender, RoutedEventArgs e) => ShowDebugger();
+
+    internal async Task Inspect(string execution) => await ShowDebugger().Attach(execution);
 
     private async void Action(object sender, RoutedEventArgs e)
     {

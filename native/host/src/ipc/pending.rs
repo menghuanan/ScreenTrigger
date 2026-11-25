@@ -209,6 +209,10 @@ impl PendingMap {
     /// 在途挂接：同内容重复请求追加等待者（共享响应，§4.2）。
     pub fn attach(&mut self, id: &str, waiter: Waiter) -> bool {
         match self.entries.get_mut(id) {
+            Some(entry) if entry.cancelled => {
+                let _ = waiter.send(Err(IpcError::new("CANCELLED", "请求等待已取消", false)));
+                true
+            }
             Some(entry) => {
                 entry.waiters.push(waiter);
                 true
@@ -259,6 +263,9 @@ impl PendingMap {
         match self.entries.get_mut(id) {
             Some(entry) => {
                 entry.cancelled = true;
+                for waiter in entry.waiters.drain(..) {
+                    let _ = waiter.send(Err(IpcError::new("CANCELLED", "请求等待已取消", false)));
+                }
                 true
             }
             None => false,
@@ -500,6 +507,10 @@ mod tests {
         let fp = fingerprint("execute_script", &serde_json::json!({}));
         map.admit("ui-1", "execute_script", fp, CommandClass::Normal, tx);
         assert!(map.mark_cancelled("ui-1"));
+        assert_eq!(rx.try_recv().unwrap().unwrap_err().code, "CANCELLED");
+        let (joined, joined_rx) = std::sync::mpsc::channel();
+        assert!(map.attach("ui-1", joined));
+        assert_eq!(joined_rx.try_recv().unwrap().unwrap_err().code, "CANCELLED");
         // cancelled：真实响应只写缓存，不投递等待者（§4.3）
         map.complete("ui-1", &ok(serde_json::json!({"state": "stopped"})));
         assert!(rx.try_recv().is_err(), "取消后响应不得投递");

@@ -122,19 +122,23 @@ impl EventBus {
     /// 可合并事件：窗口内覆盖槽（合并到最新），窗口外立即发送并开新窗口。
     fn on_mergeable_event(&mut self, name: &str, envelope: &ProtocolEnvelope) {
         let now = (self.clock)();
+        let key = match envelope.payload.as_ref().and_then(|p| p["execution_id"].as_str()) {
+            Some(id) if name == "recognition_stats" => format!("{name}/{id}"),
+            _ => name.to_string(),
+        };
         {
             let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
-            if let Some(&start) = state.windows.get(name) {
+            if let Some(&start) = state.windows.get(&key) {
                 if now.duration_since(start) < MERGE_WINDOW {
                     // 窗口内：覆盖槽内最新值（积压时合并到最新，03）；不占 UI seq
                     let value = serde_json::to_value(envelope).unwrap_or(Value::Null);
-                    state.merge_slots.insert(name.to_string(), value);
+                    state.merge_slots.insert(key.clone(), value);
                     return;
                 }
             }
             // 窗口外：开新窗口（发送在锁外进行——emit 回调不得持锁）
-            state.windows.insert(name.to_string(), now);
-            state.merge_slots.remove(name);
+            state.windows.insert(key.clone(), now);
+            state.merge_slots.remove(&key);
         }
         let seq = self.alloc_seq();
         let mut envelope = envelope.clone();
@@ -196,7 +200,8 @@ fn flush_due_locked(state: &Mutex<BusState>, emit: &EmitFn, clock: &ClockFn) {
         for name in expired {
             state.windows.remove(&name);
             if let Some(value) = state.merge_slots.remove(&name) {
-                due.push((name, value));
+                let event = value["name"].as_str().unwrap_or(&name).to_string();
+                due.push((event, value));
             }
         }
         due

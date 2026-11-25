@@ -52,6 +52,8 @@ InputAction 为带 kind 的对象：move `{x,y,duration_ms}`；click `{x,y,butto
 
 - 普通命令响应期限 5s；hello/引擎启动 30s；执行/监控命令 5s 内受理，结果通过状态事件/查询获取，不等待脚本跑完。识别测试是异步 job：5s 内返回 job_id，推理单次限 5s。
 - `cancel_request{request_id}` 仅取消尚未完成的可取消请求/job；`cancel_job{job_id}` 取消识别测试；`stop_script{execution_id}` 停止执行树。UI Promise 超时不等于后台取消成功，需查询状态；停止必须先由 Rust 关闭输入闸门。
+
+桌面客户端取消对在途请求的等待时，宿主以 `CANCELLED` 结束该请求当前的等待者。后台取消是否成功取决于独立的取消回执。若原操作已经提交，其真实响应写回请求历史，可用 `query_request` 查询。
 - 请求 ID 在会话内最多保留最近 10000 个最终响应。相同 ID/相同内容重复返回已有响应，不重新执行；同 ID 不同内容返回 CONFLICT。被淘汰 ID 再次收到返回 DUPLICATE_EXPIRED，不重做副作用。Rust 管会话已见 ID 集合并限制会话总数（100000，之后重建空闲会话）。跨进程重启去重不承诺，禁止自动重发写入或动作。
 - `execute_script` 附可选 client_run_id；相同会话相同 client_run_id 返回同 execution_id。创建实体响应丢失时可用 query_request 查询 id；未知状态不能假定未写入。
 - 写入进入 current 指针切换后不可取消；取消响应说明 `cancelled=false,reason=already_committed`，用户可查询 revision。未提交的草稿 job 可以取消。
@@ -113,13 +115,13 @@ TargetDraft 为 `{name,group_id?,image_id,anchor_condition_id,conditions,storage
 
 update_target 白名单：name/group_id/conditions/anchor_condition_id/metadata；替换图片使用 image_id+storage_mode（宿主转 ImageAsset），不得传任意路径。更新 script 必须同时提供 ID 和 expected_revision；新建两者均省略。修改与删除影响活动执行的规则见 F02。搜索合并到 list_targets.query，不另设 search_targets。
 
-分组契约扩展（用户 2026-10-12 裁决：只改既有两条命令参数，**对外命令总数仍 62 条**）：`create_group.parent_group_id` 键缺省或显式 `null` 均为顶层（depth 0），字符串时须指向存在分组且 `depth=父.depth+1`；`update_group` 的 `name`/`parent_group_id` **至少给一个**（两者都键缺省 → INVALID_PARAMS，field=name），`name` 键缺省=不改名，`parent_group_id` 键缺省=不搬移、显式 `null`=移至顶层。同层组名经 NFC+大小写折叠后唯一（同层重名 → INVALID_PARAMS，field=name）；层级上限 3 层（depth 0..2，超限 → RESOURCE_LIMIT，field=parent_group_id）；父组/目标组不存在 → GROUP_NOT_FOUND（field=parent_group_id）。`list_targets.group_id`：键缺省=不过滤、显式 `null`=仅未分组、字符串=精确该组（不递归）。
+分组契约扩展（用户 2026-10-12 裁决：只改既有两条命令参数，**对外命令当时共 62 条**）：`create_group.parent_group_id` 键缺省或显式 `null` 均为顶层（depth 0），字符串时须指向存在分组且 `depth=父.depth+1`；`update_group` 的 `name`/`parent_group_id` **至少给一个**（两者都键缺省 → INVALID_PARAMS，field=name），`name` 键缺省=不改名，`parent_group_id` 键缺省=不搬移、显式 `null`=移至顶层。同层组名经 NFC+大小写折叠后唯一（同层重名 → INVALID_PARAMS，field=name）；层级上限 3 层（depth 0..2，超限 → RESOURCE_LIMIT，field=parent_group_id）；父组/目标组不存在 → GROUP_NOT_FOUND（field=parent_group_id）。`list_targets.group_id`：键缺省=不过滤、显式 `null`=仅未分组、字符串=精确该组（不递归）。
 
-脚本契约语义（TASK-012；5 命令与「更新/新建」规则已在上表逐字存在，**无命令集合变更**，总数仍 62 条）：`save_script` **保存不执行、不做语法校验**（语法检查单独由 `validate_script` 提供），源码须为合法 UTF-8 且编码后**字节** ≤ 1MiB（超限 → RESOURCE_LIMIT，field=source）；`script_id` 与 `expected_revision` **同时给=更新、同时省=新建、只给其一 → INVALID_PARAMS**（field=缺失的伙伴字段）；同 `(name,parameters,source_sha256)` 重复保存为 **no-op**（不提交、不发 `catalog_changed`）。`delete_script` 对活动执行引用的脚本 → IN_USE（field=script_id）；删除只删元数据，源码资产 `scripts/<id>/<hash>.lua` 只保留不回收。`list_scripts` `limit` 取值 1–500、排序 `created_at` 升序后 `id` 升序。`validate_script` 返回 `{valid,diagnostics}`（`valid == diagnostics==[]`）；`diagnostics[].line` 自 1 起，`column` 为 `int≥1` 或 `null`（引擎无法**无歧义**定位列时为 `null`，不编造）；引擎未安装 Lua 编译器（lupa）时诚实抛 `ENGINE_UNAVAILABLE`（retryable=false，无 details），绝不伪报 `valid:true`。
+脚本契约语义（TASK-012；5 命令与「更新/新建」规则已在上表逐字存在，**无命令集合变更**，当时共 62 条）：`save_script` **保存不执行、不做语法校验**（语法检查单独由 `validate_script` 提供），源码须为合法 UTF-8 且编码后**字节** ≤ 1MiB（超限 → RESOURCE_LIMIT，field=source）；`script_id` 与 `expected_revision` **同时给=更新、同时省=新建、只给其一 → INVALID_PARAMS**（field=缺失的伙伴字段）；同 `(name,parameters,source_sha256)` 重复保存为 **no-op**（不提交、不发 `catalog_changed`）。`delete_script` 对活动执行引用的脚本 → IN_USE（field=script_id）；删除只删元数据，源码资产 `scripts/<id>/<hash>.lua` 只保留不回收。`list_scripts` `limit` 取值 1–500、排序 `created_at` 升序后 `id` 升序。`validate_script` 返回 `{valid,diagnostics}`（`valid == diagnostics==[]`）；`diagnostics[].line` 自 1 起，`column` 为 `int≥1` 或 `null`（引擎无法**无歧义**定位列时为 `null`，不编造）；引擎未安装 Lua 编译器（lupa）时诚实抛 `ENGINE_UNAVAILABLE`（retryable=false，无 details），绝不伪报 `valid:true`。
 
-识别契约语义（TASK-013；6 条识别命令与 `{job_id}` 受理已在上表逐字存在，**无命令集合变更**，总数仍 62 条）：识别为**异步 job**，命令同步（≤5s）返回 `{job_id}`，终态经 `get_job` 与事件双路可查。`match_template`/`match_contour`/`detect_color` 的 job `result` 为 `{matches:Candidate[], truncated:boolean}`（候选经 IoU>0.5 NMS 去重、最多 100 个，超出标 `truncated=true`）；`recognize_text` 为 `{blocks:TextBlock[]}`；`evaluate_target_conditions`/`test_recognition` 为 `RecognitionResult`（`found` 恒等于 `matches` 非空；未保存草稿结果 `target_id`/`sample_no=null`）。**未命中（`found=false`/空候选）是数据不是故障**：job 成功完成并发 `recognition_completed`，**不发** `recognition_error`；仅服务错误（模型缺失/能力未提供/超时/内部故障）发 `recognition_error`。单次推理超时（>5s）→ `RECOGNITION_TIMEOUT`（retryable=true）并丢弃结果；取消经 `cancel_job` 传导，终态发 `recognition_cancelled`；`recognition_stats` 由运行/监控层按采样窗口发射，不由识别基座发射。**缺模型分支按原因分类**：`recognize_text` 在 Provider 缺已安装模型时抛 `MODEL_UNAVAILABLE`（区别于缺引擎的 `ENGINE_UNAVAILABLE` 与未装配的 `CAPABILITY_DENIED`），三者均 `retryable=false`。
+识别契约语义（TASK-013；6 条识别命令与 `{job_id}` 受理已在上表逐字存在，**无命令集合变更**，当时共 62 条）：识别为**异步 job**，命令同步（≤5s）返回 `{job_id}`，终态经 `get_job` 与事件双路可查。`match_template`/`match_contour`/`detect_color` 的 job `result` 为 `{matches:Candidate[], truncated:boolean}`（候选经 IoU>0.5 NMS 去重、最多 100 个，超出标 `truncated=true`）；`recognize_text` 为 `{blocks:TextBlock[]}`；`evaluate_target_conditions`/`test_recognition` 为 `RecognitionResult`（`found` 恒等于 `matches` 非空；未保存草稿结果 `target_id`/`sample_no=null`）。**未命中（`found=false`/空候选）是数据不是故障**：job 成功完成并发 `recognition_completed`，**不发** `recognition_error`；仅服务错误（模型缺失/能力未提供/超时/内部故障）发 `recognition_error`。单次推理超时（>5s）→ `RECOGNITION_TIMEOUT`（retryable=true）并丢弃结果；取消经 `cancel_job` 传导，终态发 `recognition_cancelled`；`recognition_stats` 由运行/监控层按采样窗口发射，不由识别基座发射。**缺模型分支按原因分类**：`recognize_text` 在 Provider 缺已安装模型时抛 `MODEL_UNAVAILABLE`（区别于缺引擎的 `ENGINE_UNAVAILABLE` 与未装配的 `CAPABILITY_DENIED`），三者均 `retryable=false`。
 
-OCR 能力披露内容约定（TASK-015；**不改** `capabilities[].reason` 的 `string|null` 类型，仅固定 `id="ocr"` 项在 `unavailable` 态的**内容格式**，公开命令仍 62 条）：`capabilities[ocr].reason` 为一行的**固定规范格式**，字段顺序固定，便于前端稳定解析（避免随版本漂移）与单测锁定：
+OCR 能力披露内容约定（TASK-015；**不改** `capabilities[].reason` 的 `string|null` 类型，仅固定 `id="ocr"` 项在 `unavailable` 态的**内容格式**，当时公开命令共 62 条）：`capabilities[ocr].reason` 为一行的**固定规范格式**，字段顺序固定，便于前端稳定解析（避免随版本漂移）与单测锁定：
 
 ```text
 OCR|state=<..>|code=<..|->|models=<csv|->|verified=<csv|->|unverified=<csv|->|models_dir=<..|->|library=<..|->|detail=<text>
@@ -127,7 +129,7 @@ OCR|state=<..>|code=<..|->|models=<csv|->|verified=<csv|->|unverified=<csv|->|mo
 
 - `state`：能力态（`available` 时为 `available`；`unavailable` 时为 `unavailable`）；`code`：06 错误码（如 `ENGINE_UNAVAILABLE`/`MODEL_UNAVAILABLE`/`DATA_CORRUPT`）或占位 `-`；
 - `models`：已安装**识别**模型 id（CSV，即 `recognize_text{model_id}` 可请求集合）；
-- `verified`/`unverified`：**实证**/未实证语言（CSV）；未实证语言不得宣称支持（缺对应识别模型即如实排除）；
+- `verified` 与 `unverified` 分别列出有映射证据和待取证的语言。日语的版本化路由与固定样本依据见[补充取证裁决](decisions/技术决策.md#p3-ja-mapping)。逐语言质量由候选包的 TEST-004 单独测量。
 - `models_dir`/`library`：数据根模型目录与权重库根**绝对路径**（可审计的装配来源）；空值占位 `-`；
 - `detail`：人类可读说明（如"未安装 paddleocr（须在探针 venv 运行）"）；字段值内的 `|` 替换为 `/` 以保证可解析。
 
@@ -143,6 +145,8 @@ WinUI 能力面板按此展示真实覆盖；解析失败时必须**回退原样
 | get_script_state | {execution_id:string} | {state:ExecutionState} |
 | query_execution | {execution_id?:string,client_run_id?:string} | {state:ExecutionState}；恰填一项 |
 | get_execution_logs | {execution_id:string,offset?:int=0,limit?:int=100} | {items:RunLog[],total:int}；limit≤500 |
+| list_execution_history | {offset?:int=0,limit?:int=100} | {items:执行历史摘要[],total:int}；limit≤500 |
+| clear_execution_logs | {execution_id:string} | {ok:true}；仅清除指定终态执行的日志，保留摘要 |
 | add_breakpoint | {script_id:string,source_hash:string,line:int} | {breakpoint:Breakpoint} |
 | remove_breakpoint | {breakpoint_id:string} | {ok:true} |
 | list_breakpoints | {script_id:string} | {items:Breakpoint[]} |
@@ -161,9 +165,15 @@ Breakpoint=`{id,script_id,source_hash,line,enabled}`，line 为 ≥1 的可执�
 | bind_window | {window_id:string} | {binding:WindowBinding}；仅空闲草稿，运行中拒绝 |
 | unbind_window | {} | {ok:true}；运行中拒绝 |
 | get_bound_window | {} | {binding:WindowBinding或null} |
-| get_config | {} | {config:Config} |
+| get_config | {} | {config:Config,data_root:string,recovery?:{revision:int}}；会话内发生自动备份恢复时附恢复修订 |
 | update_config | {expected_revision:int,patch:object} | {config:Config} |
 | reset_config | {expected_revision:int} | {config:Config}；不删除目标/脚本 |
+| list_catalog_backups | {} | {backups:[备份编号]}，只列完整发布的备份目录 |
+| create_catalog_backup | {} | {job_id}；完成后 result 含 backup_id、generation、counts |
+| preview_catalog_restore | {backup_id} | {job_id}；result 含 backup_id、generation、counts、expected_current、expected_backup、current_state |
+| restore_catalog_backup | {backup_id,expected_current,expected_backup} | {job_id}；result 含 generation、protection。成功后发送 catalog_changed |
+
+P3 新增上述四条命令，公开路由共 68 条。长操作用 get_job 查询。用户在确认恢复前可以取消对话框。存储写作业开始后 cancel_job 返回 cancelled=false，终态按实际指针提交结果记录。预览后当前指针或备份指纹改变返回 CONFLICT，客户端重新预览。CLI 复用相同的数据根锁、预览指纹和恢复实现。
 
 输入通过 host_request/input_action 处理；不向 WinUI 客户端提供绕过 execution_id/lease 的裸 move_mouse/click_mouse/type_text 入口。手动输入测试需专用一次性 RunConfig，同样受停止与区域约束。旧 set_region_limit/clear_region_limit 已合并入启动配置，运行中不能扩权。热键注册归配置事务管理，不给 UI 任意 unregister 停止热键的命令。
 
@@ -198,3 +208,5 @@ Breakpoint=`{id,script_id,source_hash,line,enabled}`，line 为 ≥1 的可执�
 每个 WinUI 应用共用一个 HostClient。BeginRequest 返回会话、请求 ID 和完成任务，查询及取消沿用原会话。原生 ABI 在同一把锁内检查会话并取得对应路由。普通请求最多 32 个在途，控制请求和停止命令各有独立容量。Rust 的单写线程可在命名管道上等待，停止输入与关闭进程树可同时执行。
 
 两个窗口通过同一 DispatcherQueue 收取事件。关闭副窗会退订并丢弃仍在等待的界面更新。遇到序号缺口，客户端重读配置、分页目标列表及已知在运行的执行状态。结束的执行不会因迟来的状态通知重新出现。GetConfigAsync、UpdateConfigAsync、ResetConfigAsync 返回已解包的 ConfigDocument。更新和重置传原修订号，错误保留 code、message、details、retryable。
+
+P2 扩展两个历史命令，公开目录共 64 条。get_execution_logs 可读取保留执行的日志分卷；当前会话内仍可查询内存摘要。日志页遇到消息字节上限时附 truncated=true 和 next_offset。清除活动执行的日志返回 INVALID_STATE。日志盘写入失败通过 system_error 披露，普通日志仍由用户主动查询。

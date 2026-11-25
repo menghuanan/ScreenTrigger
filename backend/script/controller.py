@@ -3,14 +3,17 @@ import copy
 import json
 import threading
 import time
+from contextlib import contextmanager
 from collections import OrderedDict, deque
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from ..scripts import domain
 from ..storage.errors import StorageError
-from ..types.runtime import validate_run_config
+from ..debug.service import BREAKPOINTS, STEPS, Breakpoints, DebugSession, fields
+from ..monitor.scheduler import DEFAULT_MONITOR, run_monitor, validate_references
+from ..types.runtime import MonitorConfig, validate_monitor_config, validate_run_config
 from .api import ScriptApi
 from .cancel import CancelFlag, CheckpointCancelled, ExecutionGate
 from .call_stack import arguments, call
@@ -53,7 +56,9 @@ class Root:
         self.id = str(uuid4())
         self.config, self.settings, self.catalog = config, settings, catalog
         self.scripts = {s["id"]: s for s in domain.scripts_from_snapshot(catalog)}
-        self.refs = {config.script_id, config.stop_target_id} - {None}
+        self.monitor = isinstance(config, MonitorConfig)
+        self.script_id = None if self.monitor else config.script_id
+        self.refs = set() if self.monitor else {config.script_id, config.stop_target_id} - {None}
         self.start = time.monotonic()
         self.pause_generation = 0
         self.paused_at, self.paused_total = None, 0.
@@ -62,10 +67,12 @@ class Root:
         self.started_at = self.updated_at = stamp()
         self.iteration, self.frequency = 0, config.frequency_hz
         self.effective_hz, self.throttled = None, False
+        self.sample_no = None
         self.result, self.error, self.lease = None, None, None
         self.images, self.stack, self.logs = {}, [], deque(maxlen=1000)
         self.released_images = OrderedDict()
         self.api = ScriptApi(self)
+        self.debugger = DebugSession(self) if config.debug else None
 
     def active_time(self):
         until = self.paused_at if self.paused_at is not None else time.monotonic()
@@ -77,20 +84,32 @@ class Root:
 
     def state(self):
         with self.changed:
-            return dict(execution_id=self.id, kind="script", status=self.status, reason=self.reason,
-                        script_id=self.config.script_id, iteration=self.iteration, current_line=None,
+            top = self.debugger.frames[0][0] if self.status == "debug_paused" and self.debugger and self.debugger.frames else {}
+            return dict(execution_id=self.id, kind="monitor" if self.monitor else "script", status=self.status, reason=self.reason,
+                        script_id=top.get("script_id", self.script_id), iteration=self.iteration, current_line=top.get("line"),
                         started_at=self.started_at, updated_at=self.updated_at, result=copy.deepcopy(self.result),
                         error=copy.deepcopy(self.error), effective_hz=self.effective_hz, throttled=self.throttled)
 
     def log(self, level, event, message, **details):
         with self.changed:
-            self.logs.append(dict(timestamp=stamp(), execution_id=self.id, level=level, event=event,
-                                  message=message, details=details))
+            entry = dict(timestamp=stamp(), execution_id=self.id, level=level, event=event,
+                         message=message, details=details)
+            self.logs.append(entry)
+            if self.controller.archive:
+                self.controller.archive.log(entry, self.settings.get("logging", {}))
+            if self.config.debug and self.status == "debug_paused":
+                self.controller.emit("log_message", {"log": entry})
 
     def transition(self, status, reason=None):
         # Caller holds the root condition shared by control and completion.
         self.status, self.reason, self.updated_at = status, reason, stamp()
-        self.log("info", "script_state_changed", status, reason=reason)
+        if self.controller.archive:
+            self.controller.archive.state(self.state(), self.sample_no)
+        log_reason = reason
+        if status in ("stopping", "cancelled") and reason not in ("hotkey", "user_requested", "engine_exit", "script_requested"):
+            log_reason = self.error["code"] if self.error else "script_requested"
+        self.log("error" if self.error else "info", "script_state_changed", status, reason=log_reason,
+                 error_code=self.error["code"] if self.error else None)
         self.controller.emit("script_state_changed", dict(execution_id=self.id, status=status, reason=reason))
         self.changed.notify_all()
 
@@ -150,13 +169,69 @@ class Root:
     def call(self, script_id, args=None):
         return call(self, script_id, args)
 
+    def sample_target(self, target_id):
+        def sample():
+            generation = self.pause_generation
+            with self.api.screen.frame() as frame:
+                result = self.api.screen.target(target_id, frame.image_ref.image_id)
+                self.gate.checkpoint()
+                if generation != self.pause_generation:
+                    raise StorageError("STALE_FRAME", "暂停前取得的识别结果已过期")
+                if self.config.binding_id:
+                    snapshot = self.controller.input.window_snapshot(self.config.binding_id)
+                    if snapshot["geometry_revision"] != frame.geometry_revision:
+                        raise StorageError("STALE_FRAME", "识别期间窗口几何已变化")
+                return result
+        while True:
+            try:
+                return self.api.guarded(sample)()
+            except Exception as exc:
+                code = getattr(exc, "code", None)
+                if code == "INVALID_REGION" and self.config.binding_id and self.status == "running":
+                    self.suspend_window()
+                elif code != "STALE_FRAME":
+                    raise
+                self.gate.checkpoint()
+
+    def run_script(self):
+        next_tick = self.active_time()
+        result, reason, last_tick = None, None, None
+        while True:
+            self.gate.checkpoint()
+            if self.config.mode == "until_target":
+                self.wait(max(0, next_tick - self.active_time()))
+                now = self.active_time()
+                if last_tick is not None and now > last_tick:
+                    self.effective_hz = 1 / (now - last_tick)
+                    self.throttled = self.effective_hz < self.frequency * .95
+                last_tick = now
+                next_tick = now + 1 / self.frequency
+                detection = self.sample_target(self.config.stop_target_id)
+                if detection["found"]:
+                    self.controller.emit("target_detected", dict(execution_id=self.id, result=detection))
+                    reason = "target_detected"
+                    break
+            result = self.call(self.config.script_id, self.config.args)
+            self.gate.checkpoint()
+            with self.changed:
+                self.iteration += 1
+                self.log("info", "script_iteration", "脚本迭代完成", iteration=self.iteration)
+                self.controller.emit("script_iteration", {"execution_id": self.id, "iteration": self.iteration})
+            if self.config.mode == "once" or self.config.mode == "count" and self.iteration >= self.config.iterations:
+                break
+        return result, reason
+
     def run(self):
         result, error, reason = None, None, None
         try:
             self.gate.checkpoint()
             if self.controller.input is not None:
-                cfg = asdict(self.config)
-                ctx = {k: cfg[k] for k in ("region", "display_id", "binding_id", "allow_exit")}
+                region = self.config.region
+                ctx = {"display_id": self.config.display_id, "binding_id": self.config.binding_id,
+                       "allow_exit": self.config.allow_exit, "region": None}
+                if region is not None:
+                    # A wire Region permits only the anchor for its coordinate space.
+                    ctx["region"] = {key: value for key, value in asdict(region).items() if value is not None}
                 self.lease = self.controller.input.acquire_lease(self.id, ctx)
             if self.controller.capture or self.config.binding_id or self.config.region:
                 self.api.guarded(self.api.screen.region)()
@@ -164,37 +239,15 @@ class Root:
                 self.gate.checkpoint()
                 if self.status == "starting":
                     self.transition("running")
-            next_tick = self.active_time()
-            last_tick = None
-            while True:
-                self.gate.checkpoint()
-                if self.config.mode == "until_target":
-                    self.wait(max(0, next_tick - self.active_time()))
-                    now = self.active_time()
-                    if last_tick is not None and now > last_tick:
-                        self.effective_hz = 1 / (now - last_tick)
-                        self.throttled = self.effective_hz < self.frequency * .95
-                    last_tick = now
-                    next_tick = now + 1 / self.frequency
-                    def sample():
-                        with self.api.screen.frame() as frame:
-                            return self.api.screen.target(self.config.stop_target_id, frame.image_ref.image_id)
-                    detection = self.api.guarded(sample)()
-                    if detection["found"]:
-                        self.controller.emit("target_detected", dict(execution_id=self.id, result=detection))
-                        reason = "target_detected"
-                        break
-                result = self.call(self.config.script_id, self.config.args)
-                self.gate.checkpoint()
-                with self.changed:
-                    self.iteration += 1
-                    self.controller.emit("script_iteration", {"execution_id": self.id, "iteration": self.iteration})
-                if self.config.mode == "once" or self.config.mode == "count" and self.iteration >= self.config.iterations:
-                    break
+            if self.monitor:
+                result, reason = run_monitor(self, self.sample_target)
+            else:
+                result, reason = self.run_script()
         except CheckpointCancelled:
             pass
         except Exception as exc:
             error = error_data(exc)
+            reason = "timeout" if error["code"] == "WAIT_TIMEOUT" else error["code"]
         finally:
             for image_id in self.images:
                 try:
@@ -210,6 +263,8 @@ class Root:
             with self.changed:
                 if self.status == "stopping":
                     error = self.error
+                    if self.reason == "engine_exit" and not error:
+                        error = error_data(StorageError("ENGINE_UNAVAILABLE", "引擎已退出"))
                     terminal = "failed" if error else "cancelled"
                     reason = self.reason
                 elif self.gate.deadline_exceeded():
@@ -225,37 +280,74 @@ class Root:
 
 
 class ExecutionController:
-    def __init__(self, scripts, capture, vision, input_proxy, settings, emit, beep):
+    def __init__(self, scripts, capture, vision, input_proxy, settings, emit, beep, archive=None):
         self.scripts, self.capture, self.vision, self.input = scripts, capture, vision, input_proxy
         self.settings, self.emit, self.beep = settings, emit, beep
         self.changed = threading.Condition(threading.RLock())
         self.roots, self.clients, self.history = {}, {}, OrderedDict()
+        self.breakpoints = Breakpoints(self)
+        self.archive = archive
+        self.catalog_maintenance = False
+
+    @contextmanager
+    def idle_catalog(self):
+        with self.changed:
+            if self.roots or self.catalog_maintenance:
+                raise StorageError("BUSY", "请先停止活动执行，再备份或恢复目录。", retryable=True)
+            self.catalog_maintenance = True
+        try:
+            yield
+        finally:
+            with self.changed:
+                self.catalog_maintenance = False
 
     def referenced(self, entity):
         with self.changed:
             return any(entity in r.refs for r in self.roots.values())
 
-    def execute(self, params):
-        raw = dict(params)
+    def execute(self, params, *, monitor=False):
+        raw = copy.deepcopy(params)
         client = raw.pop("client_run_id", None)
         if client is not None and (not isinstance(client, str) or not client):
             raise StorageError("INVALID_PARAMS", "client_run_id 必须为非空字符串", field="client_run_id")
-        config = validate_run_config(dict(DEFAULT_RUN, **raw))
+        config = (validate_monitor_config(dict(DEFAULT_MONITOR, **raw)) if monitor else
+                  validate_run_config(dict(DEFAULT_RUN, **raw)))
         signature = json.dumps(asdict(config), ensure_ascii=False, sort_keys=True, allow_nan=False)
-        settings = self.settings()
-        catalog = self.scripts.repository.read_snapshot()
+        def existing():
+            if client not in self.clients:
+                return None
+            previous, root_id = self.clients[client]
+            if signature != previous:
+                raise StorageError("INVALID_PARAMS", "client_run_id 已用于其他配置", field="client_run_id")
+            return {"execution_id": root_id, "status": "starting"}
+
         with self.changed:
-            if client in self.clients:
-                previous, root_id = self.clients[client]
-                if signature != previous:
-                    raise StorageError("INVALID_PARAMS", "client_run_id 已用于其他配置", field="client_run_id")
-                return {"execution_id": root_id, "status": "starting"}
-            if len(self.roots) >= 3:
-                raise StorageError("BUSY", "已有三个活动根执行", retryable=True)
-            root = Root(self, catalog, config, settings)
+            cached = existing()
+            if cached:
+                return cached
+        settings = self.settings()
+        defaults = {"frequency_hz": settings.get("recognition", {}).get("default_frequency_hz", 1),
+                    "allow_exit": settings.get("input", {}).get("allow_exit", False),
+                    "total_timeout_ms": settings.get("execution", {}).get("total_timeout_ms", 0)}
+        config = replace(config, **{key: value for key, value in defaults.items() if key not in raw})
+        catalog = self.scripts.repository.read_snapshot()
+        root = Root(self, catalog, config, settings)
+        if monitor:
+            validate_references(root)
+        else:
             arguments(domain.ensure_script_found(root.scripts.get(config.script_id), config.script_id), config.args)
             if config.stop_target_id and not catalog.target_by_id(config.stop_target_id):
                 raise StorageError("TARGET_NOT_FOUND", "停止目标不存在", field="stop_target_id")
+        with self.changed:
+            cached = existing()
+            if cached:
+                return cached
+            if self.catalog_maintenance:
+                raise StorageError("BUSY", "目录备份或恢复中，请稍后重试。", retryable=True)
+            if catalog.generation != self.scripts.repository.read_snapshot().generation:
+                raise StorageError("CONFLICT", "启动时目录已更改，请重新运行。")
+            if len(self.roots) >= 3:
+                raise StorageError("BUSY", "已有三个活动根执行", retryable=True)
             self.roots[root.id] = root
             if client:
                 self.clients[client] = signature, root.id
@@ -280,8 +372,21 @@ class ExecutionController:
         return execution
 
     def command(self, name, params):
-        if name == "execute_script":
-            return self.execute(params)
+        if name in ("execute_script", "start_monitor"):
+            return self.execute(params, monitor=name == "start_monitor")
+        if self.archive and name in ("list_execution_history", "get_execution_logs", "clear_execution_logs"):
+            return self.archive.command(name, params)
+        if name in BREAKPOINTS:
+            return self.breakpoints.command(name, params)
+        if name in STEPS or name in ("get_stack", "get_variables"):
+            fields(params, ("execution_id", "frame_id") if name == "get_variables" else ("execution_id",))
+            with self.changed:
+                root = self.roots.get(self.lookup(params))
+                if root is None or root.debugger is None:
+                    raise StorageError("INVALID_STATE", "没有活动的调试执行")
+                if name not in STEPS:
+                    return root.debugger.inspect(name, params)
+            return root.debugger.resume(name)
         allowed = {"execution_id"}
         if name == "query_execution":
             allowed.add("client_run_id")

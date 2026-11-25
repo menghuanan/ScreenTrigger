@@ -10,6 +10,7 @@
   ],
   "supported_languages": [
     "en",
+    "ja",
     "zh"
   ],
   "thread_safe": false,

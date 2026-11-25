@@ -10,7 +10,7 @@ from backend.image.store import SessionImageStore
 from backend.main import SidecarArgs, build_catalog_services
 from backend.script.controller import ExecutionController, TERMINAL
 from backend.storage.errors import StorageError
-from backend.types.region import DisplayInfo, Rect
+from backend.types.region import DisplayInfo, Rect, validate_region
 
 
 class Input:
@@ -19,6 +19,8 @@ class Input:
         self.faults = []
 
     def acquire_lease(self, execution_id, context):
+        if context["region"] is not None:
+            validate_region(context["region"])
         self.leases[execution_id] = context
         return "lease-" + execution_id
 
@@ -85,6 +87,17 @@ class ExecutionRuntime(unittest.TestCase):
             if status:
                 self.assertEqual(state["status"], status, state)
             return state
+
+    def test_explicit_region_reaches_the_lease_with_only_its_own_anchor(self):
+        region = dict(space="screen_physical", display_id="d", x=105, y=85, width=20, height=12)
+        script = self.save("return 42")
+        for allow_exit in (False, True):
+            with self.subTest(allow_exit=allow_exit):
+                execution = self.start(script, region=region, allow_exit=allow_exit)
+                result = self.await_state(execution, "completed")
+                self.assertEqual(result["result"], 42)
+                self.assertEqual(self.input.leases[execution]["region"], region)
+                self.assertEqual(self.input.leases[execution]["allow_exit"], allow_exit)
 
     def test_modes_calls_copy_logs_and_one_lease(self):
         child = self.save('args.a[1]=9; print("child", args.a[1]); return json_array({args.a[1],json_null})',

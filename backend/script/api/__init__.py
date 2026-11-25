@@ -32,6 +32,9 @@ class ScriptApi:
     def __init__(self, root):
         self.root = root
         self.screen = ScreenApi(root)
+        settings = root.settings.get("input", {})
+        self.move_ms = settings.get("move_duration_ms", 200)
+        self.type_ms = settings.get("type_interval_ms", 50)
 
     def dispatch(self, kind, revision=None, **action):
         root = self.root
@@ -43,16 +46,21 @@ class ScriptApi:
             if root.config.binding_id:
                 revision = proxy.window_snapshot(root.config.binding_id)["geometry_revision"]
         root.gate.checkpoint()
+        action_id = str(uuid4())
         try:
-            proxy.dispatch_action(root.id, root.lease, str(uuid4()), revision, dict(action, kind=kind),
+            proxy.dispatch_action(root.id, root.lease, action_id, revision, dict(action, kind=kind),
                                   remaining_ms=root.gate.remaining_ms())
         except Exception as exc:
+            root.log("error", "input_action", "输入动作失败", action_id=action_id, kind=kind,
+                     error_code=getattr(exc, "code", "INPUT_FAILED"), sample_no=root.sample_no)
             if getattr(exc, "code", None) in ("INTERNAL_ERROR", "ENGINE_UNAVAILABLE", "PROTOCOL_ERROR"):
                 if root.gate.deadline_exceeded():
                     raise CheckpointCancelled() from exc
                 raise StorageError("INPUT_FAILED", "宿主未确认输入的最终状态",
                                    details={"delivery_unknown": True}) from exc
             raise
+        root.log("info", "input_action", "输入已派发", action_id=action_id, kind=kind,
+                 dispatched=True, sample_no=root.sample_no)
         return ()
 
     def pointer(self):
@@ -63,7 +71,8 @@ class ScriptApi:
         return point["x"], point["y"]
 
     def move_to(self, x, y, duration=None):
-        return self.dispatch("move", x=integer(x, "x"), y=integer(y, "y"), duration_ms=milliseconds(duration, .2))
+        return self.dispatch("move", x=integer(x, "x"), y=integer(y, "y"),
+                             duration_ms=self.move_ms if duration is None else milliseconds(duration, .2))
 
     def click_at(self, x, y, button=None, clicks=None):
         return self.dispatch("click", x=integer(x, "x"), y=integer(y, "y"),
@@ -89,7 +98,7 @@ class ScriptApi:
                 hit = matches[0]
                 point = dict(x=hit["center"]["x"] + ox, y=hit["center"]["y"] + oy)
                 if kind == "move":
-                    point["duration_ms"] = milliseconds(option, .2)
+                    point["duration_ms"] = self.move_ms if option is None else milliseconds(option, .2)
                 else:
                     point.update(button="left" if option is None else option, clicks=1)
                 self.root.gate.checkpoint()
@@ -204,7 +213,8 @@ class ScriptApi:
             "key_down": lambda key: self.dispatch("key", key=key, state="down"),
             "key_up": lambda key: self.dispatch("key", key=key, state="up"),
             "hotkey": lambda *keys: self.dispatch("hotkey", keys=list(keys)),
-            "type_text": lambda text, interval=None: self.dispatch("text", text=text, interval_ms=milliseconds(interval, .05)),
+            "type_text": lambda text, interval=None: self.dispatch("text", text=text,
+                interval_ms=self.type_ms if interval is None else milliseconds(interval, .05)),
             "capture_screen": s.capture_screen, "release_image": s.release_image, "ocr": s.ocr,
             "find_text": s.find_text, "find_color": s.find_color, "get_pixel_color": s.get_pixel_color,
             "get_screen_size": self.screen_size, "get_mouse_position": self.pointer,

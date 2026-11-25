@@ -5,12 +5,15 @@
     <NavigationView x:Name="Navigation" PaneDisplayMode="Top" IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False" IsPaneToggleButtonVisible="False" SelectionChanged="Navigate">
         <NavigationView.MenuItems>
-            <NavigationViewItem Content="引擎" Tag="engine" IsSelected="True" />
+            <NavigationViewItem Content="引擎" Tag="engine" IsSelected="True" AutomationProperties.AutomationId="NavEngine" />
             <NavigationViewItem Content="截图与导入" Tag="images" AutomationProperties.AutomationId="NavImages" />
             <NavigationViewItem Content="目标库" Tag="targets" AutomationProperties.AutomationId="NavTargets" />
-            <NavigationViewItem Content="脚本" Tag="scripts" AutomationProperties.AutomationId="NavScripts" />
+            <NavigationViewItem x:Name="ScriptsNav" Content="脚本" Tag="scripts" AutomationProperties.AutomationId="NavScripts" />
             <NavigationViewItem x:Name="RecognitionNav" Content="测试识别" Tag="recognition" AutomationProperties.AutomationId="NavRecognition" />
             <NavigationViewItem Content="运行设置" Tag="run" AutomationProperties.AutomationId="NavRun" />
+            <NavigationViewItem Content="区域监控" Tag="monitor" AutomationProperties.AutomationId="NavMonitor" />
+            <NavigationViewItem Content="历史" Tag="history" AutomationProperties.AutomationId="NavHistory" />
+            <NavigationViewItem Content="设置" Tag="settings" AutomationProperties.AutomationId="NavSettings" />
         </NavigationView.MenuItems>
         <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" RowDefinitions="*,Auto">
     <ScrollViewer x:Name="EnginePage">
@@ -70,12 +73,17 @@
     </ScrollViewer>
     <ContentControl x:Name="BusinessPage" Visibility="Collapsed" HorizontalContentAlignment="Stretch"
                     VerticalContentAlignment="Stretch" />
-        <StackPanel Grid.Row="1" x:Name="RunBar" Visibility="Collapsed" Orientation="Horizontal" Spacing="8" Margin="24,8">
-            <ComboBox x:Name="ActiveExecution" MinWidth="180" AutomationProperties.Name="选中的根脚本"
+        <StackPanel Grid.Row="1" Spacing="4" Margin="16,6">
+          <TextBlock x:Name="ServiceStatus" Text="正在连接引擎…" AutomationProperties.AutomationId="ServiceStatus" />
+          <TextBlock x:Name="ServiceNotice" TextWrapping="Wrap" Visibility="Collapsed" AutomationProperties.AutomationId="ServiceNotice" AutomationProperties.LiveSetting="Polite" />
+          <Grid x:Name="RunBar" ColumnDefinitions="Auto,Auto,Auto,Auto,*" ColumnSpacing="6" Visibility="Collapsed">
+            <ComboBox x:Name="ActiveExecution" MinWidth="120" AutomationProperties.Name="选中的执行"
                       AutomationProperties.AutomationId="ActiveExecution" SelectionChanged="SelectExecution" />
-            <Button x:Name="PauseExecutionButton" Content="暂停" Click="ToggleExecution" AutomationProperties.AutomationId="PauseExecution" />
-            <Button x:Name="StopExecutionButton" Content="停止选中脚本" Click="StopExecution" AutomationProperties.AutomationId="StopExecution" />
-            <TextBlock x:Name="RunStatus" VerticalAlignment="Center" TextWrapping="Wrap" AutomationProperties.AutomationId="RunStatus" />
+            <Button Grid.Column="1" x:Name="PauseExecutionButton" Content="暂停" Click="ToggleExecution" AutomationProperties.AutomationId="PauseExecution" />
+            <Button Grid.Column="2" x:Name="StopExecutionButton" Content="停止" Click="StopExecution" AutomationProperties.AutomationId="StopExecution" />
+            <Button Grid.Column="3" x:Name="InspectExecution" Content="查看断点" Click="InspectPaused" Visibility="Collapsed" />
+            <TextBlock Grid.Column="4" x:Name="RunStatus" VerticalAlignment="Center" TextWrapping="Wrap" AutomationProperties.AutomationId="RunStatus" />
+          </Grid>
         </StackPanel>
         </Grid>
     </NavigationView>

@@ -1,0 +1,32 @@
+<UserControl x:Class="ScreenTrigger.Debug.DebugPanel"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <StackPanel Spacing="8">
+    <TextBlock Text="Lua 调试器" Style="{ThemeResource SubtitleTextBlockStyle}" />
+    <NumberBox x:Name="Line" Header="断点行号" Minimum="1" Value="1" AutomationProperties.AutomationId="BreakpointLine" />
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <Button Content="添加断点" Click="Action" Tag="add" AutomationProperties.AutomationId="AddBreakpoint" />
+      <Button Content="移除选中断点" Click="Action" Tag="remove" />
+    </StackPanel>
+    <ListView x:Name="Points" MaxHeight="140" AutomationProperties.Name="当前脚本断点" />
+    <TextBox x:Name="Arguments" Header="调试参数（JSON 对象）" />
+    <Button x:Name="Start" Content="调试已保存脚本" Click="Action" Tag="start" AutomationProperties.AutomationId="StartDebug" />
+    <TextBlock x:Name="Feedback" TextWrapping="Wrap" AutomationProperties.AutomationId="DebugStatus" AutomationProperties.LiveSetting="Polite"/>
+    <StackPanel x:Name="PausedTools" Visibility="Collapsed" Spacing="8">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="6">
+        <Button Content="步入" Click="Action" Tag="step_into" AutomationProperties.AutomationId="StepInto" />
+        <Button Grid.Column="1" Content="步过" Click="Action" Tag="step_over" AutomationProperties.AutomationId="StepOver" />
+        <Button Grid.Column="2" Content="步出" Click="Action" Tag="step_out" AutomationProperties.AutomationId="StepOut" />
+        <Button Grid.Column="3" Content="继续" Click="Action" Tag="continue_execution" AutomationProperties.AutomationId="ContinueDebug" />
+      </Grid>
+      <ComboBox x:Name="Frames" Header="调用栈" HorizontalAlignment="Stretch" SelectionChanged="SelectFrame" />
+      <TextBlock x:Name="CodeLines" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="Consolas" AutomationProperties.AutomationId="PausedSource" />
+      <TextBlock x:Name="Variables" IsTextSelectionEnabled="True" TextWrapping="Wrap" AutomationProperties.AutomationId="DebugVariables" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button x:Name="Previous" Content="上一页变量" Click="Page" Tag="-1" /><Button x:Name="Next" Content="下一页变量" Click="Page" Tag="1" />
+      </StackPanel>
+      <Expander Header="暂停时的执行日志" HorizontalAlignment="Stretch">
+        <TextBlock x:Name="PausedLogs" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+      </Expander>
+    </StackPanel>
+ </StackPanel>
+</UserControl>

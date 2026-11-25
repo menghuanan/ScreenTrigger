@@ -4,6 +4,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using System.Diagnostics;
+using System.Runtime.InteropServices.WindowsRuntime;
 using ScreenTrigger.Host;
 using ScreenTrigger.Import;
 using SelectionProbe;
@@ -27,6 +30,7 @@ public sealed partial class OverlayWindow : Window
     private uint? pointer;
     private double scale;
     private bool closed, reading, finishing, clearVisuals, active, hasPreview;
+    private readonly bool measureTiming = Environment.GetEnvironmentVariable("ST_MEASURE_TIMING") == "1";
     internal string Id { get; }
 
     internal OverlayWindow(HostClient host, string id, string display, RectInt32 bounds, Action<string> showError)
@@ -152,9 +156,30 @@ public sealed partial class OverlayWindow : Window
             if (closed || finishing || !area.Equals(region)) return;
             PreviewImage.Source = bitmap;
             hasPreview = true; ConfirmButton.IsEnabled = pointer == null;
+            if (measureTiming) await ObservePresentedPreview();
         }
         catch (Exception ex) { if (!closed && !finishing) { showError(ex.Message); Cancel(); } }
         finally { reading = false; }
+    }
+
+    private async Task ObservePresentedPreview()
+    {
+        var presented = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnRendered(object? sender, object e) => presented.TrySetResult(Stopwatch.GetTimestamp());
+        CompositionTarget.Rendered += OnRendered;
+        try
+        {
+            long ticks = await presented.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            if (closed || finishing || PreviewImage.Source == null) return;
+            var sample = new RenderTargetBitmap();
+            await sample.RenderAsync(PreviewImage);
+            var pixels = (await sample.GetPixelsAsync()).ToArray();
+            int center = 4 * ((sample.PixelHeight / 2) * sample.PixelWidth + sample.PixelWidth / 2);
+            if (center + 2 < pixels.Length)
+                Console.Error.WriteLine($"[preview-timing] {ticks} {Stopwatch.Frequency} {pixels[center + 2]} {pixels[center + 1]} {pixels[center]}");
+        }
+        catch (TimeoutException) { Console.Error.WriteLine("[preview-timing] render timeout"); }
+        finally { CompositionTarget.Rendered -= OnRendered; }
     }
 
     private async void ConfirmSelection(object sender, RoutedEventArgs args)

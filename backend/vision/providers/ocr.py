@@ -49,8 +49,8 @@ _MANIFEST = ProviderManifest(
     supported_condition_types=("ocr",),
     # 与 manifest/models.catalog.json 的 recognition_models 一致（实证：2 个已装识别模型）。
     model_ids=("PP-OCRv6_medium_rec", "korean_PP-OCRv5_mobile_rec"),
-    # **仅**实证语言（模型 README `language:` 字段）；japan 未安装对应模型 → 不宣称（Q4）。
-    supported_languages=("zh", "en", "ko"),
+    # 日语映射依据 PaddleOCR 3.7.0 路由及同权重固定样本，见 DEC-002。
+    supported_languages=("zh", "en", "ja", "ko"),
     thread_safe=False,
     offline=True,
 )
@@ -58,6 +58,8 @@ _MANIFEST = ProviderManifest(
 #: 预热图尺寸（把小图冷启动移出 5s job 窗口）。
 _WARMUP_WIDTH = 32
 _WARMUP_HEIGHT = 16
+_KOREAN_SMALL_REGION_MAX_SIDE = 1024
+_KOREAN_DETECTOR_MAX_SIDE = 512
 
 
 def _module_available(name: str) -> bool:
@@ -148,9 +150,12 @@ class OCREngineProvider(BaseProvider):
         raw = cropped
         off_x = int(cropped.offset_x)
         off_y = int(cropped.offset_y)
-        engine_ocr, _language = engine
+        engine_ocr, language = engine
+        detection_options = {}
+        if language == "ko" and max(raw.width, raw.height) <= _KOREAN_SMALL_REGION_MAX_SIDE:
+            detection_options = {"text_det_limit_type": "max", "text_det_limit_side_len": _KOREAN_DETECTOR_MAX_SIDE}
         try:
-            result = engine_ocr.predict(self._to_input(raw))
+            result = engine_ocr.predict(self._to_input(raw), **detection_options)
         except RecognitionError:
             raise
         except Exception as exc:  # 单次原生推理不可中断；异常归一为 RECOGNITION_FAILED

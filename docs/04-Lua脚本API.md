@@ -43,6 +43,8 @@ Match 含 target_id、sample_no、space、bbox、center、confidence、geometry_
 | `hotkey(...keys)` | 1–5 个不同标准键名 | 依序按下、逆序释放，异常亦清理 |
 | `type_text(text,interval?)` | ≤10000 Unicode 字符；interval=.05s，0–5s | Unicode 输入；不操作剪贴板 |
 
+表中的移动时长和文字输入间隔为出厂默认值。省略这两个参数时，执行使用启动时设置中的 `input.move_duration_ms` 和 `input.type_interval_ms`。显式参数以秒为单位。
+
 键名不区分大小写：a–z、0–9、F1–F12、up/down/left/right、enter/space/tab/backspace/delete/esc、ctrl/shift/alt/win、home/end/pageup/pagedown/insert/printscreen。不支持的键名先拒绝。系统保留快捷键不保证模拟成功。
 
 `click_target` 不复用 wait_for_target 的旧坐标；中间窗口移动会作废旧帧。直接 `click_at` 使用调用者提供的数值，只做当前几何与边界校验，不负责证明内容仍是原目标；面向目标操作建议用 click_target。当 offset 后点不合法时拒绝，不裁剪。
@@ -133,3 +135,7 @@ log("监控命中 " .. hit.sample_no)
 -- 使用稳定目标 ID 重新定位，不按已过期的帧坐标点击
 return {clicked = click_target(hit.target_id)}
 ```
+
+调试器在宿主中复制变量快照并按深度、总项数和字符串长度截断；相同 table 的后续引用返回 reference_id。调试操作和历史管理通过桌面宿主提供。
+
+备份与恢复由设置页或离线管理命令调用。Lua 的能力表保持封闭，活动执行期间宿主拒绝切换目录快照。

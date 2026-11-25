@@ -115,6 +115,11 @@ impl DesktopHost {
                 command,
                 params,
             } => {
+                if command == "stop_script" {
+                    if let Some(root) = params["execution_id"].as_str() {
+                        crate::measurements::mark("stop_received", root);
+                    }
+                }
                 let router = run.session_router(session_id.as_deref())?;
                 let submit = || router.request(&id, &command, params.clone());
                 if crate::desktop_windows::attached()
@@ -125,7 +130,8 @@ impl DesktopHost {
                 } else if let Some(root) = params["execution_id"].as_str().filter(|_| {
                     matches!(
                         command.as_str(),
-                        "stop_script" | "pause_script" | "resume_script"
+                        "stop_script" | "pause_script" | "resume_script" | "continue_execution"
+                            | "step_into" | "step_over" | "step_out"
                     )
                 }) {
                     crate::hotkey::with_control(&command, root, submit)
@@ -182,6 +188,19 @@ pub extern "C" fn st_host_abi_version() -> u32 {
 pub extern "C" fn st_host_open(version: u32, event: Option<Receiver>) -> *mut DesktopHost {
     if version != ABI_VERSION || event.is_none() || OPEN.swap(true, Ordering::AcqRel) {
         return std::ptr::null_mut();
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let data_dir = std::env::current_exe().ok()
+            .and_then(|exe| std::fs::read_to_string(exe.parent()?.join("data-root.txt")).ok())
+            .map(|s| std::path::PathBuf::from(s.trim()))
+            .filter(|p| p.is_absolute());
+        if let Some(dir) = data_dir {
+            crate::sidecar::set_app_local_data_dir(dir);
+        } else {
+            OPEN.store(false, Ordering::Release);
+            return std::ptr::null_mut();
+        }
     }
     let supervisor = SupervisorHandle::new();
     let event = Arc::new(RwLock::new(event));

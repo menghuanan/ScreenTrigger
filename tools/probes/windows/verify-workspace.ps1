@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory)][string]$Executable, [Parameter(Mandatory)][string]$OutputDirectory, [switch]$Extended)
+﻿param([Parameter(Mandatory)][string]$Executable, [Parameter(Mandatory)][string]$OutputDirectory, [switch]$Extended, [switch]$ReleaseCases)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $folder = New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop
@@ -23,7 +23,16 @@ function Find-Element($key, [switch]$Name) {
     $condition = New-Object Windows.Automation.PropertyCondition($property, $key)
     return $main.FindFirst($tree, $condition)
 }
-function Element($key) { Wait-Until { $c = Find-Element $key; if ($c.Current.IsEnabled) { $c } } $key }
+function Element($key) {
+    if ($key -like 'Nav*') {
+        $nav = Find-Element $key
+        if (!$nav -or $nav.Current.IsOffscreen) {
+            $more = Find-Element 'TopNavOverflowButton'
+            if ($more) { $more.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke() }
+        }
+    }
+    Wait-Until { $c = Find-Element $key; if ($c.Current.IsEnabled) { $c } } $key
+}
 function Invoke-Element($key) {
     (Element $key).GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
 }
@@ -40,6 +49,10 @@ function Save-Tree($tag) {
     $rows | ConvertTo-Json | Out-File -Encoding utf8 (Join-Path $folder.FullName "$tag.json")
 }
 if ($Extended) { . (Join-Path $PSScriptRoot 'workspace-image-cases.ps1') }
+if ($ReleaseCases) {
+    if (!$Extended) { throw 'Release cases require the persisted extended image fixture' }
+    . (Join-Path $PSScriptRoot '../../../tests/acceptance/workspace_release.ps1')
+}
 $source = 'return {sample = 21}'
 $label = 'P1 workspace smoke'
 try {
@@ -71,6 +84,7 @@ try {
             Wait-Until { (Element ScriptSource).GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -eq $source } 'persisted Lua source' | Out-Null
             $observations.reopened_source = $source
             if ($Extended) { Test-PersistedTarget }
+            if ($ReleaseCases) { Test-ReleaseWorkspace }
         }
         $main.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
         if (!$app.WaitForExit(15000)) { throw 'Application did not exit' }

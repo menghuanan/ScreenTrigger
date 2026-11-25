@@ -21,8 +21,10 @@ public sealed partial class MainWindow
     private readonly Dictionary<string, UserControl> pages = [];
     private object? pendingDraft;
     private string? draftImageId;
-    private bool luaAvailable, updatingRuns;
+    private bool luaAvailable, updatingRuns, workspaceOcr;
     private readonly Dictionary<string, string> running = [];
+    private readonly Dictionary<string, long> runSequences = [];
+    private readonly Queue<string> terminalSequenceOrder = new();
 
     private void Navigate(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
@@ -41,8 +43,10 @@ public sealed partial class MainWindow
         {
             page = tag switch {
                 "targets" => new Targets.TargetsPage(host, () => image, OpenDraft),
+                "history" => new History.HistoryPage(host),
+                "settings" => new Settings.SettingsPage(host, ApplyTheme),
                 "scripts" => new Scripts.ScriptsPage(host),
-                "run" => new RunContext.RunContextPage(host, luaAvailable),
+                "run" or "monitor" => new RunContext.RunContextPage(host, luaAvailable, tag == "monitor", workspaceOcr),
                 "recognition" => new Recognition.RecognitionPage(host, () => image, () => imageOrigin, () => pendingDraft),
                 _ => null
             };
@@ -70,12 +74,17 @@ public sealed partial class MainWindow
         workspaceReady = ready && host?.Events.Session != null;
         luaAvailable = ready && capabilities.ValueKind == JsonValueKind.Array && capabilities.EnumerateArray().Any(
             c => c.GetProperty("id").GetString() == "lua_script" && c.GetProperty("state").GetString() == "available");
+        workspaceOcr = ready && capabilities.ValueKind == JsonValueKind.Array && capabilities.EnumerateArray().Any(
+            c => c.GetProperty("id").GetString() == "ocr" && c.GetProperty("state").GetString() == "available");
         captureAvailable = ready && capabilities.ValueKind == JsonValueKind.Array && capabilities.EnumerateArray().Any(
             c => c.GetProperty("id").GetString() == "capture" && c.GetProperty("state").GetString() == "available");
         if (workspaceSession != host?.Events.Session || !ready)
         {
             workspaceSession = ready ? host?.Events.Session : null;
-            running.Clear();
+            if (workspaceSession != null) _ = ReadDisplayConfig(workspaceSession);
+            if (!ready && running.Count > 0)
+                Notice("引擎已退出，活动执行已中断。可重新启动引擎并查看历史。");
+            running.Clear(); runSequences.Clear(); terminalSequenceOrder.Clear();
             ActiveExecution.ItemsSource = null;
             RunBar.Visibility = Visibility.Collapsed;
             pages.Clear(); pendingDraft = null; draftImageId = null; BusinessPage.Content = null;
@@ -87,6 +96,27 @@ public sealed partial class MainWindow
         if (workspaceReady && BusinessPage.Visibility == Visibility.Visible && BusinessPage.Content == null &&
             Navigation.SelectedItem is NavigationViewItem item && item.Tag is string tag) ShowBusinessPage(tag);
         UpdateImageButtons();
+    }
+
+    private void ApplyTheme(string value) => Navigation.RequestedTheme = value switch {
+        "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default
+    };
+    private void Notice(string text)
+    {
+        ServiceNotice.Text = text;
+        ServiceNotice.Visibility = Visibility.Visible;
+    }
+    private async Task ReadDisplayConfig(string session)
+    {
+        try
+        {
+            var data = await host!.RequestAsync("get_config", new { });
+            if (host.Events.Session != session) return;
+            ApplyTheme(data.GetProperty("config").GetProperty("general").GetProperty("theme").GetString()!);
+            if (data.TryGetProperty("recovery", out var restored))
+                Notice($"配置损坏，已自动恢复备份修订 {restored.GetProperty("revision")}。");
+        }
+        catch (Exception ex) { if (host?.Events.Session == session) Notice(ex.Message); }
     }
 
     private void UpdateImageButtons()
@@ -102,10 +132,7 @@ public sealed partial class MainWindow
         var old = (ActiveExecution.SelectedItem as CatalogItem)?.Id;
         if (status is "completed" or "cancelled" or "failed") running.Remove(id);
         else running[id] = status;
-        var display = status switch {
-            "starting" => "正在启动", "running" => "运行中", "paused" => "已暂停", "stopping" => "正在停止",
-            "cancelled" => "已停止", "completed" => "已完成", "failed" => "失败", _ => status
-        };
+        var display = Status.RunFeedback.Name(status);
         RunStatus.Text = $"{id[..Math.Min(8, id.Length)]}　{display}";
         RunBar.Visibility = Visibility.Visible;
         var rows = running.Keys.Select(key => new CatalogItem(key, key[..Math.Min(8, key.Length)])).ToList();
@@ -114,12 +141,11 @@ public sealed partial class MainWindow
         ActiveExecution.SelectedItem = rows.Find(e => e.Id == old) ?? rows.FirstOrDefault();
         updatingRuns = false;
         await PublishSelection();
-        if (status == "failed" && host != null)
+        if (status is ("failed" or "completed" or "cancelled") && host != null)
         {
             var reply = await host.RequestAsync("get_script_state", new { execution_id = id });
-            var error = reply.GetProperty("state").GetProperty("error");
-            if (error.ValueKind == JsonValueKind.Object && RunStatus.Text.StartsWith(id[..Math.Min(8, id.Length)]))
-                RunStatus.Text = $"{display} · {error.GetProperty("code")} · {error.GetProperty("message")}";
+            if (RunStatus.Text.StartsWith(id[..Math.Min(8, id.Length)]))
+                RunStatus.Text = Status.RunFeedback.State(reply.GetProperty("state"));
         }
     }
 
@@ -129,7 +155,8 @@ public sealed partial class MainWindow
         var state = id == null ? null : running.GetValueOrDefault(id);
         PauseExecutionButton.IsEnabled = state is "paused" or "running";
         PauseExecutionButton.Content = state == "paused" ? "恢复" : "暂停";
-        StopExecutionButton.IsEnabled = state is "starting" or "running" or "paused";
+        InspectExecution.Visibility = state == "debug_paused" ? Visibility.Visible : Visibility.Collapsed;
+        StopExecutionButton.IsEnabled = state is "starting" or "running" or "paused" or "debug_paused";
         if (host?.Events.Session is string session)
             await host.CallAsync(new { op = "select_execution", session_id = session, execution_id = id });
     }
@@ -147,6 +174,14 @@ public sealed partial class MainWindow
         try { await host.RequestAsync(command, new { execution_id = item.Id }); }
         catch (Exception ex) { RunStatus.Text = ex.Message; }
     }
+    private async void InspectPaused(object sender, RoutedEventArgs args)
+    {
+        if (ActiveExecution.SelectedItem is not CatalogItem item || item.Id == null) return;
+        Navigation.SelectedItem = ScriptsNav;
+        if (BusinessPage.Content is Scripts.ScriptsPage editor)
+            try { await editor.Inspect(item.Id); } catch (Exception ex) { RunStatus.Text = ex.Message; }
+    }
+
     private async void ToggleExecution(object sender, RoutedEventArgs args) => await ControlExecution(false);
     private async void StopExecution(object sender, RoutedEventArgs args) => await ControlExecution(true);
 

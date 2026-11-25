@@ -76,15 +76,12 @@ class CatalogLoadTest(unittest.TestCase):
 
     def test_supported_and_unverified_languages(self):
         supported = set(self.catalog.supported_languages())
-        # 实证语言：en/zh（PP-OCRv6 rec）+ ko（korean rec）
-        self.assertTrue({"en", "zh", "ko"} <= supported)
-        # 首批声明含 ja，但无 japan 识别模型 → 未实证（如实披露，不宣称）
-        self.assertIn("ja", self.catalog.unverified_languages())
-        self.assertNotIn("ja", supported)
+        self.assertEqual(supported, {"en", "zh", "ja", "ko"})
+        self.assertEqual(self.catalog.unverified_languages(), ())
 
     def test_model_ids_for_language(self):
         self.assertIn("korean_PP-OCRv5_mobile_rec", self.catalog.model_ids_for_language("ko"))
-        self.assertEqual(self.catalog.model_ids_for_language("ja"), ())
+        self.assertEqual(self.catalog.model_ids_for_language("ja"), ("PP-OCRv6_medium_rec",))
 
     def test_recognition_and_required_models(self):
         rec = self.catalog.recognition_models()
@@ -254,6 +251,18 @@ class SeedTest(unittest.TestCase):
 
     def test_seed_empty_dir_is_noop(self):
         self.assertEqual(seed_repo_model_metadata(""), [])
+
+    def test_upgrade_previous_factory_language_metadata(self):
+        from pathlib import Path
+        model_id = "PP-OCRv6_medium_rec"
+        with tempfile.TemporaryDirectory() as directory:
+            seed_repo_model_metadata(directory)
+            target = Path(directory, model_id, "manifest.json")
+            current = target.read_bytes()
+            old = current.decode("utf-8").replace("\r\n", "\n").replace('    "ja",\n', "")
+            target.write_bytes(old.encode("utf-8"))
+            self.assertEqual(seed_repo_model_metadata(directory), [model_id])
+            self.assertEqual(target.read_bytes(), current)
 
 
 class ReasonFormatTest(unittest.TestCase):

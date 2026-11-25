@@ -65,7 +65,7 @@ class JobManager:
 
     # -- 生命周期迁移 ---------------------------------------------------------
 
-    def create_job(self, kind: Optional[str] = None) -> str:
+    def create_job(self, kind: Optional[str] = None, *, cancellable_while_running: bool = True) -> str:
         """创建 job（pending）；返回 job_id。kind 仅供诊断，不出 get_job data。"""
         with self._lock:
             job_id = self._job_id_factory()
@@ -76,6 +76,7 @@ class JobManager:
                 "result": None,
                 "error": None,
                 "kind": kind,
+                "cancellable_while_running": cancellable_while_running,
             }
             return job_id
 
@@ -91,6 +92,9 @@ class JobManager:
         with self._lock:
             state = self._jobs.get(job_id)
             if state is None or state["status"] not in allowed_from:
+                return False
+            if (new_status == self.STATUS_CANCELLED and state["status"] == self.STATUS_RUNNING
+                    and not state["cancellable_while_running"]):
                 return False
             state["status"] = new_status
             if result is not None:

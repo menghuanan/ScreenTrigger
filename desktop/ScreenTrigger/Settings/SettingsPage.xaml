@@ -1,0 +1,23 @@
+<UserControl x:Class="ScreenTrigger.Settings.SettingsPage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <ScrollViewer><StackPanel Margin="24" Spacing="10">
+   <TextBlock Text="设置" Style="{ThemeResource TitleTextBlockStyle}" />
+   <TextBlock x:Name="Location" IsTextSelectionEnabled="True" TextWrapping="Wrap" />
+   <TextBlock x:Name="Recovery" TextWrapping="Wrap" AutomationProperties.AutomationId="ConfigRecovery" AutomationProperties.LiveSetting="Polite" />
+   <Expander Header="目标与脚本备份" HorizontalAlignment="Stretch" AutomationProperties.AutomationId="CatalogBackups">
+     <StackPanel Spacing="8">
+       <Button Content="创建备份" Click="CreateBackup" AutomationProperties.AutomationId="CreateBackup" />
+       <ComboBox x:Name="Backups" Header="选择备份" MinWidth="260" AutomationProperties.AutomationId="BackupList" />
+       <Button Content="预览恢复…" Click="RestoreBackup" AutomationProperties.AutomationId="PreviewRestore" />
+     </StackPanel>
+   </Expander>
+   <StackPanel x:Name="Groups" Spacing="6" />
+   <StackPanel Orientation="Horizontal" Spacing="8">
+      <Button Content="保存设置" Click="Save" AutomationProperties.AutomationId="SaveSettings" />
+      <Button Content="撤销编辑" Click="Cancel" AutomationProperties.AutomationId="CancelSettings" />
+      <Button Content="恢复默认值…" Click="Reset" AutomationProperties.AutomationId="ResetSettings" />
+      <Button Content="重新读取" Click="Reload" />
+   </StackPanel>
+   <TextBlock x:Name="Feedback" TextWrapping="Wrap" AutomationProperties.AutomationId="SettingsFeedback" AutomationProperties.LiveSetting="Polite" />
+ </StackPanel></ScrollViewer>
+</UserControl>

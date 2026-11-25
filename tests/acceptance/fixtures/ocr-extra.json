@@ -1,0 +1,1434 @@
+{
+  "mixed": {
+    "font": "msgothic.ttc",
+    "font_sha256": "4bde3e6392b96910fb59094c6c1a4dbfae18fee78d0bf13dc30616837c4f95db",
+    "model": "PP-OCRv6_medium_rec",
+    "source": "项目生成的固定本地 UI 样本；测试时使用已安装的 Windows 字体，未分发字体。",
+    "samples": [
+      {
+        "reference": "保存 A-00",
+        "font_size": 24,
+        "image_sha256": "655b6d2823038aacc08e6b6f67af1ecb59255cdc9ef2a55d8929252721c16f2d"
+      },
+      {
+        "reference": "開始 v01",
+        "font_size": 25,
+        "image_sha256": "6b76e9414a6d1a92267bda298269ec407a0e5181d6a5b009602cbef5e53b7797"
+      },
+      {
+        "reference": "温度 02",
+        "font_size": 26,
+        "image_sha256": "050ea62c6e972924406a77589e1284a000f31dfae1b12308943c34248cd03621"
+      },
+      {
+        "reference": "メニュー ID 03",
+        "font_size": 27,
+        "image_sha256": "7a61b8f21c5ebf8422b15c5ffb4d68be3d7dd7ca28a87153ca033801e7a919cf"
+      },
+      {
+        "reference": "音声 #04",
+        "font_size": 28,
+        "image_sha256": "5903415081f3f9758108330c8c375b60c649aa2e199f58e846e42ad9772a2c7d"
+      },
+      {
+        "reference": "保存 A-05",
+        "font_size": 29,
+        "image_sha256": "92e72f97e17343fe7ee6c112e5c4b91ed11380d52f694ba1eabf4b226126232e"
+      },
+      {
+        "reference": "開始 v06",
+        "font_size": 30,
+        "image_sha256": "f268182d1904882872621abb9f9c2fe95dc6d63f2cd8d0c8b1b18f70931306ea"
+      },
+      {
+        "reference": "温度 07",
+        "font_size": 31,
+        "image_sha256": "786b9c95e2a5af214ea56831a7eededb36bbd2519e38c39c0ae29e528eeb9366"
+      },
+      {
+        "reference": "メニュー ID 08",
+        "font_size": 32,
+        "image_sha256": "7f9b2bd7c6f5a4720fe6b809c47dfba69df2ce749d0627af84e1b1c69586189b"
+      },
+      {
+        "reference": "音声 #09",
+        "font_size": 33,
+        "image_sha256": "6ec781a61056977ba0cd1f6de24410f6f821befa1f84ab514e460094bc7f9528"
+      },
+      {
+        "reference": "保存 A-10",
+        "font_size": 34,
+        "image_sha256": "393ef85de8570032e33ea98bc2f849edc7713328ad656f1f28f3280c1f2008fc"
+      },
+      {
+        "reference": "開始 v11",
+        "font_size": 35,
+        "image_sha256": "fac28252b2d2773afc87e4e360a37e7de54159192dcd3c63698e485bec644b65"
+      },
+      {
+        "reference": "温度 12",
+        "font_size": 36,
+        "image_sha256": "954fac1e3bb74835b6690cd3f54bdbfce0fc1b8d3facf0089a0985a11df61e0a"
+      },
+      {
+        "reference": "メニュー ID 13",
+        "font_size": 24,
+        "image_sha256": "afa7748e175f698b0a4ffdf9e3e495cbef9869198a5e7a5d8c8dcfdf0c871bc4"
+      },
+      {
+        "reference": "音声 #14",
+        "font_size": 25,
+        "image_sha256": "0e7ecad61fc512cbdacfcc8b500494706541d37e02ac6ca52c3c26191e2011bb"
+      },
+      {
+        "reference": "保存 A-15",
+        "font_size": 26,
+        "image_sha256": "03278829564bb6d7a7fc0473ff949e3ef13d8850f9bad1815a86fa482262cbce"
+      },
+      {
+        "reference": "開始 v16",
+        "font_size": 27,
+        "image_sha256": "a0654acc38236426944d180efc04c5e353a5f4ebeb60ae4cb6cf0f27b09af0cc"
+      },
+      {
+        "reference": "温度 17",
+        "font_size": 28,
+        "image_sha256": "557f2722e9eabb69e91c6f28ec2a0806491b07c81aef9d1a5b9359b50c00476b"
+      },
+      {
+        "reference": "メニュー ID 18",
+        "font_size": 29,
+        "image_sha256": "48348f19661193d912d3e0518b479472fafe7d649bc3961c08be76cb092de65d"
+      },
+      {
+        "reference": "音声 #19",
+        "font_size": 30,
+        "image_sha256": "70d24db32fb1457dc447b503a0a2d5aa528e1f2cceb4b9d1ca6aef305ba7b983"
+      },
+      {
+        "reference": "保存 A-20",
+        "font_size": 31,
+        "image_sha256": "5cbe2dfb10cd72715b06d8b185aa69d9e225c7e208088f6592824b080be3845e"
+      },
+      {
+        "reference": "開始 v21",
+        "font_size": 32,
+        "image_sha256": "a5bc4d6dba96fcdd124635091793d433c0e289c55f5ca96f1592f21e0ad7d1d3"
+      },
+      {
+        "reference": "温度 22",
+        "font_size": 33,
+        "image_sha256": "18696d2ce9dbb5e4f928aaec719d33b7eca77db7121dabae9a94f7fd6d92f0d3"
+      },
+      {
+        "reference": "メニュー ID 23",
+        "font_size": 34,
+        "image_sha256": "64c965e818d9dc5b3e13ce2c05afa073d09dfbc827028b8d30efa93ef429fa6a"
+      },
+      {
+        "reference": "音声 #24",
+        "font_size": 35,
+        "image_sha256": "87ac3789228f44a74185b1bdea2e7d9e8a56a05c2210a5c353307812ffe5d0c6"
+      },
+      {
+        "reference": "保存 A-25",
+        "font_size": 36,
+        "image_sha256": "23ff2ca9bc0c910a0c7b5de039dde9e86717c0a3f9e4c3c687b2b600e1853ccb"
+      },
+      {
+        "reference": "開始 v26",
+        "font_size": 24,
+        "image_sha256": "a8318857e788a57e199d6101552b9d87618a7bcd316eb6775a0f2f0a1ef267ee"
+      },
+      {
+        "reference": "温度 27",
+        "font_size": 25,
+        "image_sha256": "845f6ba196be6aa064a5d1d46635336edb3910810823252126e98ba0caea22b6"
+      },
+      {
+        "reference": "メニュー ID 28",
+        "font_size": 26,
+        "image_sha256": "83ea77606731f2b59f58faac13a77f71ddf2cde48a21ca4a9118cbc957021a4f"
+      },
+      {
+        "reference": "音声 #29",
+        "font_size": 27,
+        "image_sha256": "ee9d0a9a233445603c438614bdd1e40b6ca733a7ed329ca3a2e8d46d9510d0e4"
+      },
+      {
+        "reference": "保存 A-30",
+        "font_size": 28,
+        "image_sha256": "eb9483c0c1129be530bf0db0e348c33e4d466b0433a2d8c063129b328fd6d104"
+      },
+      {
+        "reference": "開始 v31",
+        "font_size": 29,
+        "image_sha256": "9db4dabe1e00be188c62f170f07192d00ad9d558ac75eb7b992a65e5e238c735"
+      },
+      {
+        "reference": "温度 32",
+        "font_size": 30,
+        "image_sha256": "fa2e9043d8386da52c3bafabaded23307a4d5d1223d2f57e539fa56d80cdad2e"
+      },
+      {
+        "reference": "メニュー ID 33",
+        "font_size": 31,
+        "image_sha256": "e610f82d10445df67669db4588f8c8122e87f58bef66e89ad33755f28d9ed8aa"
+      },
+      {
+        "reference": "音声 #34",
+        "font_size": 32,
+        "image_sha256": "14f1a5050d007492267dafd23a90afb6280718fd69a3109da63a911e87c57a93"
+      },
+      {
+        "reference": "保存 A-35",
+        "font_size": 33,
+        "image_sha256": "76a967183c6e3e8a2e8927c858d45a09f51f02f1c979764816ba679c48289f17"
+      },
+      {
+        "reference": "開始 v36",
+        "font_size": 34,
+        "image_sha256": "2c4a2dbf80c41b5ed3c3c56248e05701613f0b9234b525b989cbc197372c6f82"
+      },
+      {
+        "reference": "温度 37",
+        "font_size": 35,
+        "image_sha256": "c140aa8141ecfa5a1336015035156a23424507d19e6ef1de79deb1b8e917dc8d"
+      },
+      {
+        "reference": "メニュー ID 38",
+        "font_size": 36,
+        "image_sha256": "9ae9f8632416b81ec2c83bbaf78179496caf192b1fae54dc86885c5004646747"
+      },
+      {
+        "reference": "音声 #39",
+        "font_size": 24,
+        "image_sha256": "019a41541bc2dae8d056408e85ea01216de92de0d577b0a1a7ded281b707241f"
+      },
+      {
+        "reference": "保存 A-40",
+        "font_size": 25,
+        "image_sha256": "dbafae776f52ce00f4c310def31bb8c4e8671e05a80cf168211fe99a90d66e96"
+      },
+      {
+        "reference": "開始 v41",
+        "font_size": 26,
+        "image_sha256": "034305764ca2aaeb4b48324a22276304a785d8bec106c5b608bc87b1351fb5fc"
+      },
+      {
+        "reference": "温度 42",
+        "font_size": 27,
+        "image_sha256": "7c746dae913d54b77606f42015ece515264c1e38ef06c51b8e143abb8cd81603"
+      },
+      {
+        "reference": "メニュー ID 43",
+        "font_size": 28,
+        "image_sha256": "b694cd0a5cfb82af408a9b28bc8d3410f46c50660528357212953d163d1925e5"
+      },
+      {
+        "reference": "音声 #44",
+        "font_size": 29,
+        "image_sha256": "da99421661d361989d7636fa012e8f701a028fe432c805f76796b638c5580f5b"
+      },
+      {
+        "reference": "保存 A-45",
+        "font_size": 30,
+        "image_sha256": "123c58b959b553b8ba6f4f484af86fd445bffc89162ff563a2e780fe4c39b8ca"
+      },
+      {
+        "reference": "開始 v46",
+        "font_size": 31,
+        "image_sha256": "8d3b90dde5b27b9a2d22212de60525fece4bbe4feec66061b18b18b734e9d90d"
+      },
+      {
+        "reference": "温度 47",
+        "font_size": 32,
+        "image_sha256": "7a256c37356e81501c5b409d9d27c9b9d8a523d584b5fa15b820678b2002cb31"
+      },
+      {
+        "reference": "メニュー ID 48",
+        "font_size": 33,
+        "image_sha256": "e0a6fdcc0c5836d0b4b0c714bb43806598704c14cc36998ed85ce6b42b0002b9"
+      },
+      {
+        "reference": "音声 #49",
+        "font_size": 34,
+        "image_sha256": "cd74c029838ac1bc06e94539b5ab4de1caa024fbbbba4ca87445750021dc6311"
+      }
+    ]
+  },
+  "blank": {
+    "font": "arial.ttf",
+    "font_sha256": "edfbd22a3d088fc2f5d7c79b8c9c732df6dc878a60f0a80be0f92a3c7a634404",
+    "model": "PP-OCRv6_medium_rec",
+    "source": "项目生成的固定本地 UI 样本；测试时使用已安装的 Windows 字体，未分发字体。",
+    "samples": [
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f4f4f4",
+        "rectangle": [
+          16,
+          8,
+          95,
+          60
+        ],
+        "outline": "lightgray",
+        "image_sha256": "44f89062e9e691816e3d733fcadebeee3338f275dd2992110abb458fae3dd641"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f5f5f5",
+        "rectangle": [
+          19,
+          9,
+          99,
+          61
+        ],
+        "outline": "lightgray",
+        "image_sha256": "88693caadf8c4c5f6d22f884e92a1894d90484fd9749cd2297942fb0bc7dce90"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f6f6f6",
+        "rectangle": [
+          22,
+          10,
+          103,
+          62
+        ],
+        "outline": "lightgray",
+        "image_sha256": "cc83ff1a8211f4432dfad3c56a7e770be53d921c9961f334244222a575be5c6d"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f7f7f7",
+        "rectangle": [
+          25,
+          11,
+          107,
+          63
+        ],
+        "outline": "lightgray",
+        "image_sha256": "ef4373d1fdba60e4101ac4de85e448cb15e11d65cb3f9d9fe3be5c5afcfc0831"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f8f8f8",
+        "rectangle": [
+          28,
+          12,
+          111,
+          64
+        ],
+        "outline": "lightgray",
+        "image_sha256": "ac275a8a0b374990b6608e2afb2219067332f38e0d541deaa0d9583a4a694bee"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f9f9f9",
+        "rectangle": [
+          31,
+          13,
+          115,
+          65
+        ],
+        "outline": "lightgray",
+        "image_sha256": "bf2a40c48cfba22d2acd6ddecbac5cc28f7d92aea491bd0ceabd9c7a86dde402"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fafafa",
+        "rectangle": [
+          34,
+          14,
+          119,
+          66
+        ],
+        "outline": "lightgray",
+        "image_sha256": "881d63602623e6f39849b6b6e58347b61315595ea36eb695c18834242ceb7ae5"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fbfbfb",
+        "rectangle": [
+          37,
+          15,
+          123,
+          67
+        ],
+        "outline": "lightgray",
+        "image_sha256": "f6927197a5ee3dffc17fde9a2e70549469784ca5b16661d0fec9b46e33c21bd1"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fcfcfc",
+        "rectangle": [
+          40,
+          16,
+          127,
+          68
+        ],
+        "outline": "lightgray",
+        "image_sha256": "a1128ed603ece46736d39a9a42903a971b7fe00304426a603dca9f0ecd696819"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fdfdf4",
+        "rectangle": [
+          43,
+          17,
+          131,
+          69
+        ],
+        "outline": "lightgray",
+        "image_sha256": "7db81a29e6c09b9627f2b5c2e7842b1071b3197d90f6943002cb33a831c8f31b"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fef4f5",
+        "rectangle": [
+          46,
+          18,
+          135,
+          70
+        ],
+        "outline": "lightgray",
+        "image_sha256": "13a46b009fa016b94166a993a400ba975559f192a431bcf598b1f3e407ed2f8d"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fff5f6",
+        "rectangle": [
+          49,
+          19,
+          139,
+          71
+        ],
+        "outline": "lightgray",
+        "image_sha256": "f8643b23290795f5a8b0b93e5be73272d34e469e8cc6378bc27ddf778331b857"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f4f6f7",
+        "rectangle": [
+          52,
+          20,
+          143,
+          72
+        ],
+        "outline": "lightgray",
+        "image_sha256": "61e40089ce40b7d5124887cd5160e3edf6b7e107751d374b6d4cb84ab3fcc175"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f5f7f8",
+        "rectangle": [
+          55,
+          21,
+          147,
+          73
+        ],
+        "outline": "lightgray",
+        "image_sha256": "3a5f4bb178dd1194197f07aebe834a1cc63d955e144a6ac6dcd99af12072cc3f"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f6f8f9",
+        "rectangle": [
+          58,
+          22,
+          151,
+          74
+        ],
+        "outline": "lightgray",
+        "image_sha256": "e27e8e5be5469209f245f83fa0e37975488a17060fd8bf354d8f409244924229"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f7f9fa",
+        "rectangle": [
+          61,
+          23,
+          155,
+          75
+        ],
+        "outline": "lightgray",
+        "image_sha256": "1ca6af192127042b5e9e6b22bb8fba08c24b11d819f90add1d72182d9d6c1a5c"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f8fafb",
+        "rectangle": [
+          64,
+          24,
+          159,
+          76
+        ],
+        "outline": "lightgray",
+        "image_sha256": "de040c012bdf1467cc3ed84ba00f12534a57a8fdfdf32774a5fad4667b988cdc"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f9fbfc",
+        "rectangle": [
+          67,
+          25,
+          163,
+          77
+        ],
+        "outline": "lightgray",
+        "image_sha256": "69e55df7b44f38532e80cc475f4d2c5a7fdf7b9c89a281e4a2f17dd4beccc432"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fafcf4",
+        "rectangle": [
+          70,
+          26,
+          167,
+          78
+        ],
+        "outline": "lightgray",
+        "image_sha256": "a82d07dbe2672287b6c23a512cb2aea0984c8b268b6e9e2efcdda6de49f309cc"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fbfdf5",
+        "rectangle": [
+          73,
+          8,
+          171,
+          79
+        ],
+        "outline": "lightgray",
+        "image_sha256": "ca58b97029aa1ec873b2e03d6292a2714a36a96eea637a036ba7c777e434b2a4"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fcf4f6",
+        "rectangle": [
+          76,
+          9,
+          175,
+          80
+        ],
+        "outline": "lightgray",
+        "image_sha256": "e857636069d473b7df76828206c256ac7e33fa5abc49e62478da7c5c07070522"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fdf5f7",
+        "rectangle": [
+          79,
+          10,
+          179,
+          81
+        ],
+        "outline": "lightgray",
+        "image_sha256": "01489d96c762e3cd9dc2e8db126bc2152c5d13fb7dddb2b42058f41eadd221b0"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fef6f8",
+        "rectangle": [
+          82,
+          11,
+          183,
+          82
+        ],
+        "outline": "lightgray",
+        "image_sha256": "8951a933f258c79f54d60e7f423991a9b548be1a82c4271a040d4a546bff06d7"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fff7f9",
+        "rectangle": [
+          85,
+          12,
+          187,
+          83
+        ],
+        "outline": "lightgray",
+        "image_sha256": "d8f3812acc435dea150506a1b7abce6e29c9cbd00c93ae7ccd68972f054a4a89"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f4f8fa",
+        "rectangle": [
+          88,
+          13,
+          191,
+          84
+        ],
+        "outline": "lightgray",
+        "image_sha256": "e122e2890cd8cf5be90b187c23e8a32e5316d52f908e8475a982e15f309d19a5"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f5f9fb",
+        "rectangle": [
+          91,
+          14,
+          195,
+          85
+        ],
+        "outline": "lightgray",
+        "image_sha256": "b6f00cdff3a440f292824c534d2090c3ca1e4d81811f3ed48c8400cdd1780ab8"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f6fafc",
+        "rectangle": [
+          94,
+          15,
+          199,
+          86
+        ],
+        "outline": "lightgray",
+        "image_sha256": "000339d249a9d65b384f8dfb3d4327019b9de3c98b0de8a4f6e30d406488cb4f"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f7fbf4",
+        "rectangle": [
+          97,
+          16,
+          203,
+          87
+        ],
+        "outline": "lightgray",
+        "image_sha256": "e94bffda42e66a091e50917e3ada8ef0d94a2018947fbd7342e7f340225e5713"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f8fcf5",
+        "rectangle": [
+          100,
+          17,
+          207,
+          88
+        ],
+        "outline": "lightgray",
+        "image_sha256": "1dabbb09c14f8f820ff4680248ff579616f271e56da249c9d33d977e9759c1d2"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f9fdf6",
+        "rectangle": [
+          103,
+          18,
+          211,
+          89
+        ],
+        "outline": "lightgray",
+        "image_sha256": "ba81209e9c90ac90e5e966e47b518f5558c27209cfaa67c5907d2f2e265a0785"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#faf4f7",
+        "rectangle": [
+          106,
+          19,
+          215,
+          90
+        ],
+        "outline": "lightgray",
+        "image_sha256": "0aa43deb13ffb24a60ba73f0112f24c5041c60ffcdbf9d9d871444722fdcb289"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fbf5f8",
+        "rectangle": [
+          109,
+          20,
+          219,
+          91
+        ],
+        "outline": "lightgray",
+        "image_sha256": "547aa49d3b4a9151d27230db7e3ed7e8d240b054fe48547b3ea8dac41c87e68f"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fcf6f9",
+        "rectangle": [
+          112,
+          21,
+          223,
+          92
+        ],
+        "outline": "lightgray",
+        "image_sha256": "bce1fbd09ae2530dee18e44864c80dbb977494853faa4e748fa10998ff52afb4"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fdf7fa",
+        "rectangle": [
+          115,
+          22,
+          227,
+          93
+        ],
+        "outline": "lightgray",
+        "image_sha256": "e0064c619c056d3b365a3ffcdc4e2974c668fe9937c26232075dd4aa8417a227"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fef8fb",
+        "rectangle": [
+          118,
+          23,
+          231,
+          94
+        ],
+        "outline": "lightgray",
+        "image_sha256": "65e4d9441c455e3f0223206561612fe3fd88a05b8e8fee23d473d0584f1f271d"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fff9fc",
+        "rectangle": [
+          121,
+          24,
+          235,
+          95
+        ],
+        "outline": "lightgray",
+        "image_sha256": "f35f23d0418977239037b0ae4231c63e04e0b094c40224c8178aba772da8b39c"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f4faf4",
+        "rectangle": [
+          124,
+          25,
+          239,
+          96
+        ],
+        "outline": "lightgray",
+        "image_sha256": "bfd20f79bd42b23f95ae9d057cc7d94761c4f6a83f26fbbaedbb7547b3ff87c3"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f5fbf5",
+        "rectangle": [
+          127,
+          26,
+          243,
+          97
+        ],
+        "outline": "lightgray",
+        "image_sha256": "b82eba0499053c0313462fdb46136b9a397f1c1129aeb0f7dce4afb8d0e9853b"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f6fcf6",
+        "rectangle": [
+          130,
+          8,
+          247,
+          98
+        ],
+        "outline": "lightgray",
+        "image_sha256": "358405aafe886e3c5fa1ee26904048233e5b4201a25c866f6b5ae6ad9274a33b"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f7fdf7",
+        "rectangle": [
+          133,
+          9,
+          251,
+          99
+        ],
+        "outline": "lightgray",
+        "image_sha256": "e713f2d86a659dcefbedc352728f3dee597f3c7c9dc0d9a91c33ae83a394e689"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f8f4f8",
+        "rectangle": [
+          136,
+          10,
+          255,
+          100
+        ],
+        "outline": "lightgray",
+        "image_sha256": "071de2396cd32734321fb6c80f5e273e0ac2780f5791cd97222d1eb3ae9d0dca"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f9f5f9",
+        "rectangle": [
+          139,
+          11,
+          259,
+          101
+        ],
+        "outline": "lightgray",
+        "image_sha256": "905641520d4d4b3f20c31116206c9c79420be09d9a255ae5e68279a8d3d57fbc"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#faf6fa",
+        "rectangle": [
+          142,
+          12,
+          263,
+          102
+        ],
+        "outline": "lightgray",
+        "image_sha256": "4612ec6c5a3cf03d3c6d5ffba40f3805192cdaf076fa7e82e5dced2ecd69b8c8"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fbf7fb",
+        "rectangle": [
+          145,
+          13,
+          267,
+          103
+        ],
+        "outline": "lightgray",
+        "image_sha256": "9fd864b5733e7722c6d7e14356705041aa7abc8bb85c0e76a4a2ea1d6b2fddae"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fcf8fc",
+        "rectangle": [
+          148,
+          14,
+          271,
+          104
+        ],
+        "outline": "lightgray",
+        "image_sha256": "585997036cf9f96d804718b394a66ac018359eeaa8a117754ebb3f3867b4e6ab"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fdf9f4",
+        "rectangle": [
+          151,
+          15,
+          275,
+          105
+        ],
+        "outline": "lightgray",
+        "image_sha256": "4bb22e9259cff8fe3399ec48bff45064811b6f1896b578bbe3350085207c32f0"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fefaf5",
+        "rectangle": [
+          154,
+          16,
+          279,
+          106
+        ],
+        "outline": "lightgray",
+        "image_sha256": "d968f1db0b7b18880aa75ee61661f88a8cdd7a8b6644fafd596f13b069f30d16"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#fffbf6",
+        "rectangle": [
+          157,
+          17,
+          283,
+          107
+        ],
+        "outline": "lightgray",
+        "image_sha256": "c76ae61722e225eb57ff991c20512898e5d1078dbf810e8b6ffb6d58ed4e746f"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f4fcf7",
+        "rectangle": [
+          160,
+          18,
+          287,
+          108
+        ],
+        "outline": "lightgray",
+        "image_sha256": "98fa4bdf4053f34c2cd37e26a240c010eaf6d4412492b0b52ddd767eabcbccda"
+      },
+      {
+        "reference": "",
+        "font_size": 24,
+        "background": "#f5fdf8",
+        "rectangle": [
+          163,
+          19,
+          291,
+          109
+        ],
+        "outline": "lightgray",
+        "image_sha256": "bd24ed35aff85b950de3aeb1cd380eff43051466e978b19f43220b831b0855c1"
+      }
+    ]
+  },
+  "tiny": {
+    "font": "msyh.ttc",
+    "font_sha256": "d79c55e68b1131eea0cc1c47be4f572d964f28c682e143db2ad09c1e4cb07a3f",
+    "model": "PP-OCRv6_medium_rec",
+    "source": "项目生成的固定本地 UI 样本；测试时使用已安装的 Windows 字体，未分发字体。",
+    "samples": [
+      {
+        "reference": "执行00",
+        "font_size": 6,
+        "image_sha256": "3b3baa57251dd2105a8460495eb6caa4c82ae2e9da2816cbd7127a5dcdb258f1"
+      },
+      {
+        "reference": "睡眠01",
+        "font_size": 7,
+        "image_sha256": "59170eb30571627259bb55a9486ac565fdf3374c72c1ddadfe05d990ea202a6f"
+      },
+      {
+        "reference": "保存02",
+        "font_size": 8,
+        "image_sha256": "1e30689c32f4ee132319c3faa39a0b56e88029b99fdf3601dac26b80413ecf81"
+      },
+      {
+        "reference": "关闭03",
+        "font_size": 9,
+        "image_sha256": "27eff0ef165f0e0da16d6ac2f150801b2502920c00abd14c7e4d24272b5e0eb8"
+      },
+      {
+        "reference": "重试04",
+        "font_size": 10,
+        "image_sha256": "0a6046c901a1cf6eda4208683947bc791d910991e09914e634d30bf43e2bdc78"
+      },
+      {
+        "reference": "执行05",
+        "font_size": 6,
+        "image_sha256": "4fdb290c6b21b3b2f16a8e6011ae9bba90589ce0305d62a050a889763f574e98"
+      },
+      {
+        "reference": "睡眠06",
+        "font_size": 7,
+        "image_sha256": "b14d33abe422da7f8c7b5b2d5c8a55071c04c682b1dd0f1fcd06553b7e2d0ddd"
+      },
+      {
+        "reference": "保存07",
+        "font_size": 8,
+        "image_sha256": "d0c76b25ca96039968e46c9de91d9f189710584fa2320eb9eea22a8c1e6b7cd5"
+      },
+      {
+        "reference": "关闭08",
+        "font_size": 9,
+        "image_sha256": "f22ffca0227d1b50a1bd5b767821baa9ac08aa2390169f032ffd6164c23e8fb3"
+      },
+      {
+        "reference": "重试09",
+        "font_size": 10,
+        "image_sha256": "a011133d34f05315d54ff3ba19007c547166b57e9a7c09c49ab59b9b3dbf38a8"
+      },
+      {
+        "reference": "执行10",
+        "font_size": 6,
+        "image_sha256": "1da20f35fb976b25bd043fc69cdde2ef278e07d016ef2cf8260decdff2764633"
+      },
+      {
+        "reference": "睡眠11",
+        "font_size": 7,
+        "image_sha256": "bbef192364c2f28cd0175aaec9da4109fd1f800e7f66bb9966365d7e1e7aac99"
+      },
+      {
+        "reference": "保存12",
+        "font_size": 8,
+        "image_sha256": "8fdfaefd259fe03657d7647ae0f25c05b417c8c86fe6cc4b159d43b428e8d0ca"
+      },
+      {
+        "reference": "关闭13",
+        "font_size": 9,
+        "image_sha256": "520aee4dbb220a17fe1008b7620d864fbbdf962654dc73e954058502a0071efd"
+      },
+      {
+        "reference": "重试14",
+        "font_size": 10,
+        "image_sha256": "d84280cba3ac1cb4f252ca9e239a098373aff35270e5a2cc2c64533deeb36bf5"
+      },
+      {
+        "reference": "执行15",
+        "font_size": 6,
+        "image_sha256": "eaaff434b72c0828d661d6db5a866a0fb414fe30c52727f0745ee0774c7f190c"
+      },
+      {
+        "reference": "睡眠16",
+        "font_size": 7,
+        "image_sha256": "c0475e50c009b98b17fb79c8d6ddc04437266dc705ac75acbaf0d4c0d582cc5c"
+      },
+      {
+        "reference": "保存17",
+        "font_size": 8,
+        "image_sha256": "fc35f0a4d2db32f27109bf0e61783cf38f6baef309fc9d3e1a181bdb5b4e29c6"
+      },
+      {
+        "reference": "关闭18",
+        "font_size": 9,
+        "image_sha256": "2ce78611e89af0fb8295d98773e654b5e3f6236fa725c5a35a30193908de5e0c"
+      },
+      {
+        "reference": "重试19",
+        "font_size": 10,
+        "image_sha256": "0602e8850f7da2d59669342770fe37b6288ed4485e70adfe37d3f2ff5cd9d66a"
+      },
+      {
+        "reference": "执行20",
+        "font_size": 6,
+        "image_sha256": "eaa815c8ad48d2a0a657eb699ee34cf7687b3629499c00e72f717259ee9ec7aa"
+      },
+      {
+        "reference": "睡眠21",
+        "font_size": 7,
+        "image_sha256": "fc035b5064c9169da47da6893211d292ac958861b71f37348b2d55ac68faced5"
+      },
+      {
+        "reference": "保存22",
+        "font_size": 8,
+        "image_sha256": "7b79b8340fd5eb90ca33fb5f9cfdcf5c70d793d28a097fd48d6e814bb3eacc95"
+      },
+      {
+        "reference": "关闭23",
+        "font_size": 9,
+        "image_sha256": "239c81625d3ba9937200b9a152f110dce0ff08195a276140a88ce312d09e0fae"
+      },
+      {
+        "reference": "重试24",
+        "font_size": 10,
+        "image_sha256": "e0f88ac7b234c1665c8c47cd5ea4062165b7c83417a4740388824007e0de82b7"
+      },
+      {
+        "reference": "执行25",
+        "font_size": 6,
+        "image_sha256": "e9a3e7efc305d8f1e607f1de266d0644edd171200412e43079894dfefcc67bde"
+      },
+      {
+        "reference": "睡眠26",
+        "font_size": 7,
+        "image_sha256": "676b24705ce9d2e543868c105ba5dd8c4cd5badcf1a77eb5fe29705cb6f0e237"
+      },
+      {
+        "reference": "保存27",
+        "font_size": 8,
+        "image_sha256": "db0227caef2023fcdf6f2d172c15ca60df132c417309616e7d3052f82af8030f"
+      },
+      {
+        "reference": "关闭28",
+        "font_size": 9,
+        "image_sha256": "342215aa745cd40375d2736004459b098d7c773f1df972373e7ef0bce26688f3"
+      },
+      {
+        "reference": "重试29",
+        "font_size": 10,
+        "image_sha256": "b17dde64c4b2a51a809f9b66d1094d4ded040bbb9edb73e56d642916af614de1"
+      },
+      {
+        "reference": "执行30",
+        "font_size": 6,
+        "image_sha256": "e11ad6e395bd57bec9c9e1bfcc3ad41df1468fe74ffa689d07c043a55789b63b"
+      },
+      {
+        "reference": "睡眠31",
+        "font_size": 7,
+        "image_sha256": "4c86d61c606d3f77654960b0819299f7b0a31f55819708dad8584ecb010ca3a0"
+      },
+      {
+        "reference": "保存32",
+        "font_size": 8,
+        "image_sha256": "256c5914cd175fe95c98673c632e37b4d2df5b699708cfca33c1680fa0375a80"
+      },
+      {
+        "reference": "关闭33",
+        "font_size": 9,
+        "image_sha256": "556850346574f608d289fde449af1a8f1052ae82c0db23167af109f8da19c214"
+      },
+      {
+        "reference": "重试34",
+        "font_size": 10,
+        "image_sha256": "97ea711ae7753349f400ea64fd2d875a1fdb90d5c91cf06bf4299b3f09d701e6"
+      },
+      {
+        "reference": "执行35",
+        "font_size": 6,
+        "image_sha256": "6a8dca0a3ab6b3c2e076f50c20e81f72f91a054b7b23d3f11574d1e00151a3ac"
+      },
+      {
+        "reference": "睡眠36",
+        "font_size": 7,
+        "image_sha256": "a96fbb0c7656f02d6fc62fe02c22d64707e0c44cb354a15a9543c5102eef5fef"
+      },
+      {
+        "reference": "保存37",
+        "font_size": 8,
+        "image_sha256": "63bb0676ec7b5ecc1250d4a7082d97b029015714525b08b18268551e9caedb28"
+      },
+      {
+        "reference": "关闭38",
+        "font_size": 9,
+        "image_sha256": "3395784addbd4f9034c0e726d49c834e4a1a66174abd88cc580379e5d9794c5d"
+      },
+      {
+        "reference": "重试39",
+        "font_size": 10,
+        "image_sha256": "9333a982564e7a6fc6a7f09b0f13eae82108c8168247fabb3bb0960736502505"
+      },
+      {
+        "reference": "执行40",
+        "font_size": 6,
+        "image_sha256": "fac5d0f2c36f0c7b4c8bc95d70cfba36105e5e8ce03478dd9581357492e02f15"
+      },
+      {
+        "reference": "睡眠41",
+        "font_size": 7,
+        "image_sha256": "ad8f8f40fb4f8163662247f90acac99a26e8614bba54fa464957b72e84d4e2e6"
+      },
+      {
+        "reference": "保存42",
+        "font_size": 8,
+        "image_sha256": "37a10ac16a4b284c7ecff6447a11d191654466e553540ac9dae424eae2367ec3"
+      },
+      {
+        "reference": "关闭43",
+        "font_size": 9,
+        "image_sha256": "e1af2d2e01c1ae7cf38ebaf174b19c3822f4319abdc8cb758107f038cc3fa6b7"
+      },
+      {
+        "reference": "重试44",
+        "font_size": 10,
+        "image_sha256": "7f39a8b612ae14b161f40cc2370e54343b631ca69feb495eec37717e9faf900b"
+      },
+      {
+        "reference": "执行45",
+        "font_size": 6,
+        "image_sha256": "6caa73ad37b2f745409c9122c706450835be9ca483851ef00fa88d8373de3093"
+      },
+      {
+        "reference": "睡眠46",
+        "font_size": 7,
+        "image_sha256": "d2693da4a818ff157309673cfa0bf317d3787e538b28e30bc68ccf3db5eeaec8"
+      },
+      {
+        "reference": "保存47",
+        "font_size": 8,
+        "image_sha256": "aa66af18295d78950a02eb750365cf53830fa4cd33f31569609d70c8263c9212"
+      },
+      {
+        "reference": "关闭48",
+        "font_size": 9,
+        "image_sha256": "ded93ab9e82e4c15d36c0ceead8b964fbebdf2cee8376433ee1a1a503088bb52"
+      },
+      {
+        "reference": "重试49",
+        "font_size": 10,
+        "image_sha256": "00c01db8602105996f3c96ea2847b1b4e9ce73b88cbdf56850cc3b08bb72f379"
+      }
+    ]
+  },
+  "symbols": {
+    "font": "arial.ttf",
+    "font_sha256": "edfbd22a3d088fc2f5d7c79b8c9c732df6dc878a60f0a80be0f92a3c7a634404",
+    "model": "PP-OCRv6_medium_rec",
+    "source": "项目生成的固定本地 UI 样本；测试时使用已安装的 Windows 字体，未分发字体。",
+    "samples": [
+      {
+        "reference": "→00",
+        "font_size": 24,
+        "image_sha256": "7790d2d9074ffbe25a583e2c20e1de529b05f718cfff3954b9946e10727f436c"
+      },
+      {
+        "reference": "※01",
+        "font_size": 25,
+        "image_sha256": "e7c8530a92566e90965965b61ddf30b525d30c46e505d44bc2b4315432d00375"
+      },
+      {
+        "reference": "±02",
+        "font_size": 26,
+        "image_sha256": "5bc60cf7b93574f16ae8516692488fbda70b3fbbff3db2684876a6edfc924e5d"
+      },
+      {
+        "reference": "≈03",
+        "font_size": 27,
+        "image_sha256": "8141f2660c9def9d245f0be9df131ee10ba0f1622290ce70cf325e38ecfc1c2e"
+      },
+      {
+        "reference": "≤04",
+        "font_size": 28,
+        "image_sha256": "6d47d0ab700abdcb1f8f9609b6f55e1cf1bc72a2129718b37114c35efee6f287"
+      },
+      {
+        "reference": "€05",
+        "font_size": 29,
+        "image_sha256": "12367dadd08d823abc60a235bf1438059eb40edf032436bef5b4cb209e1d7a54"
+      },
+      {
+        "reference": "©06",
+        "font_size": 30,
+        "image_sha256": "c6d64b40b2ff1233d9d1a5f52ab412f8f6c953b3820805da48b568ac888df877"
+      },
+      {
+        "reference": "×07",
+        "font_size": 31,
+        "image_sha256": "9f4db8c37e08655b755b414018729a0fd90c18d9569e1a51b90b17a259e98ef2"
+      },
+      {
+        "reference": "°C08",
+        "font_size": 32,
+        "image_sha256": "faf20eb7821b1abf983b407af96171d755e96525859b3132a2b83955fe368d63"
+      },
+      {
+        "reference": "♭09",
+        "font_size": 33,
+        "image_sha256": "31760b82144ca2e320a3b58dc9945d4ec4592ae118b483235c67041f12147fb4"
+      },
+      {
+        "reference": "→10",
+        "font_size": 34,
+        "image_sha256": "6f0272a28b88a03d77d0e1449f1ee671322013b974d184e1e36e88b85fc71957"
+      },
+      {
+        "reference": "※11",
+        "font_size": 35,
+        "image_sha256": "c9e5f58505c1544635b651ff529c3f46bdcfdc44aba41f8c28cc16149cccaeea"
+      },
+      {
+        "reference": "±12",
+        "font_size": 36,
+        "image_sha256": "0b51ef45d40d4bfa47e09fc16ee34015cb6dcac19903799727371beafeafa0dc"
+      },
+      {
+        "reference": "≈13",
+        "font_size": 24,
+        "image_sha256": "cf7935dd6bea85fec8f8b8f6b8b5869ec1b84b7ed951471571cc11cf98b8a354"
+      },
+      {
+        "reference": "≤14",
+        "font_size": 25,
+        "image_sha256": "c0aeb68833fce4d7f44e48215895c770c6be2ad16209357f930d10930ba57323"
+      },
+      {
+        "reference": "€15",
+        "font_size": 26,
+        "image_sha256": "b9c83afe04f8783207592881b833a83e628b1b3b78bbaeb74c0c0651dd922cb4"
+      },
+      {
+        "reference": "©16",
+        "font_size": 27,
+        "image_sha256": "7a94eaa3cd9f7b2ee1192f572ada111ab9377a6690a44ad6f5236e30418765ef"
+      },
+      {
+        "reference": "×17",
+        "font_size": 28,
+        "image_sha256": "7ebe4f33824cba10cf1037f52696c28bbcff5d857d6a0aa5119feaafa465cc90"
+      },
+      {
+        "reference": "°C18",
+        "font_size": 29,
+        "image_sha256": "23089e9f7ca53c4170ce1905e90ea6e4cb06c58ffa976d502f339097390cdfb5"
+      },
+      {
+        "reference": "♭19",
+        "font_size": 30,
+        "image_sha256": "adce09c7ebd17b4f30e603eff091d0c7acd7ab789c26d0daa9d0fd96d1abddcc"
+      },
+      {
+        "reference": "→20",
+        "font_size": 31,
+        "image_sha256": "5d2ffd741c964ba5db204d2e2a8da875ab1ae461cf5ef859be8051f4c887963c"
+      },
+      {
+        "reference": "※21",
+        "font_size": 32,
+        "image_sha256": "93da413b95880293d91b5790ee45546a45fdfd4f63392839f2cd60b70c9ae5ea"
+      },
+      {
+        "reference": "±22",
+        "font_size": 33,
+        "image_sha256": "77d776bdb4805685fa4ac274483c92f48a14548b2f6927f1778571bd59e16ba0"
+      },
+      {
+        "reference": "≈23",
+        "font_size": 34,
+        "image_sha256": "23e047a881fbe85fe9edbbf774318e859f1f04b1e91cb107c14b4087470270ce"
+      },
+      {
+        "reference": "≤24",
+        "font_size": 35,
+        "image_sha256": "8d6348a9ae61f6548cb1228e54dfb7126ac828dfb70024a6c15a2a54fb18550d"
+      },
+      {
+        "reference": "€25",
+        "font_size": 36,
+        "image_sha256": "bbc621918834e2c692e39e9180fc2f95a89370cc80961af2f56808abc773dca3"
+      },
+      {
+        "reference": "©26",
+        "font_size": 24,
+        "image_sha256": "5f1933108de240266000f2239996cfdf133803458d4258dd1255a1ba7edb2b10"
+      },
+      {
+        "reference": "×27",
+        "font_size": 25,
+        "image_sha256": "c9b57d85603bfeffeb033131455ad16161a101d423ee6a73aeb22f866e784954"
+      },
+      {
+        "reference": "°C28",
+        "font_size": 26,
+        "image_sha256": "ff579e5e9b32682d081aed0cb2d2457e2f0cd8f698f457f07205069a3e4c8dbc"
+      },
+      {
+        "reference": "♭29",
+        "font_size": 27,
+        "image_sha256": "7993cde870ed37e64c0fcef14e26caf26f6e8018479a8b1558636cd98bb2f428"
+      },
+      {
+        "reference": "→30",
+        "font_size": 28,
+        "image_sha256": "5d2515395a13663d54aeab9ecafff62cab9d60ed80ef0d42e32b7ff66a726cef"
+      },
+      {
+        "reference": "※31",
+        "font_size": 29,
+        "image_sha256": "7546be9a950fec9d9ce8f4ee1c9c6ae36891abb1f0a4d5531d5f29e853a8c9fb"
+      },
+      {
+        "reference": "±32",
+        "font_size": 30,
+        "image_sha256": "29ec5137a1d0e75150383694d398d8d710fa9b6903b17b816e8183b9d5d41146"
+      },
+      {
+        "reference": "≈33",
+        "font_size": 31,
+        "image_sha256": "090db3ee060a46bd1c3a165cec2a15c5ec3a18f07e1818acc6bccc46b232fc47"
+      },
+      {
+        "reference": "≤34",
+        "font_size": 32,
+        "image_sha256": "77be44db86bc77a860765cf41c10b70172df88a0297c53760814bb250fa78d31"
+      },
+      {
+        "reference": "€35",
+        "font_size": 33,
+        "image_sha256": "e7c7348d0f46b0233e1bcf1faf4669a3a9c7bdcd42964981bac85c6d55155a0e"
+      },
+      {
+        "reference": "©36",
+        "font_size": 34,
+        "image_sha256": "aa38968b4631ca60508602c82566e631e45b2c02894fa699552fc20ad47444a4"
+      },
+      {
+        "reference": "×37",
+        "font_size": 35,
+        "image_sha256": "707352b13f45acc82f52bc60c91d286f4bd91afdadc8881d3eed1034207a2bfe"
+      },
+      {
+        "reference": "°C38",
+        "font_size": 36,
+        "image_sha256": "3a3ca432d6220ad23870379c52f045fc261043075a915f7d70fca59bbeffa835"
+      },
+      {
+        "reference": "♭39",
+        "font_size": 24,
+        "image_sha256": "f24fa86bc55c180265dab7e8fe696765a256877335d1c2ce3d6762fd3fddd0a6"
+      },
+      {
+        "reference": "→40",
+        "font_size": 25,
+        "image_sha256": "391c61a0f3ecdd2c084e0a013cfd3d2a1909955dc40c2ff3418ca31e5307d674"
+      },
+      {
+        "reference": "※41",
+        "font_size": 26,
+        "image_sha256": "120304aa9f97bfee72f99a2be9fc993b95d1fba1e07ef836e145c152a1583bcd"
+      },
+      {
+        "reference": "±42",
+        "font_size": 27,
+        "image_sha256": "b68af576f40a9d4b939368b587babe4ef1b31ab25cf562338d1d267592c95bc1"
+      },
+      {
+        "reference": "≈43",
+        "font_size": 28,
+        "image_sha256": "1dbdaa9fa2f6c0758729d939b81cba890fba54475116e1ac7da83ee869931906"
+      },
+      {
+        "reference": "≤44",
+        "font_size": 29,
+        "image_sha256": "aee20a9180bf94c866259da37a8fcaad57c06a7e0cfd16829120f06c59c46148"
+      },
+      {
+        "reference": "€45",
+        "font_size": 30,
+        "image_sha256": "91728ce4b35cd2b31c9cad447d84848d00cda4f544ea5b97e37bf0d84ac3ddab"
+      },
+      {
+        "reference": "©46",
+        "font_size": 31,
+        "image_sha256": "534c49525b57a86c60cc6558d229c27b1eed08ab153a0343bab3dad3027773b6"
+      },
+      {
+        "reference": "×47",
+        "font_size": 32,
+        "image_sha256": "5cb1954481ec9994bd28a56960a4b0f0f05789ff5ebc8bc5130d2907f1362cf4"
+      },
+      {
+        "reference": "°C48",
+        "font_size": 33,
+        "image_sha256": "e382de60e9c5cd401e9043839bed5d13dd6794966be230956fb589ef9d617712"
+      },
+      {
+        "reference": "♭49",
+        "font_size": 34,
+        "image_sha256": "f229a7e4ef6b9cbf824244703fc2f1ae4faa0d6dc67362974aa3966a40be2a89"
+      }
+    ]
+  }
+}

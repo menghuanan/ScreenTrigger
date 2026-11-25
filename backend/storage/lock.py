@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import threading
+from contextlib import contextmanager
 from typing import Dict, Optional
 
 from .errors import storage_error
@@ -67,6 +68,7 @@ class DataRootLock:
         self._inproc = root_lock(data_dir)
         self._lockfile = lockfile or lockfile_path(data_dir)
         self._held = False
+        self._descriptor = None
 
     @property
     def lockfile(self) -> str:
@@ -104,7 +106,7 @@ class DataRootLock:
     def _create_lockfile(self) -> None:
         os.makedirs(os.path.dirname(os.path.abspath(self._lockfile)), exist_ok=True)
         try:
-            fd = os.open(self._lockfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = os.open(self._lockfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_TEMPORARY", 0))
         except FileExistsError as exc:
             raise storage_error(
                 "数据根已被另一写者占用（拒绝第二写者）: %s" % self._lockfile,
@@ -112,16 +114,21 @@ class DataRootLock:
             ) from exc
         try:
             os.write(fd, str(os.getpid()).encode("ascii"))
-        finally:
+        except BaseException:
             os.close(fd)
+            raise
+        self._descriptor = fd
 
     def release(self) -> None:
         """释放写锁（删除 lockfile + 释放进程内锁）；幂等。"""
         if not self._held:
             return
         self._held = False
+        os.close(self._descriptor)
+        self._descriptor = None
         try:
-            os.remove(self._lockfile)
+            if not hasattr(os, "O_TEMPORARY"):
+                os.remove(self._lockfile)
         except OSError:
             pass
         self._inproc.release()
@@ -131,3 +138,23 @@ class DataRootLock:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.release()
+
+
+@contextmanager
+def engine_session(data_dir):
+    """One live engine or offline management process. The OS releases this lock on exit."""
+    from .paths import DataRoot
+    path = DataRoot(str(data_dir)).resolve("catalog/engine-session.lock")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a+b") as stream:
+        stream.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise storage_error("数据目录正在使用，请在设置页操作或退出占用它的引擎。") from exc
+        yield

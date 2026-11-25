@@ -66,6 +66,9 @@ internal sealed class SessionEvents(Func<Action, bool> dispatch, Action overflow
         return subscription;
     }
 
+    private static string MergeKey(EngineEvent item) => item.Name == "recognition_stats" &&
+        item.Payload.TryGetProperty("execution_id",out var id) ? $"{item.Name}/{id}" : item.Name;
+
     public void Accept(JsonElement frame)
     {
         if (frame.GetProperty("protocol_version").GetInt32() != 1 || frame.GetProperty("type").GetString() != "event") return;
@@ -101,12 +104,14 @@ internal sealed class SessionEvents(Func<Action, bool> dispatch, Action overflow
             }
             if (gap) recover = activeExecutions.ToArray();
             bool coalescible = item.Name is "selection_updated" or "recognition_stats";
-            if (coalescible && merged.Remove(item.Name, out var previous)) queue.Remove(previous);
+            var key = MergeKey(item);
+            if (item.Name == "recognition_stats" && item.Payload.TryGetProperty("execution_id", out var owner) && terminalExecutions.Contains(owner.GetString()!)) deliveredTerminal = true;
+            if (coalescible && merged.Remove(key, out var previous)) queue.Remove(previous);
             if (!deliveredTerminal && queue.Count >= 1024) { End(); failed = true; }
             else if (!deliveredTerminal)
             {
                 var node = queue.AddLast(item);
-                if (coalescible) merged[item.Name] = node;
+                if (coalescible) merged[key] = node;
                 if (!posted) { posted = true; schedule = true; }
             }
         }
@@ -127,7 +132,7 @@ internal sealed class SessionEvents(Func<Action, bool> dispatch, Action overflow
                 if (closed || queue.First == null) { posted = false; return; }
                 item = queue.First.Value;
                 queue.RemoveFirst();
-                merged.Remove(item.Name);
+                merged.Remove(MergeKey(item));
                 listeners = subscribers.ToArray();
             }
             foreach (var listener in listeners)

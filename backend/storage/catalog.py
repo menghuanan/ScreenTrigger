@@ -13,6 +13,7 @@ generation 目录含 ``manifest.json`` + 三 JSON（targets/groups/script_metada
 from __future__ import annotations
 
 import os
+import ntpath
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
@@ -190,11 +191,12 @@ class Catalog:
             not isinstance(generation_id, str)
             or not generation_id
             or generation_id in (".", "..")
+            or ntpath.isreserved(generation_id)
             or "/" in generation_id
             or "\\" in generation_id
         ):
             raise invalid_params("generation", "generation id 非法: %r" % (generation_id,))
-        return os.path.join(self._root.generations_dir(), generation_id)
+        return self._root.resolve("catalog/generations/" + generation_id)
 
     # -- 读取 ----------------------------------------------------------------
 
@@ -263,8 +265,9 @@ class Catalog:
         script_metadata = generation.decode_json(
             documents[SCRIPT_METADATA_NAME], what="script_metadata.json"
         )
-        if not isinstance(script_metadata, dict) or script_metadata.get("schema_version") != SCHEMA_VERSION:
-            raise data_corrupt("script_metadata.json schema_version 必须为 %d" % SCHEMA_VERSION)
+        if not isinstance(script_metadata, dict):
+            raise data_corrupt("script_metadata.json 必须为对象")
+        _check_document_schema(script_metadata.get("schema_version"), SCRIPT_METADATA_NAME)
 
         validate_entities(targets, groups)
         next_sample_no = int(targets_doc["next_sample_no"])
@@ -350,7 +353,8 @@ class Catalog:
         if not isinstance(document, dict) or set(document) != {"generation", "manifest_sha256"}:
             return False
         try:
-            self._read_manifest(document["generation"], document["manifest_sha256"])
+            manifest = self._read_manifest(document["generation"], document["manifest_sha256"])
+            self._read_generation_documents(document["generation"], manifest)
         except StorageError:
             return False
         raw = fsops.read_bytes(backup)

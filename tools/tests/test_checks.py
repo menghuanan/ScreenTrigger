@@ -24,6 +24,9 @@ class GateTests(unittest.TestCase):
             shutil.copy2(ROOT / name, self.root / name)
         for name in ("docs", "tools", "manifest"):
             shutil.copytree(ROOT / name, self.root / name, ignore=shutil.ignore_patterns("__pycache__", "check-state.json"))
+        profile = Path("desktop/ScreenTrigger/Properties/PublishProfiles/Offline.pubxml")
+        (self.root / profile.parent).mkdir(parents=True)
+        shutil.copy2(ROOT / profile, self.root / profile)
         self.model = build(self.root)
         self.state = {
             "schema_version": 1,

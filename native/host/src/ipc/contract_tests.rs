@@ -613,6 +613,7 @@ fn cancel_flow_marks_pending_and_updates_history() {
     wait_until(|| h.sink.sent_len() == 2, Duration::from_secs(2));
     let cancel_id = h.sink.sent_ids()[1].clone();
     assert!(cancel_id.starts_with("cancel-"), "Router 自发请求 id 应可辨识: {cancel_id}");
+    assert_eq!(rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap_err().code, "CANCELLED");
     feed_frame(&h, ok_response(&cancel_id, json!({ "cancelled": true, "reason": "cancelled" })));
     let ack = recv_ok(&cancel_rx);
     assert_eq!(ack["cancelled"], true);

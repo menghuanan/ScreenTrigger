@@ -12,7 +12,11 @@ $folder = New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop
 $env:SIDECAR_DATA_DIR = Join-Path $folder.FullName 'data'
 if ($Scenario -in 'normal','missing_models','close_pending') { $env:SIDECAR_FAULT_SCENARIO = $null }
 else { $env:SIDECAR_FAULT_SCENARIO = $Scenario }
-if ($Scenario -eq 'missing_models') { $env:ST_OCR_MODELS_DIR = Join-Path $folder.FullName 'absent-models' }
+if ($Scenario -eq 'missing_models') {
+    $env:ST_OCR_MODELS_DIR = Join-Path $folder.FullName 'absent-models'
+    & .venv/Scripts/python.exe -X utf8 (Join-Path $PSScriptRoot 'p2/seed.py') $env:SIDECAR_DATA_DIR
+    if ($LASTEXITCODE) { throw 'Could not prepare the isolated script fixture' }
+}
 if ($Scenario -eq 'close_pending') { $env:ST_IPC_TRACE = '1' }
 $observations = [ordered]@{scenario=$Scenario; started_at=[DateTimeOffset]::Now.ToString('o'); executable=$exe}
 
@@ -51,6 +55,18 @@ function Close-NativeWindow($Window) {
     $action.Close()
 }
 
+function Select-Page($Main,[string]$Id) {
+    $item = Find-Control $Main $Id
+    if (!$item -or $item.Current.IsOffscreen) {
+        $more = Find-Control $Main 'TopNavOverflowButton'
+        if ($more) { $more.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke() }
+    }
+    $item = Wait-For { Find-Control $Main $Id } $Id
+    $pattern = $null
+    if ($item.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern,[ref]$pattern)) { $pattern.Select() }
+    else { $item.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke() }
+}
+
 function Get-ChildrenOf([int]$Parent) {
     foreach ($child in (Get-CimInstance Win32_Process -Filter "ParentProcessId=$Parent")) {
         [int]$child.ProcessId
@@ -58,6 +74,7 @@ function Get-ChildrenOf([int]$Parent) {
     }
 }
 
+$startup = [Diagnostics.Stopwatch]::StartNew()
 $app = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $folder 'stderr.log')
 $observations.app_pid = $app.Id
 $childIds = @()
@@ -116,12 +133,19 @@ try {
     } else {
         Wait-For { (Find-Control $main StopEngine).Current.IsEnabled } 'ready' | Out-Null
         $observations.health = $health.Current.Name
+        $observations.ready_ms = $startup.Elapsed.TotalMilliseconds
         $row = Wait-For { Find-Control $main Capability_ocr } 'OCR capability'
         $observations.ocr = $row.Current.Name
         $modelButton = Wait-For { Find-Control $main InspectModels } 'model inventory button'
         $observations.model_button_enabled = $modelButton.Current.IsEnabled
         if ($observations.ocr -match 'OCR.*不可用') {
             if ($modelButton.Current.IsEnabled) { throw 'Unavailable OCR exposed an enabled model action' }
+            if ($Scenario -eq 'missing_models') {
+                Select-Page $main NavRun
+                Invoke-Control $main ExecuteScript
+                $observations.pure_script = Wait-For { $s=Find-Control $main RunStatus; if ($s.Current.Name -match '已完成') { $s.Current.Name } } 'Lua without OCR'
+                Select-Page $main NavEngine
+            }
         } else {
             if ($Scenario -eq 'missing_models' -or !$modelButton.Current.IsEnabled) { throw "Inconsistent OCR state: $($observations.ocr)" }
             Invoke-Control $main InspectModels
@@ -133,6 +157,11 @@ try {
         $childIds = @(Get-ChildrenOf $app.Id)
         if ($childIds.Count -eq 0) { throw 'Missing engine process' }
         $observations.first_tree = $childIds
+        $observations.processes = @(Get-Process -Id (@($app.Id)+$childIds) | ForEach-Object {
+            [ordered]@{pid=$_.Id; name=$_.ProcessName; image=$_.Path; rss=$_.WorkingSet64; private_bytes=$_.PrivateMemorySize64}
+        })
+        $observations.modules = @((Get-Process -Id $app.Id).Modules | ForEach-Object ModuleName)
+        if ($observations.processes.name -match 'msedgewebview2') { throw 'Unexpected WebView2 process' }
         foreach ($iteration in 1,2,3) {
             if ($iteration -eq 3) {
                 Invoke-Control $main StopEngine

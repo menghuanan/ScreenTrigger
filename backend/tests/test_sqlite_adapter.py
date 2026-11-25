@@ -32,6 +32,20 @@ class SQLiteAdapterSkeletonTest(unittest.TestCase):
             SQLiteAdapter()  # type: ignore[abstract]
 
     def test_contract_methods_match_repository(self):
+        from tempfile import TemporaryDirectory
+        from backend.storage.sqlite_adapter import RepositoryPort
+        from backend.storage.errors import StorageError
+        from backend.targets.repository import CatalogChange
+        with TemporaryDirectory() as directory:
+            repo = Repository(directory)
+            self.assertIsInstance(repo, RepositoryPort)
+            before = repo.read_snapshot()
+            committed = repo.commit(CatalogChange(), before.generation)
+            with self.assertRaises(StorageError) as caught:
+                repo.commit(CatalogChange(), before.generation)
+            self.assertEqual(caught.exception.code, "CONFLICT")
+            self.assertEqual(repo.read_snapshot().generation, committed.generation)
+            repo.close()
         # 同一合约测试的意图：接口方法与 JSON Repository 同名同语义
         for name in ("read_snapshot", "commit", "close"):
             self.assertTrue(hasattr(SQLiteAdapter, name))

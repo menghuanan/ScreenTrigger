@@ -19,7 +19,9 @@
     <StackPanel Orientation="Horizontal" Spacing="8">
       <Button Content="检查语法" Click="Action" Tag="validate" AutomationProperties.AutomationId="ValidateScript" />
       <Button Content="保存脚本" Click="Action" Tag="save" AutomationProperties.AutomationId="SaveScript" />
+      <Button Content="打开调试器" Click="OpenDebug" AutomationProperties.AutomationId="OpenDebug" />
       <Button Content="删除脚本" Click="Action" Tag="delete" />
     </StackPanel>
+    <ContentControl x:Name="DebugTools" HorizontalContentAlignment="Stretch" />
  </StackPanel></ScrollViewer>
 </UserControl>

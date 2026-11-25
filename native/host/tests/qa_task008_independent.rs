@@ -3,9 +3,9 @@
 //! 目的：**不采信** `src/selection/controller/tests.rs` 的结论，用独立硬编码的
 //! 数据与独立时序日志重算以下断言：
 //!
-//! 1. 路由目录：以 docs/03 命令目录**手工抄录**的 62 条为基准（非读取源码数组），
+//! 1. 路由目录：以 docs/03 命令目录**手工抄录**的 64 条为基准（非读取源码数组），
 //!    校验每条可路由、无重复、`HostHandled`/`ForwardPython`/`HostDenied` 归属，
-//!    并确认总数 62、表外命令 Unknown、`selection_report_region`/`selection_preview`
+//!    并确认总数 64、表外命令 Unknown、`selection_report_region`/`selection_preview`
 //!    未混入公开目录；
 //! 2. 事件时序：用独立注入端口 + 独立 `OrderLog` 断言 `selection_completed` /
 //!    `selection_cancelled` **严格晚于**「关覆盖层 + 恢复主窗口」；
@@ -34,8 +34,8 @@ use screen_trigger_lib::types::region::{DisplayInfo, ImageRef, Rect, Region, Reg
 // ---------------------------------------------------------------------------
 
 /// docs/03「系统、捕获与识别」+「目标、分组和脚本文件」+「运行与调试」+「窗口、输入和配置」
-/// 表中的全部命令，共 62 条。
-const CATALOG_62: [&str; 62] = [
+/// 表中的全部命令，共 64 条。
+const CATALOG_64: [&str; 64] = [
     // 系统、捕获与识别
     "hello", "ping", "query_request", "cancel_request", "cancel_job", "get_job",
     "get_display_list", "start_selection_mode", "confirm_selection", "stop_selection_mode",
@@ -48,7 +48,7 @@ const CATALOG_62: [&str; 62] = [
     "list_scripts", "load_script", "save_script", "delete_script", "validate_script",
     // 运行与调试
     "execute_script", "start_monitor", "pause_script", "resume_script", "stop_script",
-    "get_script_state", "query_execution", "get_execution_logs", "add_breakpoint",
+    "get_script_state", "query_execution", "get_execution_logs", "list_execution_history", "clear_execution_logs", "add_breakpoint",
     "remove_breakpoint", "list_breakpoints", "step_into", "step_over", "step_out",
     "continue_execution", "get_variables", "get_stack",
     // 窗口、输入和配置
@@ -57,11 +57,11 @@ const CATALOG_62: [&str; 62] = [
 ];
 
 #[test]
-fn catalog_is_62_unique_and_every_entry_is_routable() {
-    assert_eq!(CATALOG_62.len(), 62, "docs/03 命令目录应为 62 条");
-    let unique: HashSet<&str> = CATALOG_62.iter().copied().collect();
-    assert_eq!(unique.len(), 62, "目录内不得有重复命令");
-    for cmd in CATALOG_62 {
+fn catalog_is_64_unique_and_every_entry_is_routable() {
+    assert_eq!(CATALOG_64.len(), 64, "docs/03 命令目录应为 64 条");
+    let unique: HashSet<&str> = CATALOG_64.iter().copied().collect();
+    assert_eq!(unique.len(), 64, "目录内不得有重复命令");
+    for cmd in CATALOG_64 {
         assert_ne!(route_command(cmd), Route::Unknown, "{cmd} 必须可路由（在目录内）");
     }
 }
@@ -104,7 +104,7 @@ fn internal_selection_commands_are_not_in_public_catalog() {
         "register_host_frame",
     ] {
         assert_eq!(route_command(internal), Route::Unknown, "{internal} 不得混入公开目录");
-        assert!(!CATALOG_62.contains(&internal), "{internal} 不应出现在 62 条目录");
+        assert!(!CATALOG_64.contains(&internal), "{internal} 不应出现在 64 条目录");
     }
 }
 

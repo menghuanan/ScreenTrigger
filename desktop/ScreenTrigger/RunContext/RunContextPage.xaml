@@ -1,8 +1,9 @@
 <UserControl x:Class="ScreenTrigger.RunContext.RunContextPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:monitor="using:ScreenTrigger.Monitor" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
  <ScrollViewer><StackPanel Margin="24" Spacing="10">
-    <TextBlock Text="运行设置" Style="{ThemeResource TitleTextBlockStyle}" />
+    <TextBlock x:Name="Heading" Text="运行设置" Style="{ThemeResource TitleTextBlockStyle}" />
+    <TextBlock x:Name="OcrNotice" TextWrapping="Wrap" Visibility="Collapsed" Text="OCR 不可用。仍可使用纯脚本、模板、颜色和轮廓目标。" />
     <ComboBox x:Name="Windows" Header="已打开的窗口" HorizontalAlignment="Stretch" AutomationProperties.AutomationId="WindowPicker" />
     <StackPanel Orientation="Horizontal" Spacing="8">
         <Button Content="刷新窗口" Click="Refresh" />
@@ -19,13 +20,19 @@
     <NumberBox x:Name="Count" Header="迭代次数" Minimum="1" Value="1" Visibility="Collapsed" />
     <ComboBox x:Name="Targets" Header="停止目标" HorizontalAlignment="Stretch" Visibility="Collapsed" />
     <TextBox x:Name="Arguments" Header="脚本参数（JSON 对象）" Text="{}" />
-    <Expander Header="区域与频率" HorizontalAlignment="Stretch"><StackPanel Spacing="8">
+    <monitor:MonitorOptions x:Name="Policy" Visibility="Collapsed" />
+    <Expander x:Name="Scope" Header="区域与频率" HorizontalAlignment="Stretch"><StackPanel Spacing="8">
         <TextBox x:Name="Region" Header="识别区域（Region JSON，留空使用整个显示器或客户区）" />
+        <Button x:Name="PickRegion" Content="在显示器上框选区域" Click="SelectRegion" />
         <CheckBox x:Name="AllowExit" Content="允许输入越出识别区域" />
         <NumberBox x:Name="Frequency" Header="识别频率（Hz）" Minimum="0.1" Maximum="30" Value="1" />
         <NumberBox x:Name="Timeout" Header="总期限（毫秒，0 表示不限）" Minimum="0" Value="0" />
     </StackPanel></Expander>
+    <CheckBox x:Name="EnableDebug" Content="启用已保存源码的断点" />
+    <TextBlock Text="启动时固定目标、脚本和区域快照。本页修改用于下一次运行。" TextWrapping="Wrap" />
     <Button x:Name="Execute" Content="运行脚本" Style="{StaticResource AccentButtonStyle}" Click="StartRun" AutomationProperties.AutomationId="ExecuteScript" />
+    <Button Content="重置本次草稿" Click="ResetDraft" />
+    <TextBlock x:Name="Observation" TextWrapping="Wrap" AutomationProperties.AutomationId="MonitorObservation" />
     <Expander Header="全局快捷键" HorizontalAlignment="Stretch"><StackPanel Spacing="8">
         <TextBox x:Name="SelectionKey" Header="开始框选" />
         <TextBox x:Name="StopKey" Header="停止全部脚本" />
