@@ -73,9 +73,9 @@ fn route_partition_matches_docs_03_host_vs_python() {
     for cmd in ["start_selection_mode", "confirm_selection", "stop_selection_mode"] {
         assert_eq!(route_command(cmd), Route::HostHandled, "{cmd} 应为 HostHandled");
     }
-    // 窗口族：TASK-018 未实现 → 宿主未提供能力（CAPABILITY_DENIED，不误导可用）
+    // 窗口族由 TASK-018 的原生宿主管理。
     for cmd in ["list_windows", "get_window_info", "bind_window", "unbind_window", "get_bound_window"] {
-        assert_eq!(route_command(cmd), Route::HostDenied, "{cmd} 应为 HostDenied");
+        assert_eq!(route_command(cmd), Route::HostHandled, "{cmd} 应由窗口宿主处理");
     }
     // TASK-007/009 已在 Python 实现的资源/捕获命令 → 转发 Python
     for cmd in [

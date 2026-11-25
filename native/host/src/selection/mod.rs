@@ -104,6 +104,12 @@ impl SelectionManager {
     pub fn has_active_session(&self) -> bool {
         self.controller.has_active_session()
     }
+
+    pub fn end_session(&mut self) {
+        if let Some(id) = self.controller.active_selection_id().map(str::to_owned) {
+            let _ = self.controller.stop(&id);
+        }
+    }
 }
 
 impl HostCommandHandler for SelectionManager {

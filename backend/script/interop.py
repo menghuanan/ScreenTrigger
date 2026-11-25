@@ -49,6 +49,7 @@ class RunResult(NamedTuple):
     ok: bool
     values: tuple
     error: str
+    error_value: Any = None
 
 
 @runtime_checkable
@@ -147,6 +148,7 @@ class LupaInterop:
             raise engine_unavailable()
         # 宿主私有原语（不进用户 env）
         self._type_fn = self._rt.eval("type")
+        self._invoke_fn = self._rt.eval("function(f) return table.pack(pcall(f)) end")
         self._rawequal_fn = self._rt.eval("rawequal")
         self._getmetatable_fn = self._rt.eval("getmetatable")
         self._setmetatable_fn = self._rt.eval("setmetatable")
@@ -235,10 +237,13 @@ class LupaInterop:
 
     def invoke(self, chunk: Any) -> RunResult:
         try:
-            returns = chunk()
+            returns = self._invoke_fn(chunk)
         except self._lua_error as exc:  # 含 Hook 抛出的取消哨兵（Lua error）
             return RunResult(ok=False, values=(), error=str(exc))
-        return RunResult(ok=True, values=_as_return_tuple(returns), error="")
+        if not returns[1]:
+            value = returns[2]
+            return RunResult(False, (), str(value), value)
+        return RunResult(True, tuple(returns[i] for i in range(2, returns["n"] + 1)), "")
 
     def make_host_binding(self, name: str, dispatch: Callable[..., Any]) -> Any:
         """构造宿主函数绑定（Lua 闭包 trampoline）。

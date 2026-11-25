@@ -125,11 +125,40 @@ class Dispatcher:
             consecutive_limit if consecutive_limit is not None else CONSECUTIVE_MALFORMED_LIMIT
         )
         self.ledger = RequestLedger(ledger_capacity)
+        self._worker_commands: set[str] = set()
+        self._inflight: set[str] = set()
+        self._inflight_lock = threading.Lock()
         self._handlers: Dict[str, Callable[[Dict[str, Any]], Any]] = {}
         self.malformed_count: int = 0
         self.consecutive_malformed: int = 0
 
     # -- 注册表 ---------------------------------------------------------------
+
+    def enable_workers(self, *commands: str) -> None:
+        self._worker_commands.update(commands)
+
+    def _route_request(self, envelope: Dict[str, Any]) -> None:
+        if envelope.get("command") not in self._worker_commands:
+            self.dispatch_command(envelope)
+            return
+        request_id = envelope["id"]
+        with self._inflight_lock:
+            if request_id in self._inflight:
+                return
+            if len(self._inflight) >= 32:
+                self.send_response(request_id, False, error=DispatcherError("BUSY", "等待宿主的请求已满", retryable=True).to_dict())
+                return
+            self._inflight.add(request_id)
+        def run() -> None:
+            try:
+                self.dispatch_command(envelope)
+            except Exception as exc:
+                self._log("宿主工作线程失败：" + type(exc).__name__)
+                self.send_response(request_id, False, error=DispatcherError("INTERNAL_ERROR", "宿主工作线程失败").to_dict())
+            finally:
+                with self._inflight_lock:
+                    self._inflight.discard(request_id)
+        threading.Thread(target=run, name="ipc-host-worker", daemon=True).start()
 
     def register(self, command: str, handler: Callable[[Dict[str, Any]], Any]) -> None:
         """注册命令 handler（envelope → data）；重复注册覆盖（框架位后补实现用）。"""
@@ -271,7 +300,7 @@ class Dispatcher:
                 continue
             msg_type = envelope.get("type")
             if msg_type == "request":
-                self.dispatch_command(envelope)
+                self._route_request(envelope)
             elif msg_type == "host_response":
                 if self.hostclient is not None:
                     self.hostclient.on_response(envelope)

@@ -15,6 +15,7 @@
     "hostWhitelist": [
       "input_action",
       "window_snapshot",
+      "query_pointer",
       "acquire_input_lease",
       "release_input_lease"
     ],
@@ -275,7 +276,7 @@
       "id": "host-whitelist",
       "kind": "host_whitelist",
       "applies_to": ["python", "rust"],
-      "allowed": ["input_action", "window_snapshot", "acquire_input_lease", "release_input_lease"],
+      "allowed": ["input_action", "window_snapshot", "query_pointer", "acquire_input_lease", "release_input_lease"],
       "deniedExample": "click_mouse",
       "deniedPythonCode": "INVALID_PARAMS",
       "deniedRustCode": "UNKNOWN_COMMAND"

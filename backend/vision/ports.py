@@ -190,7 +190,10 @@ class RepositoryTargetSnapshotProvider:
     def snapshot(self, target_id: str) -> TargetSnapshot:
         if not isinstance(target_id, str) or not target_id:
             raise RecognitionError("INVALID_PARAMS", "target_id 必填", field="target_id")
-        snapshot = self._repository.read_snapshot()
+        return self.from_catalog(self._repository.read_snapshot(), target_id)
+
+    @staticmethod
+    def from_catalog(snapshot, target_id: str) -> TargetSnapshot:
         for target in getattr(snapshot, "targets", ()) or ():
             if target.get("id") == target_id:
                 return TargetSnapshot(

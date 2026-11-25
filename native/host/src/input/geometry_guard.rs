@@ -28,9 +28,9 @@ pub fn point_on_displays(x: i64, y: i64, monitors: &[MonitorRect]) -> bool {
 /// 点是否落在区域矩形内（半开矩形）。
 pub fn point_in_region(x: i64, y: i64, region: &Region) -> bool {
     x >= region.x
-        && x < region.x + region.width
+        && x < region.x.saturating_add(region.width)
         && y >= region.y
-        && y < region.y + region.height
+        && y < region.y.saturating_add(region.height)
 }
 
 /// 单点判定（越界/离屏 → `REGION_LIMIT_VIOLATION`，**无 clamp**）。
@@ -58,6 +58,22 @@ pub fn evaluate_point(
     Ok(())
 }
 
+/// Check each traversed physical pixel, including one-pixel gaps between monitors.
+pub fn walk_segment(
+    from: super::model::Point, to: super::model::Point,
+    mut check: impl FnMut(super::model::Point) -> Result<(), IpcError>,
+) -> Result<(), IpcError> {
+    let distance = from.x.abs_diff(to.x).max(from.y.abs_diff(to.y));
+    for step in 1..distance {
+        let t = step as f64 / distance as f64;
+        check(super::model::Point {
+            x: (from.x as f64 + (to.x as f64 - from.x as f64) * t).round() as i64,
+            y: (from.y as f64 + (to.y as f64 - from.y as f64) * t).round() as i64,
+        })?;
+    }
+    Ok(())
+}
+
 /// `geometry_revision` 一致性判定（旧帧用于输入 → `STALE_FRAME`，retryable=true）。
 ///
 /// `known_revision`：该绑定的当前几何版本（由 TASK-018 WindowManager 维护，经端口
@@ -68,8 +84,8 @@ pub fn evaluate_geometry(
     known_revision: Option<i64>,
 ) -> Result<(), IpcError> {
     match known_revision {
-        Some(current) if current > geometry_revision => Err(IpcError::stale_frame(&format!(
-            "绑定 {binding_id} 的几何版本已变更（当前 {current} > 帧 {geometry_revision}）"
+        Some(current) if current != geometry_revision => Err(IpcError::stale_frame(&format!(
+            "绑定 {binding_id} 的几何版本不匹配（当前 {current}，帧 {geometry_revision}）"
         ))),
         _ => Ok(()),
     }

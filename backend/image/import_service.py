@@ -60,10 +60,10 @@ class ImportedAsset:
         }
 
 
-def _default_file_reader(path: str) -> bytes:
+def _default_file_reader(path: str, max_bytes: int = MAX_FILE_BYTES) -> bytes:
     """缺省读文件：二进制读取（可注入替身以避免真实 IO）。"""
     with open(path, "rb") as handle:
-        return handle.read()
+        return handle.read(max_bytes + 1)
 
 
 class ImageImportService:
@@ -90,7 +90,7 @@ class ImageImportService:
         self._session_id = session_id
         self._store = store
         self._authority = token_authority
-        self._file_reader = file_reader if file_reader is not None else _default_file_reader
+        self._file_reader = file_reader
         self._storage_mode = storage_mode
         self._logger = logger
         self._max_file_bytes = int(max_file_bytes)
@@ -145,10 +145,11 @@ class ImageImportService:
             captured_at=format_utc_timestamp(self._clock()),
             frame_id=self._frame_id_factory(),
         )
-        image_ref = self._store.put(
-            RawImage(width=out_w, height=out_h, data=bgr), image_format, frame_meta=frame_meta
-        )
         asset = self._build_asset(data, bgr, image_format, out_w, out_h)
+        image_ref = self._store.put(
+            RawImage(width=out_w, height=out_h, data=bgr), image_format,
+            frame_meta=frame_meta, original_bytes=data,
+        )
         self._log(
             "import ok image_id=%s %dx%d format=%s mode=%s asset=%s"
             % (image_ref.image_id, out_w, out_h, image_format,
@@ -160,7 +161,8 @@ class ImageImportService:
 
     def _read_file(self, resolved: ResolvedImport) -> bytes:
         try:
-            data = self._file_reader(resolved.path)
+            data = (self._file_reader(resolved.path) if self._file_reader is not None
+                    else _default_file_reader(resolved.path, self._max_file_bytes))
         except CaptureError:
             raise
         except Exception as exc:

@@ -170,10 +170,14 @@ class GdiDisplayEnumerator:
         dpi_y = ctypes.c_uint(96)
         try:
             _shcore = ctypes.windll.shcore
-            _shcore.GetDpiForMonitor(
+            _shcore.GetDpiForMonitor.argtypes = [
+                ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_uint),
+                ctypes.POINTER(ctypes.c_uint),
+            ]
+            hr = _shcore.GetDpiForMonitor(
                 hmonitor, MDT_EFFECTIVE_DPI, ctypes.byref(dpi_x), ctypes.byref(dpi_y)
             )
-            if dpi_x.value > 0:
+            if hr == 0 and dpi_x.value > 0:
                 return int(dpi_x.value)
         except (AttributeError, OSError):
             pass
@@ -226,12 +230,18 @@ class GdiCaptureBackend:
         previous = None
         try:
             previous = _gdi32.SelectObject(hdc_mem, hbitmap)
+            if not previous or previous == ctypes.c_void_p(-1).value:
+                previous = None
+                raise capture_failed("无法选入捕获位图")
             if not _gdi32.BitBlt(
                 hdc_mem, 0, 0, width, height,
                 hdc_screen, x, y, self._blt_rop(),
             ):
                 raise capture_failed("BitBlt 失败（可能为受保护内容或显示器变化）")
 
+            if not _gdi32.SelectObject(hdc_mem, previous):
+                raise capture_failed("无法释放捕获位图以读取像素")
+            previous = None
             header = _BitmapInfo()
             header.bmiHeader.biSize = ctypes.sizeof(_BitmapInfoHeader)
             header.bmiHeader.biWidth = width

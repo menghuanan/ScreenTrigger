@@ -317,7 +317,7 @@ pub type InputError = PortError;
 ///
 /// 采用**切片级原语**而非“整动作一次派发”，以满足 07§5 的“长移动/拖拽逐片检查
 /// 取消”（切片编排在 `dispatch.rs`，端口保持无状态）。
-pub trait InputPort: Send {
+pub trait InputPort: Send + Sync {
     /// 绝对移动光标到 `(x,y)`（`screen_physical`；归一化在端口内）。
     fn move_to(&self, x: i64, y: i64) -> Result<(), PortError>;
 
@@ -329,6 +329,8 @@ pub trait InputPort: Send {
 
     /// 键盘虚拟键按下/抬起。
     fn key_event(&self, key: &Key, down: bool) -> Result<(), PortError>;
+
+    fn externally_held(&self, _vk: u16) -> bool { false }
 
     /// Unicode 文本输入（UTF-16 单元逐个，走 SendInput Unicode 路径）。
     fn unicode_text(&self, text: &str) -> Result<(), PortError>;
@@ -346,13 +348,19 @@ pub trait PointerPort: Send {
     fn foreground_window(&self) -> WindowIdentity;
 
     /// 当前光标位置（`screen_physical`）。
-    fn cursor_pos(&self) -> Point;
+    fn cursor_pos(&self) -> Result<Point, IpcError>;
 }
 
 /// 区域/窗口/几何复核端口（TASK-018 提供权威；TASK-017 提供生产实现，见 `wiring.rs`）。
 pub trait RegionResolutionPort: Send {
     /// 单点判定：须落在实际显示器集合，且（严格模式）落在区域矩形内。
     fn check_point(&self, x: i64, y: i64, ctx: &InputContext) -> Result<(), IpcError>;
+
+    fn check_path(&self, from: Point, to: Point, ctx: &InputContext) -> Result<(), IpcError> {
+        self.check_point(from.x, from.y, ctx)?;
+        self.check_point(to.x, to.y, ctx)?;
+        super::geometry_guard::walk_segment(from, to, |p| self.check_point(p.x, p.y, ctx))
+    }
 
     /// `geometry_revision` 一致性（旧帧拒绝 → `STALE_FRAME`）。
     fn check_geometry(&self, binding_id: &str, geometry_revision: i64) -> Result<(), IpcError>;

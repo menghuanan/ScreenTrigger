@@ -33,9 +33,9 @@ class InputProxy:
 
     # -- 内部 ---------------------------------------------------------------
 
-    def _call(self, command: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _call(self, command: str, params: Dict[str, Any], timeout_s: float = 5.0) -> Dict[str, Any]:
         """同步调用 + 解包：成功返回 data（dict）；失败抛 :class:`InputProxyError`。"""
-        result = self._hostclient.request(command, params)
+        result = self._hostclient.request(command, params, timeout_s=timeout_s)
         if not getattr(result, "success", False):
             raise_for_host_error(getattr(result, "error", None))
         data = getattr(result, "data", None)
@@ -77,12 +77,19 @@ class InputProxy:
         action_id: str,
         geometry_revision: int,
         action: Dict[str, Any],
+        *, remaining_ms=None,
     ) -> bool:
         """派发一个输入动作；返回 `dispatched`（**仅表示调用完成**）。
 
         03：`input_action` params = `{execution_id,lease_id,action_id,geometry_revision,action}`；
         data = `{action_id,dispatched:true}`。代理**不做**任何重试/钳制/范围判断。
         """
+        duration = action.get("duration_ms", 0)
+        if action.get("kind") == "text":
+            duration = action.get("interval_ms", 0) * len(action.get("text", ""))
+        timeout_s = 5 + duration / 1000 if isinstance(duration, (int, float)) else 5
+        if remaining_ms is not None:
+            timeout_s = min(timeout_s, max(.001, remaining_ms / 1000))
         data = self._call(
             "input_action",
             {
@@ -92,6 +99,7 @@ class InputProxy:
                 "geometry_revision": int(geometry_revision),
                 "action": action,
             },
+            timeout_s=timeout_s,
         )
         return bool(data.get("dispatched", False))
 
@@ -100,6 +108,9 @@ class InputProxy:
     def window_snapshot(self, binding_id: str) -> Dict[str, Any]:
         """窗口几何快照转调（TASK-018 落地实现；本任务接口就位）。"""
         return self._call("window_snapshot", {"binding_id": binding_id})
+
+    def query_pointer(self) -> Dict[str, Any]:
+        return self._call("query_pointer", {})
 
     # -- 便捷：典型动作 ------------------------------------------------------
 

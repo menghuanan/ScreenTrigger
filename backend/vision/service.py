@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import Future, TimeoutError as FutureTimeout
+from contextvars import ContextVar
 from typing import Any, Callable, Dict, Optional, Set
 
 from ..types.region import ImageRef
@@ -38,6 +40,8 @@ from .worker import INFERENCE_DEADLINE_MS, ThreadInferenceWorker, WorkerRunner
 
 #: 每执行最多识别在途（06：并发 3 根执行、每执行 ≤1 在途；Q1 → 超限 BUSY）。
 DEFAULT_MAX_INFLIGHT: int = 3
+
+_run_catalog = ContextVar("vision_run_catalog", default=None)
 
 #: 命令 → 条件类型（provider 分派）。
 CONDITION_OF_COMMAND: Dict[str, str] = {
@@ -96,7 +100,7 @@ class VisionService:
         self._max_inflight = int(max_inflight)
         self._deadline_ms = int(deadline_ms)
         self._lock = threading.Lock()
-        self._active: Set[str] = set()
+        self._active: Set[object] = set()
         self._closed = False
 
     # -- 访问器 --------------------------------------------------------------
@@ -187,10 +191,30 @@ class VisionService:
             self._active.add(job_id)
         job_token = JobBoundCancelToken(job_id, self._jobs, CancelFlag())
 
-        def _run(token: Any) -> None:
-            self._run_job(job_id, command, params, token)
+        def expire():
+            with self._lock:
+                if job_id not in self._active:
+                    return
+            if not job_token.is_cancelled():
+                self._conclude_timeout(job_id)
 
-        self._worker.submit(_run, deadline_ms=self._deadline_ms, cancel=job_token)
+        watchdog = threading.Timer(self._deadline_ms / 1000, expire)
+        watchdog.daemon = True
+        def _run(token: Any) -> None:
+            try:
+                self._run_job(job_id, command, params, token)
+            finally:
+                watchdog.cancel()
+
+        watchdog.start()
+        try:
+            self._worker.submit(_run, deadline_ms=self._deadline_ms, cancel=job_token)
+        except Exception:
+            watchdog.cancel()
+            with self._lock:
+                self._active.discard(job_id)
+            self._jobs.fail(job_id, RecognitionError("RECOGNITION_FAILED", "推理工作线程未启动").to_dict())
+            raise
         return job_id
 
     # -- job 执行 ------------------------------------------------------------
@@ -227,6 +251,51 @@ class VisionService:
         finally:
             with self._lock:
                 self._active.discard(job_id)
+
+    def run_sync(self, command, params, cancel, *, catalog=None):
+        """Use the job execution path with a bounded wait on the script thread."""
+        outcome = Future()
+        expires = time.monotonic() + self._deadline_ms / 1000
+        # Include script inference in the same budget as interactive recognition jobs.
+        slot = object()
+        with self._lock:
+            if len(self._active) >= self._max_inflight:
+                raise RecognitionError("BUSY", "识别在途任务已达上限", retryable=True)
+            self._active.add(slot)
+
+        def run(token):
+            binding = _run_catalog.set(catalog)
+            try:
+                value = self._execute(command, params, token)
+                token.throw_if_cancelled()
+                outcome.set_result(value)
+            except Exception as exc:
+                outcome.set_exception(exc)
+            finally:
+                _run_catalog.reset(binding)
+                with self._lock:
+                    self._active.discard(slot)
+
+        try:
+            self._worker.submit(run, deadline_ms=self._deadline_ms, cancel=cancel)
+        except Exception:
+            with self._lock:
+                self._active.discard(slot)
+            raise
+        while True:
+            cancel.throw_if_cancelled()
+            remaining = expires - time.monotonic()
+            if remaining <= 0:
+                self._worker.restart()
+                raise RecognitionError("RECOGNITION_TIMEOUT", "单次推理超过期限", retryable=True)
+            try:
+                return outcome.result(timeout=min(remaining, .05))
+            except FutureTimeout:
+                continue
+            except CancelledError:
+                cancel.throw_if_cancelled()
+                self._worker.restart()
+                raise RecognitionError("RECOGNITION_TIMEOUT", "单次推理超过期限", retryable=True)
 
     def _execute(self, command: str, params: Dict[str, Any], token: Any) -> Dict[str, Any]:
         token.throw_if_cancelled()
@@ -311,6 +380,7 @@ class VisionService:
             return cached
         token.throw_if_cancelled()
         provider_result = self._call_provider(provider, manifest, frame, params, token)
+        token.throw_if_cancelled()
         normalized = self._normalize_provider_result(condition_type, provider_result)
         self._cache.put(key, normalized)
         return normalized
@@ -347,9 +417,15 @@ class VisionService:
         else:
             if self._targets is None:
                 raise RecognitionError("CAPABILITY_DENIED", "目标快照能力未提供")
-            snapshot = self._targets.snapshot(params.get("target_id"))
+            catalog = _run_catalog.get()
+            if catalog is None:
+                snapshot = self._targets.snapshot(params.get("target_id"))
+            else:
+                snapshot = self._targets.from_catalog(catalog, params.get("target_id"))
             cache_params = {"target_id": params.get("target_id")}
             condition_revision = getattr(snapshot, "revision", None)
+        cache_params = dict(cache_params, origin=[frame.origin.x, frame.origin.y],
+                            binding_id=frame.binding_id)
         key = cache_key(
             command=command,
             provider_id="condition_evaluator",
@@ -365,9 +441,10 @@ class VisionService:
         )
         cached = self._cache.get(key)
         if cached is not None:
-            return cached
+            return dict(cached, frame_id=frame.frame_id)
         token.throw_if_cancelled()
         result = self._evaluator.evaluate(frame, snapshot, token)
+        token.throw_if_cancelled()
         normalized = self._normalize_result(result, frame.frame_id, force_draft=force_draft)
         self._cache.put(key, normalized)
         return normalized
@@ -420,11 +497,11 @@ class VisionService:
 
     def _conclude_timeout(self, job_id: str) -> None:
         """超时：丢弃结果 + ``worker.restart()`` + ``RECOGNITION_TIMEOUT``（retryable=true）。"""
-        self._worker.restart()
         error = RecognitionError(
             "RECOGNITION_TIMEOUT", "单次推理超过 %dms 上限" % self._deadline_ms, retryable=True
         ).to_dict()
         if self._jobs.fail(job_id, error):
+            self._worker.restart()
             self._emitter.emit_error(job_id=job_id, error=error)
             return
         self._emit_cancelled_if_terminal(job_id)

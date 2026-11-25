@@ -25,6 +25,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 from .cancel import CheckpointCancelled, ExecutionGate
 from .errors import script_runtime_error, script_syntax_error
+from ..storage.errors import StorageError
 from .hostapi import HostApiRegistry
 from .interop import LuaChunkSyntaxError, LuaInterop, LupaInterop
 from .json_bridge import JsonBridge, make_sentinels
@@ -71,9 +72,9 @@ _NEAR_RE = re.compile(r"near '([^']*)'")
 
 def _build_whitelist_lua() -> str:
     """生成构造白名单 table 的 Lua 片段（宿主私有；用户 env 经 __index 引用）。"""
-    base = ", ".join(WHITELIST_BASE)
+    base = ", ".join(f"{name} = {name}" for name in WHITELIST_BASE if name != "print")
     return (
-        "local wl = {\n"
+        "(function() local wl = {\n"
         "  " + base + ",\n"
         "  string = {}, table = {}, math = {}, utf8 = {},\n"
         "}\n"
@@ -84,7 +85,7 @@ def _build_whitelist_lua() -> str:
         "copy(table, wl.table, { %s })\n"
         "copy(math, wl.math, { %s })\n"
         "copy(utf8, wl.utf8, { %s })\n"
-        "return wl\n"
+        "return wl end)()\n"
     ) % (
         ", ".join('"%s"' % name for name in WHITELIST_STRING),
         ", ".join('"%s"' % name for name in WHITELIST_TABLE),
@@ -228,6 +229,12 @@ class LuaVm:
         if self.gate.is_cancelled():  # 取消是控制信号（含 pcall 吞掉一次的情形）
             raise CheckpointCancelled("执行已被取消或超出期限")
         if not result.ok:
+            value = getattr(result, "error_value", None)
+            if value is not None and self.interop.lua_type(value) == "table":
+                data = self.bridge.lua_to_json(value, context="return")
+                if isinstance(data, dict) and isinstance(data.get("code"), str):
+                    raise StorageError(data["code"], str(data.get("message", "")),
+                                       details=data.get("details") or {})
             raise script_runtime_error(result.error or "Lua 运行错误")
         return list(result.values)
 
@@ -277,6 +284,10 @@ class LuaVm:
         self._closed = True
         self._hooks_installed = False
         self._env = None
+        self._whitelist = None
+        self.registry = None
+        self.bridge = None
+        self._sentinels = None
 
     # -- 内部 ----------------------------------------------------------------
 
@@ -297,6 +308,11 @@ class LuaVm:
                 except Exception:
                     # 调试回调异常不得破坏执行；取消判定仍由闸门决定
                     pass
+            if self.gate.is_paused():
+                try:
+                    self.gate.checkpoint()
+                except CheckpointCancelled:
+                    return True
             return self.gate.is_cancelled()
 
         return check

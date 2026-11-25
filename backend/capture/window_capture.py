@@ -32,7 +32,7 @@ class WindowSnapshot:
         geometry_revision: 移动/缩放/DPI/客户区变化时递增；0 表示未绑定。
         visible: IsWindowVisible。
         minimized: IsIconic；最小化时不得捕获（调用方判 WINDOW_UNAVAILABLE）。
-        foreground: 是否前台（捕获窗口不要求前台，仅记录）。
+        foreground: 是否前台。捕获绑定客户区时重新检查。
     """
 
     binding_id: str
@@ -65,3 +65,21 @@ class NullWindowProvider:
 
     def snapshot(self, binding_id: str) -> WindowSnapshot:  # noqa: D401
         raise window_not_found(binding_id)
+
+class HostWindowProvider:
+    """Read client geometry from the Rust catalog bound to this engine session."""
+    def __init__(self, hostclient):
+        self._host = hostclient
+
+    def snapshot(self, binding_id: str) -> WindowSnapshot:
+        from .errors import CaptureError
+        response = self._host.request("window_snapshot", {"binding_id": binding_id})
+        if not response.success:
+            err = response.error or {}
+            raise CaptureError(err.get("code", "WINDOW_UNAVAILABLE"), err.get("message", "无法读取绑定窗口"),
+                               retryable=bool(err.get("retryable")), details=err.get("details"))
+        data = response.data
+        if not isinstance(data, dict) or data.get("binding", {}).get("binding_id") != binding_id:
+            raise CaptureError("PROTOCOL_ERROR", "窗口快照与请求的绑定不一致")
+        return WindowSnapshot(binding_id, Rect(**data["client_rect"]), data["geometry_revision"],
+                              data["visible"], data["minimized"], data["foreground"])

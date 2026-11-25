@@ -134,12 +134,16 @@ class TargetService:
             raise StorageError(
                 exc.code, exc.message, details=dict(exc.details), retryable=exc.retryable
             ) from exc
-        raw = encode_png_bgr(bytes(stored.data), int(stored.width), int(stored.height))
+        if storage_mode == "original" and stored.original_bytes is not None:
+            raw, image_format = stored.original_bytes, stored.format
+        else:
+            raw = encode_png_bgr(bytes(stored.data), int(stored.width), int(stored.height))
+            image_format = "png"
         write = AssetWrite(
             raw=raw,
             width=int(stored.width),
             height=int(stored.height),
-            format="png",
+            format=image_format,
             storage_mode=storage_mode,
         )
         asset = store.persist(write)

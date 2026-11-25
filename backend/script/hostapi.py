@@ -141,7 +141,12 @@ class HostApiRegistry:
             return self._cancelled()
         except StorageError as exc:
             return self._error(exc)
-        except Exception as exc:  # 归一为 INTERNAL_ERROR（不泄漏回溯/Python 对象）
+        except TypeError as exc:
+            return self._error(StorageError("INVALID_PARAMS", str(exc)))
+        except Exception as exc:
+            if isinstance(getattr(exc, "code", None), str):
+                return self._error(StorageError(exc.code, str(exc), field=getattr(exc, "field", None),
+                                                details=getattr(exc, "details", {})))
             return self._error(StorageError("INTERNAL_ERROR", str(exc)))
         # 4) 调用后检查
         try:

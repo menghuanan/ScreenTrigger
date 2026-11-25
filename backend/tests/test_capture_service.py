@@ -54,6 +54,40 @@ def _client_region(binding_id="b1", x=0, y=0, width=100, height=50) -> Region:
                   binding_id=binding_id)
 
 
+class CaptureLifetimeTest(unittest.TestCase):
+    def test_background_window_never_read(self):
+        windows = FakeWindowProvider({"b1": window_snapshot("b1", 0, 0, 100, 80, foreground=False)})
+        backend = FakeCaptureBackend()
+        service = make_service(window_provider=windows, backend=backend)
+        for capture in (lambda: service.capture(_client_region()), lambda: service.capture_window("b1")):
+            with self.assertRaises(CaptureError) as raised:
+                capture()
+            self.assertEqual(raised.exception.code, "WINDOW_UNAVAILABLE")
+        self.assertEqual(backend.calls, [])
+
+    def test_window_moves_during_retry(self):
+        windows = FakeWindowProvider({"b1": window_snapshot("b1", 0, 0, 120, 80)})
+        def move(_delay):
+            windows.snapshots["b1"] = window_snapshot("b1", 50, 50, 120, 80, geometry_revision=2)
+        backend = FakeCaptureBackend([capture_failed("transient")])
+        service = make_service(window_provider=windows, backend=backend, sleeper=RecordingSleeper(move))
+        with self.assertRaises(CaptureError) as raised:
+            service.capture_window("b1")
+        self.assertEqual(raised.exception.code, "STALE_FRAME")
+        self.assertEqual(len(backend.calls), 1)
+
+    def test_session_ends_during_capture(self):
+        service = make_service()
+        class SlowFrame(FakeCaptureBackend):
+            def capture_bgr(self, x, y, width, height, cancel):
+                service.close()
+                return super().capture_bgr(x, y, width, height, cancel)
+        service = make_service(backend=SlowFrame())
+        with self.assertRaises(CaptureError) as raised:
+            service.capture(_screen_region())
+        self.assertEqual(raised.exception.code, "IMAGE_EXPIRED")
+
+
 class ScreenCaptureTest(unittest.TestCase):
     def test_capture_region_normal(self):
         backend = FakeCaptureBackend()

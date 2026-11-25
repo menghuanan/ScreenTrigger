@@ -25,9 +25,10 @@ const SESSION_ID_PREFIX: &str = "session-";
 /// host_request 命令白名单（docs/03 宿主命令目录逐字；§3.1 hostbridge.rs：
 /// 白名单内骨架期回 CAPABILITY_DENIED 的 host_response，白名单外回
 /// UNKNOWN_COMMAND——host_request 不进入 UI 命令路由）。
-pub const HOST_REQUEST_COMMANDS: [&str; 4] = [
+pub const HOST_REQUEST_COMMANDS: [&str; 5] = [
     "input_action",
     "window_snapshot",
+    "query_pointer",
     "acquire_input_lease",
     "release_input_lease",
 ];
@@ -448,7 +449,7 @@ mod tests {
             parse_line(r#"{"protocol_version":1,"session_id":"session-abc","type":"host_response","id":"py-1"}"#),
             Err(ProtocolParseError::MissingField("success"))
         ));
-        // 白名单逐字（03 宿主命令目录 4 条）
+        // 白名单逐字（03 内部宿主命令目录）
         for cmd in HOST_REQUEST_COMMANDS {
             assert!(is_host_request_command(cmd));
         }

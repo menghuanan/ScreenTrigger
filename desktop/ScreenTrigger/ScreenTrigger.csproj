@@ -25,6 +25,9 @@
     <EmbeddedResource Include="../../schema/types.schema.json" LogicalName="ScreenTrigger.types.json" />
     <EmbeddedResource Include="../../schema/config.schema.json" LogicalName="ScreenTrigger.config.json" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.7.0" />
+    <PackageReference Include="WinUIEx" Version="2.9.3" />
+    <Compile Include="../../tools/probes/windows/SelectionProbe/SelectionGeometry.cs" Link="Selection/SelectionGeometry.cs" />
+    <Compile Include="../../tools/probes/windows/SelectionProbe/ProbeDesktop.cs" Link="Selection/WindowGeometry.cs" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" PrivateAssets="all" />
     <Content Include="$(HostOutput)\$(HostProfile)\screen_trigger_lib.dll"
              Link="screen_trigger_lib.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

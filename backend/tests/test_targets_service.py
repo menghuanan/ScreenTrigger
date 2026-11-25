@@ -80,6 +80,23 @@ class _ServiceFixture(unittest.TestCase):
 
 
 class CreateTargetTest(_ServiceFixture):
+    def test_original_import_survives_save_and_restart(self):
+        from pathlib import Path
+        from backend.image.import_service import ImageImportService
+        from backend.tests._import_fakes import FakeFileReader, FakeTokenAuthority, _chunk
+
+        png = encode_png_bgr(bytes(12 * 10 * 3), 12, 10)
+        original = png[:-12] + _chunk(b"tEXt", b"Title\0sample") + png[-12:]
+        source = "C:/picked/sample.png"
+        importer = ImageImportService("s-svc", self.session, FakeTokenAuthority({"one": source}),
+                                      file_reader=FakeFileReader({source: original}))
+        image, _ = importer.import_image("one")
+        target = self._create(image_id=image.image_id, storage_mode="original")
+        reloaded = TargetService(Repository(self.dir)).get_target(target["id"])
+        self.assertEqual((Path(self.dir) / reloaded["image"]["path"]).read_bytes(), original)
+        converted = self._create(name="无损副本", image_id=image.image_id, storage_mode="png_lossless")
+        self.assertEqual((Path(self.dir) / converted["image"]["path"]).read_bytes(), png)
+
     def test_create_assigns_stable_id_sample_and_revision(self):
         target = self._create()
         self.assertEqual(target["sample_no"], 1)

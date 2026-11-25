@@ -71,7 +71,7 @@ ocr 的 image 非 nil 时 region 是该图的 image_pixel 子区；nil 时 regio
 | `stop_script(reason?)` | reason="script_requested" | 请求终止整个执行树，不正常返回；终态 cancelled |
 | `should_stop()` | 无 | boolean；只能用来友好结束，不是唯一停止机制 |
 | `set_recognition_frequency(hz)` | 0.1–30 | 本根执行频率，下次 tick 生效；不改全局 config |
-| `get_mouse_position()` | 无 | x,y 物理坐标 |
+| `get_mouse_position()` | 无 | x,y 物理坐标，经宿主只读 query_pointer 获取 |
 | `get_screen_size(display_id?)` | 默认运行显示器，绑定时客户区所在显示器 | width,height；左上原点需用区域配置，不能假设为 0 |
 | `get_time()` | 无 | 单调秒数，用于相对计时，不是日历时间 |
 | `random(min?,max?)` | 无参数→[0,1)，有参数需两整数 min≤max | 对应范围随机数；不用作安全 ID |

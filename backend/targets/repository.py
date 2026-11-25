@@ -202,6 +202,9 @@ class Repository:
             return bool(self._reference_port(entity_id))
         return bool(self._reference_port.is_referenced(entity_id))
 
+    def attach_reference_port(self, port) -> None:
+        self._reference_port = port
+
     # -- 写 ------------------------------------------------------------------
 
     def commit(self, change: CatalogChange, expected_generation: Optional[str]) -> CommitResult:
@@ -235,7 +238,10 @@ class Repository:
             targets = [dict(item) for item in change.targets]
             groups = [dict(item) for item in change.groups]
             next_sample_no = self._resolve_next_sample_no(snapshot, change, targets)
-            script_doc = generation.script_metadata_document(change.script_metadata)
+            # Target and group transactions do not replace the scripts document. An
+            # explicit document with an empty scripts array is a valid last deletion.
+            metadata = change.script_metadata if change.script_metadata is not None else snapshot.script_metadata
+            script_doc = generation.script_metadata_document(metadata)
 
             # S3：写新资产（内容寻址、不可变）
             for asset_write in change.assets:

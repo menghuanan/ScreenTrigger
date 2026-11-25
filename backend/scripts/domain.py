@@ -212,7 +212,7 @@ def _check_json_value(value: Any, depth: int) -> None:
     raise invalid_params("parameters", "default 必须为合法 JsonValue")
 
 
-def _default_matches_type(default: Any, type_name: str) -> bool:
+def parameter_type_matches(default: Any, type_name: str) -> bool:
     """``default`` 一级类型是否与声明 ``type`` 一致（Q9；``default=null`` 由调用方跳过）。"""
     if type_name == "string":
         return isinstance(default, str)
@@ -250,7 +250,7 @@ def validate_parameters(parameters: Any) -> Tuple[Dict[str, Any], ...]:
         default = param.default
         if default is not None:
             _check_json_value(default, 0)
-            if not _default_matches_type(default, param.type):
+            if not parameter_type_matches(default, param.type):
                 raise invalid_params(
                     "parameters",
                     "参数 %s 的 default 类型与声明的 type(%s) 不一致" % (param.name, param.type),

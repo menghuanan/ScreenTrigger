@@ -337,10 +337,8 @@ pub fn route_command(command: &str) -> Route {
         || HOST_PYTHON_COMMANDS.contains(&command)
     {
         Route::ForwardPython
-    } else if HOST_HANDLED_COMMANDS.contains(&command) {
+    } else if HOST_HANDLED_COMMANDS.contains(&command) || HOST_COMMANDS.contains(&command) {
         Route::HostHandled
-    } else if HOST_COMMANDS.contains(&command) {
-        Route::HostDenied
     } else {
         Route::Unknown
     }
@@ -465,7 +463,7 @@ mod tests {
         }
         // 宿主窗口族：骨架期 CAPABILITY_DENIED
         for cmd in HOST_COMMANDS {
-            assert_eq!(route_command(cmd), Route::HostDenied, "{cmd} 应为宿主窗口族");
+            assert_eq!(route_command(cmd), Route::HostHandled, "{cmd} 应为宿主窗口族");
         }
         // Python 实现的宿主资源命令：转发 Python
         for cmd in HOST_PYTHON_COMMANDS {

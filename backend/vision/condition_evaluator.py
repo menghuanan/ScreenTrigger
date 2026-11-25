@@ -27,6 +27,8 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
+
 import time
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -102,36 +104,38 @@ class ConditionTreeEvaluator:
         """对 ``frame`` 求值 ``snapshot``（``TargetSnapshot`` 或 draft dict）的条件树。"""
         start = self._monotonic()
         spec, ids = self._build_spec(snapshot)
-        template_image_id = self._template_image_id(snapshot, spec)
-        cancel.throw_if_cancelled()
-
-        anchor_leaf = spec.anchor
-        anchor_candidates = self._run_leaf_candidates(
-            anchor_leaf, frame, template_image_id, cancel, roi=None
-        )
-        deduped = nms(list(anchor_candidates), IOU_THRESHOLD)
-        kept, truncated = cap_candidates(deduped, MAX_CANDIDATES)
-
-        matches: List[Match] = []
-        for candidate in kept:
+        with ExitStack() as resources:
+            template_image_id = self._template_image_id(snapshot, spec, resources)
             cancel.throw_if_cancelled()
-            matched, evidence = self._evaluate_candidate(
-                spec, candidate, frame, template_image_id, cancel
-            )
-            if not matched:
-                continue
-            matches.append(self._build_match(candidate, frame, evidence, ids))
 
-        elapsed_ms = int(round((self._monotonic() - start) * 1000.0))
-        return build_recognition_result(
-            target_id=ids["target_id"],
-            sample_no=ids["sample_no"],
-            target_revision=ids["target_revision"],
-            frame_id=frame.frame_id,
-            matches=tuple(matches),
-            elapsed_ms=max(0, elapsed_ms),
-            truncated=truncated,
-        )
+            anchor_leaf = spec.anchor
+            anchor_candidates = self._run_leaf_candidates(
+                anchor_leaf, frame, template_image_id, cancel, roi=None
+            )
+            deduped = nms(list(anchor_candidates), IOU_THRESHOLD)
+            kept, truncated = cap_candidates(deduped, MAX_CANDIDATES)
+
+            matches: List[Match] = []
+            for candidate in kept:
+                cancel.throw_if_cancelled()
+                matched, evidence = self._evaluate_candidate(
+                    spec, candidate, frame, template_image_id, cancel
+                )
+                if not matched:
+                    continue
+                matches.append(self._build_match(candidate, frame, evidence, ids))
+
+            elapsed_ms = int(round((self._monotonic() - start) * 1000.0))
+            return build_recognition_result(
+                target_id=ids["target_id"],
+                sample_no=ids["sample_no"],
+                target_revision=ids["target_revision"],
+                frame_id=frame.frame_id,
+                matches=tuple(matches),
+                elapsed_ms=max(0, elapsed_ms),
+                truncated=truncated,
+            )
+
 
     # -- snapshot → spec / 标识 ----------------------------------------------
 
@@ -168,7 +172,7 @@ class ConditionTreeEvaluator:
             )
         return spec, ids
 
-    def _template_image_id(self, snapshot: Any, spec: ConditionSpec) -> Optional[str]:
+    def _template_image_id(self, snapshot: Any, spec: ConditionSpec, resources: ExitStack) -> Optional[str]:
         """解析模板 ``ImageAsset`` → 会话 ``ImageRef.image_id``（draft 直接取 ``image_id``）。"""
         needs_template = any(leaf.type in ("template", "contour") for leaf in spec.leaves)
         if isinstance(snapshot, Mapping):
@@ -183,6 +187,8 @@ class ConditionTreeEvaluator:
             raise RecognitionError(
                 "CAPABILITY_DENIED", "目标模板像素解析器未装配（TASK-016）"
             )
+        if hasattr(self._resolver, "pin"):
+            return resources.enter_context(self._resolver.pin(asset)).image_id
         image_ref = self._resolver.resolve(asset)  # 失败 → DATA_CORRUPT/IMAGE_EXPIRED（抛出）
         return image_ref.image_id
 

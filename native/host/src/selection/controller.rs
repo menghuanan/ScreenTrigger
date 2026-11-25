@@ -181,6 +181,10 @@ impl SelectionController {
 
         match self.capture_with_retry(&session_display, &rect) {
             Ok(image) => {
+                if let Some(id) = image["image_id"].as_str() {
+                    // The final engine image belongs to the caller. Its host copy is no longer needed.
+                    let _ = self.capture.release(id);
+                }
                 // 先恢复（关覆盖层 + 恢复主窗口 + 释放临时图），再发终态事件
                 self.finish_session();
                 self.emit(
@@ -290,9 +294,9 @@ impl SelectionController {
                     "selection_updated",
                     json!({ "selection_id": selection_id, "region": region, "preview": preview }),
                 );
-                Ok(json!({ "emitted": true }))
+                Ok(json!({ "emitted": true, "preview": preview }))
             }
-            Err(_) => Ok(json!({ "emitted": false })),
+            Err(err) => Err(capture_failed(&err.message, err.transient)),
         }
     }
 

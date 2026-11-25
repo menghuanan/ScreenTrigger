@@ -21,6 +21,12 @@ impl Ledger {
         Ledger { keys: HashMap::new(), buttons: HashMap::new() }
     }
 
+    pub fn owns_key(&self, execution: &str, key: &Key) -> bool {
+        self.keys.get(execution).is_some_and(|keys| keys.contains(key))
+    }
+    pub fn key_in_use(&self, key: &Key) -> bool { self.keys.values().any(|keys| keys.contains(key)) }
+    pub fn button_in_use(&self, button: MouseButton) -> bool { self.buttons.values().any(|held| held.contains(&button)) }
+
     /// 记录一次按键按下（**幂等**：同名键重复 down 不重复登记）。
     pub fn record_key_down(&mut self, execution_id: &str, key: Key) {
         let list = self.keys.entry(execution_id.to_string()).or_default();

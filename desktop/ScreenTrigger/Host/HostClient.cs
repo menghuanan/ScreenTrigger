@@ -17,6 +17,44 @@ internal sealed class HostClient : IAsyncDisposable
     private const string Library = "screen_trigger_lib.dll";
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void Receive(nint data, nuint length);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int WindowCall(nint data, nuint length, nint reply, nuint capacity);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int st_host_attach_window(Handle host, WindowCall callback);
+    private WindowCall? windowReceiver;
+    private readonly CancellationTokenSource windowLifetime = new();
+
+    public void AttachWindow(Func<JsonElement, CancellationToken, Task<object?>> handler)
+    {
+        windowReceiver = (data, length, reply, capacity) =>
+        {
+            byte[] response;
+            try
+            {
+                var request = CopyJson(data, length);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(windowLifetime.Token);
+                if (request.GetProperty("op").GetString() != "pick_image")
+                    timeout.CancelAfter(TimeSpan.FromSeconds(5));
+                var done = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (!dispatch(async () =>
+                {
+                    try
+                    {
+                        timeout.Token.ThrowIfCancellationRequested();
+                        done.TrySetResult(await handler(request, timeout.Token));
+                    }
+                    catch (Exception ex) { done.TrySetException(ex); }
+                })) return -1;
+                var value = done.Task.WaitAsync(timeout.Token).GetAwaiter().GetResult();
+                response = JsonSerializer.SerializeToUtf8Bytes(new { data = value });
+            }
+            catch (Exception ex) { response = JsonSerializer.SerializeToUtf8Bytes(new { error = ex.Message }); }
+            if ((nuint)response.Length > capacity) return -1;
+            Marshal.Copy(response, 0, reply, response.Length);
+            return response.Length;
+        };
+        if (st_host_attach_window(handle, windowReceiver) != 0) throw new InvalidOperationException("无法连接应用窗口。");
+    }
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern uint st_host_abi_version();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -208,6 +246,7 @@ internal sealed class HostClient : IAsyncDisposable
         {
             if (disposal != null) return new(disposal);
             closing = true;
+            windowLifetime.Cancel();
             Events.Close();
             disposal = DrainAsync(pending.ToArray());
             return new(disposal);

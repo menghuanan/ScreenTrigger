@@ -21,6 +21,11 @@ struct GateInner {
     per_exec: HashMap<String, String>,
     /// 关闸后被拒的派发尝试计数（TEST-008 不变量观测点）。
     rejected: u64,
+    active: HashMap<String, Option<String>>,
+    paused: std::collections::HashSet<String>,
+    epoch: u64,
+    freeze: bool,
+    input_enabled: bool,
 }
 
 /// 输入闸门表（线程安全；`Arc` 共享）。
@@ -43,8 +48,79 @@ impl GateTable {
                 all_reason: None,
                 per_exec: HashMap::new(),
                 rejected: 0,
+                active: HashMap::new(),
+                paused: Default::default(),
+                epoch: 0,
+                freeze: false,
+                input_enabled: true,
             }),
         }
+    }
+
+    pub fn register(&self, id: &str, binding: Option<String>) -> Result<(), crate::ipc::IpcError> {
+        let mut state = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if state.closed_all || state.freeze || state.per_exec.contains_key(id) {
+            return Err(crate::ipc::IpcError::invalid_state("执行已停止"));
+        }
+        state.active.insert(id.into(), binding);
+        Ok(())
+    }
+    pub fn unregister(&self, id: &str) {
+        let mut state = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        state.active.remove(id);
+        state.paused.remove(id);
+        state.per_exec.remove(id);
+    }
+    pub fn active(&self, binding: Option<&str>) -> Vec<String> {
+        let state = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        state
+            .active
+            .iter()
+            .filter(|(_, b)| binding.is_none() || binding == b.as_deref())
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+    pub fn enable_input(&self, enabled: bool) {
+        self.inner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .input_enabled = enabled;
+    }
+    pub fn stop_active(&self) -> u64 {
+        let mut st = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        st.epoch += 1;
+        st.freeze = true;
+        for id in st.active.keys().cloned().collect::<Vec<_>>() {
+            st.per_exec.insert(id, "hotkey_stop".into());
+        }
+        st.epoch
+    }
+    pub fn finish_stop(&self, epoch: u64) {
+        let mut st = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if st.epoch == epoch {
+            st.freeze = false;
+        }
+    }
+    pub fn pause(&self, id: &str) {
+        self.inner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .paused
+            .insert(id.into());
+    }
+    pub fn resume(&self, id: &str) {
+        self.inner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .paused
+            .remove(id);
+    }
+    pub fn paused(&self, id: &str) -> bool {
+        self.inner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .paused
+            .contains(id)
     }
 
     /// 关闭单个执行的闸门（幂等；保留首次原因）。
@@ -65,6 +141,26 @@ impl GateTable {
         }
     }
 
+    /// Serialize one OS submission with close. Never sleep or wait for IPC in this section.
+    pub fn submit<T>(
+        &self,
+        execution: &str,
+        send: impl FnOnce() -> Result<T, crate::ipc::IpcError>,
+    ) -> Result<T, crate::ipc::IpcError> {
+        let mut state = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if state.closed_all || state.freeze || state.per_exec.contains_key(execution) {
+            state.rejected += 1;
+            return Err(crate::ipc::IpcError::invalid_state("输入闸门已关闭"));
+        }
+        if !state.input_enabled {
+            return Err(crate::ipc::IpcError::capability_denied("停止热键未注册"));
+        }
+        if state.paused.contains(execution) {
+            return Err(crate::ipc::IpcError::window_unavailable("执行已暂停"));
+        }
+        send()
+    }
+
     /// 闸门是否对该执行开放（全局关或该执行关 → false）。
     pub fn is_open(&self, execution_id: &str) -> bool {
         let inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
@@ -73,7 +169,10 @@ impl GateTable {
 
     /// 全局闸门是否关闭。
     pub fn is_closed_all(&self) -> bool {
-        self.inner.lock().unwrap_or_else(|p| p.into_inner()).closed_all
+        self.inner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .closed_all
     }
 
     /// 该执行的关闭原因（未关闭 → None）。
@@ -93,6 +192,9 @@ impl GateTable {
 
     /// 关闸后被拒的派发尝试计数。
     pub fn rejected_after_close(&self) -> u64 {
-        self.inner.lock().unwrap_or_else(|p| p.into_inner()).rejected
+        self.inner
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .rejected
     }
 }

@@ -118,6 +118,7 @@ class ThreadInferenceWorker:
 
         thread = threading.Thread(target=_target, name="vision-worker", daemon=True)
         with self._lock:
+            self._threads = [item for item in self._threads if item.is_alive()]
             self._threads.append(thread)
         thread.start()
 

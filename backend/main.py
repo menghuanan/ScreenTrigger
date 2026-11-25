@@ -84,6 +84,7 @@ import re
 import threading
 import uuid
 from collections import OrderedDict
+from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -565,13 +566,12 @@ class SidecarApp:
         # TASK-005：job 框架与宿主调用客户端（骨架期无调用方，接口就位）
         self.jobs = JobManager()
         self.hostclient = HostClient(transport, self.session, stderr=self._stderr)
-        # TASK-017：输入窄代理（Python → Rust 唯一物理输入所有者）。仅当宿主装配了
-        # InputManager（spawn 时注入 ST_INPUT_AVAILABLE=1）才构建并对外置 input 能力
-        # available；否则保持骨架 unavailable（诚实降级，绝不虚报可用）。本任务只交付
-        # 代理骨架，**不接 Lua**（TASK-021 接入）。
+        # 输入装配与停止热键共同决定能力；每个 Lua 根经窄代理使用独立租约。
         self.input_proxy: Optional[Any] = (
             InputProxy(self.hostclient, logger=self._log) if enable_input else None
         )
+        self._input_ready = self.input_proxy is not None and os.environ.get("ST_INPUT_MANAGED") != "1"
+        self._input_reason = "停止热键尚未完成注册"
         self.dispatcher = Dispatcher(
             transport=transport,
             session=self.session,
@@ -583,6 +583,8 @@ class SidecarApp:
         # 框架命令表：hello/ping 归应用层（版本/时钟在此），dispatcher 托管路由
         self.dispatcher.register("hello", lambda envelope: self.cmd_hello())
         self.dispatcher.register("ping", lambda envelope: self.cmd_ping())
+        self.dispatcher.register("set_input_availability", self._set_input_availability)
+        self.dispatcher.register("pause_for_selection", self._pause_for_selection)
         # TASK-006：config 三命令（get/update/reset）路由给 Python（03 命令目录；
         # 设计 §2.3——HOST_COMMANDS 移除后经通用面转发，数据权威在 backend/config）
         self.config_service: Optional[ConfigService] = None
@@ -601,6 +603,10 @@ class SidecarApp:
         # 的 capture 能力据实置 available，否则维持骨架 unavailable（不伪造）。
         self.capture_service: Optional[Any] = capture_service
         if capture_service is not None:
+            if os.environ.get("ST_WINDOW_AVAILABLE") == "1":
+                from backend.capture.window_capture import HostWindowProvider
+                capture_service.attach_window_provider(HostWindowProvider(self.hostclient))
+                self.dispatcher.enable_workers("capture_region", "capture_window")
             register_capture_commands(self.dispatcher, capture_service)
 
         # TASK-009：图片导入命令（import_image）。导入服务复用同一 SessionImageStore
@@ -654,6 +660,42 @@ class SidecarApp:
             )
             register_vision_commands(self.dispatcher, vision_service)
 
+        self.executions = None
+        if script_service is not None and self._lua_version is not None:
+            from backend.script.controller import ExecutionController
+            from backend.ipc.dispatcher import DispatcherError
+
+            def beep(hz, milliseconds):
+                import winsound
+                winsound.Beep(hz, milliseconds)
+
+            def emit(name, payload):
+                self.transport.send({"protocol_version": PROTOCOL_VERSION,
+                                     "session_id": self.session.session_id, "type": "event",
+                                     "seq": self.health.next_seq(), "name": name,
+                                     "timestamp": format_timestamp(self._clock()), "payload": payload})
+
+            settings = self.config_service.get_config if self.config_service else dict
+            self.executions = ExecutionController(script_service, capture_service, vision_service,
+                                                  self.input_proxy, settings, emit, beep)
+            script_service.repository.attach_reference_port(self.executions.referenced)
+            def handler(name):
+                def invoke(envelope):
+                    try:
+                        return self.executions.command(name, envelope["params"])
+                    except Exception as exc:
+                        error = exc.to_dict() if hasattr(exc, "to_dict") else {}
+                        raise DispatcherError(error.get("code", "INTERNAL_ERROR"), str(exc),
+                                              error.get("details"), error.get("retryable", False)) from exc
+                return invoke
+            for name in ("execute_script", "get_script_state", "query_execution", "get_execution_logs",
+                         "pause_script", "resume_script", "stop_script"):
+                self.dispatcher.register(name, handler(name))
+            self.dispatcher.enable_workers("resume_script")
+            self.dispatcher.register("stop_active_executions", lambda env: self.executions.stop_all())
+            self.dispatcher.register("binding_state_changed",
+                                     lambda env: self.executions.binding_changed(env["params"]))
+
     # -- 日志 ---------------------------------------------------------------
 
     def _log(self, message: str) -> None:
@@ -676,6 +718,9 @@ class SidecarApp:
         绝不虚报可用（03：unavailable 的功能不能显示可用按钮）。
         """
         caps = [dict(item) for item in CAPABILITIES]
+        for cap in caps:
+            if cap["id"] == "lua_script" and self.executions is not None:
+                cap.update(state="available", reason=None)
         if self.capture_service is not None:
             for cap in caps:
                 if cap["id"] == "capture":
@@ -686,8 +731,8 @@ class SidecarApp:
         if self.input_proxy is not None:
             for cap in caps:
                 if cap["id"] == "input":
-                    cap["state"] = "available"
-                    cap["reason"] = None
+                    cap["state"] = "available" if self._input_ready else "unavailable"
+                    cap["reason"] = None if self._input_ready else self._input_reason
         # TASK-013：识别类 4 项（ocr/template_match/contour_match/color_match）据**实际装配**置位。
         # 基座装配（内置工厂表为空）下仍全 unavailable（带 reason）——**未装配不得显示 available**。
         if self.vision_service is not None:
@@ -697,6 +742,16 @@ class SidecarApp:
                     cap["state"] = state
                     cap["reason"] = reason
         return caps
+
+    def _set_input_availability(self, envelope):
+        params = envelope["params"]
+        self._input_ready = self.input_proxy is not None and params.get("enabled") is True
+        self._input_reason = str(params.get("reason") or "")
+        return {"ok": True}
+
+    def _pause_for_selection(self, envelope: Dict[str, Any]) -> Dict[str, bool]:
+        controller = getattr(self, "executions", None)
+        return {"paused": controller.pause_for_selection() if controller is not None else False}
 
     def versions(self) -> Dict[str, Any]:
         """版本四元组；lua_version 为软探测结果，失败为 null（§9-1）。"""
@@ -767,6 +822,8 @@ class SidecarApp:
         if self._shutdown_done:
             return
         self._shutdown_done = True
+        if self.executions is not None:
+            self.executions.stop_all("engine_exit")
         self.transport.close_stdout()
         self.transport.join_writer(timeout=5.0)
         self._log("sidecar 退出")
@@ -1007,8 +1064,27 @@ class _AssetTargetImageResolver:
         self._root = data_root
         self._logger = logger
         self._cache: "OrderedDict[str, Any]" = OrderedDict()
+        self._lock = threading.RLock()
+        self._pins = {}
 
     def resolve(self, asset: Any) -> Any:
+        with self._lock:
+            return self._resolve_locked(asset)
+
+    @contextmanager
+    def pin(self, asset):
+        with self._lock:
+            ref = self._resolve_locked(asset)
+            self._pins[ref.image_id] = self._pins.get(ref.image_id, 0) + 1
+        try:
+            yield ref
+        finally:
+            with self._lock:
+                self._pins[ref.image_id] -= 1
+                if not self._pins[ref.image_id]:
+                    del self._pins[ref.image_id]
+
+    def _resolve_locked(self, asset):
         sha256 = _asset_field(asset, "sha256")
         path = _asset_field(asset, "path")
         image_format = _asset_field(asset, "format") or "png"
@@ -1043,10 +1119,15 @@ class _AssetTargetImageResolver:
         except Exception as exc:
             raise _RecognitionError("DATA_CORRUPT", "目标图像解码失败: %s" % exc,
                                     field="image.path") from exc
+        for key, old in list(self._cache.items()):
+            if (len(self._cache) < self.MAX_CACHE
+                    and self._store.bytes_used + len(bgr) <= self._store.budget_bytes):
+                break
+            if old.image_id not in self._pins:
+                self._store.release(old.image_id)
+                del self._cache[key]
         image_ref = self._store.put(_BgrImage(width, height, bgr), "png")
         self._cache[sha256] = image_ref
-        while len(self._cache) > self.MAX_CACHE:
-            self._cache.popitem(last=False)
         return image_ref
 
 

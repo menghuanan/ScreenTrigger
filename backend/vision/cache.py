@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from threading import RLock
 from collections import OrderedDict
 from dataclasses import asdict, is_dataclass
 from typing import Any, Dict, Optional, Tuple
@@ -84,6 +85,7 @@ class RecognitionCache:
         if capacity < 1:
             raise ValueError("capacity 必须 ≥1")
         self._capacity = int(capacity)
+        self._lock = RLock()
         self._entries: "OrderedDict[str, Any]" = OrderedDict()
 
     @property
@@ -92,20 +94,23 @@ class RecognitionCache:
 
     def get(self, key: str) -> Optional[Any]:
         """命中返回**缓存值本身**（不可变结果），并标记为最近使用；未命中返回 None。"""
-        if key not in self._entries:
-            return None
-        self._entries.move_to_end(key)
-        return self._entries[key]
+        with self._lock:
+            if key not in self._entries:
+                return None
+            self._entries.move_to_end(key)
+            return self._entries[key]
 
     def put(self, key: str, value: Any) -> None:
         """写入并淘汰最旧条目（含负结果，Q7）。"""
-        self._entries[key] = value
-        self._entries.move_to_end(key)
-        while len(self._entries) > self._capacity:
-            self._entries.popitem(last=False)
+        with self._lock:
+            self._entries[key] = value
+            self._entries.move_to_end(key)
+            while len(self._entries) > self._capacity:
+                self._entries.popitem(last=False)
 
     def clear(self) -> None:
-        self._entries.clear()
+        with self._lock:
+            self._entries.clear()
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -114,4 +119,5 @@ class RecognitionCache:
         return key in self._entries
 
     def keys(self) -> Tuple[str, ...]:
-        return tuple(self._entries.keys())
+        with self._lock:
+            return tuple(self._entries.keys())

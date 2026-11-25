@@ -31,7 +31,7 @@ import time
 from typing import Callable, List, Optional
 
 from ..image.store import FrameMeta, SessionImageStore
-from ..types.region import DisplayInfo, Frame, ImageRef, Point, Region
+from ..types.region import DisplayInfo, Frame, ImageRef, Point, Rect, Region
 
 from .cancel import CancelToken, NullCancelToken
 from .errors import (
@@ -104,9 +104,52 @@ class CaptureService:
 
     # -- 显示器 ---------------------------------------------------------------
 
+    def attach_window_provider(self, provider: WindowProvider) -> None:
+        """Install the session host at composition time, before serving requests."""
+        self._window_provider = provider
+
     def list_displays(self) -> List[DisplayInfo]:
         """当前显示器集合（物理像素；拓扑变化重新枚举）。"""
         return list(self._enumerator.list_displays())
+
+    def run_region(self, display_id, binding_id):
+        """Resolve the current full display or client area in its declared space."""
+        if binding_id:
+            rect = self._resolve_window(binding_id).client_rect
+            return Region("window_client_physical", 0, 0, rect.width, rect.height,
+                          binding_id=binding_id)
+        display = find_display(self.list_displays(), display_id)
+        if display is None:
+            raise display_not_found(display_id)
+        rect = display.rect
+        return Region("screen_physical", rect.x, rect.y, rect.width, rect.height,
+                      display_id=display.id)
+
+    def capture_point(self, x, y, region, cancel):
+        """Read one physical pixel with the same identity checks as a whole frame."""
+        if region.binding_id:
+            snapshot = self._resolve_window(region.binding_id)
+            left, top = snapshot.client_rect.x + region.x, snapshot.client_rect.y + region.y
+            valid = lambda: self._check_window(snapshot)
+            bounds = Rect(snapshot.client_rect.x, snapshot.client_rect.y,
+                          snapshot.client_rect.width, snapshot.client_rect.height)
+        else:
+            display = find_display(self.list_displays(), region.display_id)
+            if display is None:
+                raise display_not_found(region.display_id)
+            left, top, bounds = region.x, region.y, display.rect
+            valid = lambda: self._check_display(display)
+        if not (left <= x < left + region.width and top <= y < top + region.height
+                and bounds.x <= x < bounds.x + bounds.width and bounds.y <= y < bounds.y + bounds.height):
+            raise invalid_region("point", "像素位于有效识别区之外")
+        cancel.throw_if_cancelled()
+        raw = self._capture_with_retry(x, y, 1, 1, cancel, valid)
+        valid()
+        cancel.throw_if_cancelled()
+        if (raw.width, raw.height, len(raw.data)) != (1, 1, 3):
+            raise capture_failed("像素读取尺寸错误", retryable=False)
+        b, g, r = raw.data
+        return {"r": r, "g": g, "b": b}
 
     # -- 捕获 -----------------------------------------------------------------
 
@@ -144,12 +187,11 @@ class CaptureService:
                 geometry_revision=0,
                 binding_id=None,
                 cancel=token,
+                validate=lambda: self._check_display(display),
             )
 
         # window_client_physical
         snapshot = self._resolve_window(region.binding_id or "")
-        if snapshot.minimized or not snapshot.visible:
-            raise window_unavailable(snapshot.binding_id)
         # 客户区 region 为**客户区局部坐标**（原点为客户区左上，02）；不得越出
         # 客户区尺寸（client_rect 的位置是屏幕坐标，仅用于换算，不参与局部包含）。
         if (
@@ -170,6 +212,7 @@ class CaptureService:
             geometry_revision=snapshot.geometry_revision,
             binding_id=snapshot.binding_id,
             cancel=token,
+            validate=lambda: self._check_window(snapshot),
         )
 
     def capture_full_screen(
@@ -195,6 +238,7 @@ class CaptureService:
             geometry_revision=0,
             binding_id=None,
             cancel=token,
+            validate=lambda: self._check_display(display),
         )
 
     def capture_window(
@@ -209,8 +253,6 @@ class CaptureService:
         token: CancelToken = cancel if cancel is not None else NullCancelToken()
         token.throw_if_cancelled()
         snapshot = self._resolve_window(binding_id)
-        if snapshot.minimized or not snapshot.visible:
-            raise window_unavailable(snapshot.binding_id)
         client = snapshot.client_rect
         if client.width < MIN_REGION_EDGE or client.height < MIN_REGION_EDGE:
             raise invalid_region("region", "窗口客户区小于 10×10 物理像素")
@@ -223,6 +265,7 @@ class CaptureService:
             geometry_revision=snapshot.geometry_revision,
             binding_id=snapshot.binding_id,
             cancel=token,
+            validate=lambda: self._check_window(snapshot),
         )
 
     # -- 图像引用 -------------------------------------------------------------
@@ -260,7 +303,22 @@ class CaptureService:
     def _resolve_window(self, binding_id: str) -> WindowSnapshot:
         if not binding_id:
             raise window_not_found(binding_id)
-        return self._window_provider.snapshot(binding_id)
+        snapshot = self._window_provider.snapshot(binding_id)
+        if snapshot.minimized or not snapshot.visible or not snapshot.foreground:
+            raise window_unavailable(binding_id)
+        return snapshot
+
+    def _check_window(self, expected: WindowSnapshot) -> None:
+        current = self._resolve_window(expected.binding_id)
+        if current != expected:
+            raise CaptureError("STALE_FRAME", "捕获期间窗口几何已变化", retryable=True)
+
+    def _check_display(self, expected: DisplayInfo) -> None:
+        current = find_display(self.list_displays(), expected.id)
+        if current is None:
+            raise display_not_found(expected.id)
+        if current.rect != expected.rect or current.dpi_scale != expected.dpi_scale:
+            raise CaptureError("STALE_FRAME", "捕获期间显示器几何已变化", retryable=True)
 
     def _capture_physical(
         self,
@@ -272,11 +330,15 @@ class CaptureService:
         geometry_revision: int,
         binding_id: Optional[str],
         cancel: CancelToken,
+        validate: Callable[[], None],
     ) -> Frame:
         """执行物理抓取 → 登记图像 + 帧元数据 → 组装 Frame（space 恒为 screen_physical）。"""
         cancel.throw_if_cancelled()
-        raw = self._capture_with_retry(x, y, width, height, cancel)
+        raw = self._capture_with_retry(x, y, width, height, cancel, validate)
+        validate()
         cancel.throw_if_cancelled()
+        if (raw.width, raw.height) != (width, height):
+            raise capture_failed("捕获后端返回的尺寸与请求不一致", retryable=False)
         # TASK-014：登记**真实**帧位置元数据（screen_physical/真实 origin/真实
         # geometry_revision），使 image_id → Frame 可还原且与 RecognitionResult.frame_id
         # 一致。frame_id/captured_at 在同一处生成，供 FrameMeta 与 Frame 共用（值不变）。
@@ -308,7 +370,8 @@ class CaptureService:
         return frame
 
     def _capture_with_retry(
-        self, x: int, y: int, width: int, height: int, cancel: CancelToken
+        self, x: int, y: int, width: int, height: int, cancel: CancelToken,
+        validate: Callable[[], None],
     ) -> RawImage:
         """仅对瞬时 CAPTURE_FAILED 自动重试一次（200ms）；其余错误直接抛出。"""
         attempts = 0
@@ -331,6 +394,7 @@ class CaptureService:
                 if exc.code == "CAPTURE_FAILED" and exc.retryable and attempts < 1:
                     attempts += 1
                     self._retry_wait(cancel, attempts)
+                    validate()
                     continue
                 raise
 

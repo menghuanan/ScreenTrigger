@@ -45,8 +45,6 @@ mod imp {
     /// 一格滚轮 = 120（WHEEL_DELTA）。
     const WHEEL_DELTA: i32 = 120;
 
-    const SM_CXSCREEN: i32 = 0;
-    const SM_CYSCREEN: i32 = 1;
     const SM_XVIRTUALSCREEN: i32 = 76;
     const SM_YVIRTUALSCREEN: i32 = 77;
     const SM_CXVIRTUALSCREEN: i32 = 78;
@@ -126,6 +124,7 @@ mod imp {
         fn SendInput(cinputs: u32, pinputs: *const Input, cb_size: i32) -> u32;
         fn GetSystemMetrics(nindex: i32) -> i32;
         fn SetCursorPos(x: i32, y: i32) -> i32;
+        fn GetAsyncKeyState(key: i32) -> i16;
         fn GetCursorPos(lppoint: *mut PointRaw) -> i32;
         fn GetForegroundWindow() -> *mut c_void;
         fn EnumDisplayMonitors(
@@ -134,7 +133,7 @@ mod imp {
             callback: MonitorEnumProc,
             data: *mut c_void,
         ) -> i32;
-        fn GetMonitorInfoW(monitor: *mut c_void, info: *mut MonitorInfo) -> i32;
+        fn GetMonitorInfoW(monitor: *mut c_void, info: *mut c_void) -> i32;
     }
 
     /// 单次 SendInput（要求全部输入被接受，否则视为失败 → INPUT_FAILED）。
@@ -167,17 +166,12 @@ mod imp {
         }
     }
 
-    /// 当前光标位置（`screen_physical`；越界/失败时返回 (0,0)）。
-    pub fn cursor_pos() -> Point {
+    pub fn cursor_pos() -> Option<Point> {
         let mut raw = PointRaw { x: 0, y: 0 };
-        unsafe {
-            if GetCursorPos(&mut raw) != 0 {
-                Point { x: raw.x as i64, y: raw.y as i64 }
-            } else {
-                Point { x: 0, y: 0 }
-            }
-        }
+        (unsafe { GetCursorPos(&mut raw) } != 0).then_some(Point { x: raw.x as i64, y: raw.y as i64 })
     }
+
+    pub fn key_is_down(vk: u16) -> bool { (unsafe { GetAsyncKeyState(vk as i32) }) < 0 }
 
     /// 设置光标位置（绝对，物理像素）。
     pub fn set_cursor_pos(x: i64, y: i64) -> Result<(), String> {
@@ -198,8 +192,9 @@ mod imp {
         }
         // 归一化到 OS 要求的 0..65535（这是 API 坐标映射，不是对输入坐标的 clamp——
         // 输入点是否合法已在上层按实际显示器集合校验）。
-        let nx = ((x - vs.x) * 65535 / (vs.cx - 1)).clamp(0, 65535) as i32;
-        let ny = ((y - vs.y) * 65535 / (vs.cy - 1)).clamp(0, 65535) as i32;
+        if x < vs.x || y < vs.y || x >= vs.x + vs.cx || y >= vs.y + vs.cy { return Err("显示器布局已变化".into()); }
+        let nx = (((x - vs.x) * 65536 + 32768) / vs.cx).min(65535) as i32;
+        let ny = (((y - vs.y) * 65536 + 32768) / vs.cy).min(65535) as i32;
         let input = Input {
             kind: INPUT_MOUSE,
             u: InputUnion {
@@ -316,7 +311,7 @@ mod imp {
         let ctx = &mut *(data as *mut EnumCtx);
         let mut info: MonitorInfo = std::mem::zeroed();
         info.cb_size = std::mem::size_of::<MonitorInfo>() as u32;
-        if GetMonitorInfoW(hmon, &mut info) != 0 {
+        if GetMonitorInfoW(hmon, (&mut info as *mut MonitorInfo).cast()) != 0 {
             let m = info.rc_monitor;
             ctx.rects.push(MonitorRect {
                 x: m.left as i64,
@@ -339,13 +334,6 @@ mod imp {
                 &mut ctx as *mut EnumCtx as *mut c_void,
             );
         }
-        if ctx.rects.is_empty() {
-            let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
-            let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
-            if width > 0 && height > 0 {
-                ctx.rects.push(MonitorRect { x: 0, y: 0, width: width as i64, height: height as i64 });
-            }
-        }
         ctx.rects
     }
 }
@@ -357,9 +345,8 @@ mod imp {
     pub fn virtual_screen() -> VirtualScreen {
         VirtualScreen { x: 0, y: 0, cx: 0, cy: 0 }
     }
-    pub fn cursor_pos() -> Point {
-        Point { x: 0, y: 0 }
-    }
+    pub fn cursor_pos() -> Option<Point> { None }
+    pub fn key_is_down(_vk: u16) -> bool { false }
     pub fn set_cursor_pos(_x: i64, _y: i64) -> Result<(), String> {
         Err("非 Windows 平台不支持输入".to_string())
     }
@@ -387,6 +374,6 @@ mod imp {
 }
 
 pub use imp::{
-    button, cursor_pos, enum_monitors, foreground_window, key, move_absolute, set_cursor_pos,
+    button, cursor_pos, key_is_down, enum_monitors, foreground_window, key, move_absolute, set_cursor_pos,
     unicode_text, virtual_screen, wheel,
 };

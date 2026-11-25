@@ -16,14 +16,14 @@ use std::time::Duration;
 
 use crate::ipc::IpcError;
 
-use super::action;
 use super::gate::GateTable;
 use super::lease::LeaseTable;
 use super::ledger::Ledger;
 use super::model::{
-    ActionAck, ClockPort, InputAction, InputContext, InputPort, KeyState, MouseButton, Point,
+    ActionAck, ClockPort, InputAction, InputContext, InputPort, Key, KeyState, MouseButton, Point,
     PointerPort, PortError, RegionResolutionPort, MOVE_SLICE_MS,
 };
+use std::cell::Cell;
 
 /// 把端口错误映射为 06 `INPUT_FAILED`（retryable=false；不自动重试）。
 fn input_failed(err: PortError) -> IpcError {
@@ -32,12 +32,12 @@ fn input_failed(err: PortError) -> IpcError {
 
 /// 派发流水线：持有副作用端口与 `action_id` 去重表。
 pub struct DispatchPipeline {
-    input: Box<dyn InputPort>,
+    input: std::sync::Arc<dyn InputPort>,
     pointer: Box<dyn PointerPort>,
     region: Box<dyn RegionResolutionPort>,
     clock: Box<dyn ClockPort>,
     /// 同 `action_id` 去重（命中 → 重放同 Ack，不重做副作用）。
-    dedup: HashMap<String, ActionAck>,
+    dedup: HashMap<String, HashMap<String, Result<ActionAck, IpcError>>>,
 }
 
 impl DispatchPipeline {
@@ -48,12 +48,22 @@ impl DispatchPipeline {
         region: Box<dyn RegionResolutionPort>,
         clock: Box<dyn ClockPort>,
     ) -> Self {
-        DispatchPipeline { input, pointer, region, clock, dedup: HashMap::new() }
+        DispatchPipeline {
+            input: input.into(),
+            pointer,
+            region,
+            clock,
+            dedup: HashMap::new(),
+        }
     }
 
     /// 输入端口只读引用（账本释放用）。
     pub fn input_port(&self) -> &dyn InputPort {
         self.input.as_ref()
+    }
+
+    pub fn shared_input(&self) -> std::sync::Arc<dyn InputPort> {
+        self.input.clone()
     }
 
     /// 运行一次派发流水线。
@@ -62,7 +72,7 @@ impl DispatchPipeline {
         &mut self,
         gate: &GateTable,
         leases: &LeaseTable,
-        ledger: &mut Ledger,
+        ledger: &std::sync::Mutex<Ledger>,
         execution_id: &str,
         lease_id: &str,
         action_id: &str,
@@ -72,7 +82,13 @@ impl DispatchPipeline {
         // 1. 闸门优先（03/06：停止必须先关闸门；关闸后新输入立即被拒，计数不增）。
         if !gate.is_open(execution_id) {
             gate.note_rejected();
-            log_outcome(execution_id, action_id, action, self.clock.now_ms(), "error:INVALID_STATE");
+            log_outcome(
+                execution_id,
+                action_id,
+                action,
+                self.clock.now_ms(),
+                "error:INVALID_STATE",
+            );
             return Err(IpcError::invalid_state("输入闸门已关闭，拒绝派发"));
         }
 
@@ -80,200 +96,329 @@ impl DispatchPipeline {
         let context: InputContext = match leases.get_by_execution(execution_id) {
             Some(lease) if lease.lease_id.as_str() == lease_id => lease.context.clone(),
             _ => {
-                log_outcome(execution_id, action_id, action, self.clock.now_ms(), "error:INVALID_STATE");
-                return Err(IpcError::invalid_state("输入租约不存在或与执行不匹配"));
-            }
-        };
-
-        // 3. action_id 去重（命中 → 重放同 Ack，不重做副作用）。
-        if let Some(ack) = self.dedup.get(action_id) {
-            return Ok(ack.clone());
-        }
-
-        // 4. 区域/窗口/几何/前台身份复核（权威在 Rust）。
-        let binding_id = context.binding_id.clone().unwrap_or_default();
-        self.region.check_geometry(&binding_id, geometry_revision)?;
-        let foreground = self.pointer.foreground_window();
-        if !self.region.foreground_matches(&foreground) {
-            log_outcome(execution_id, action_id, action, self.clock.now_ms(), "error:WINDOW_NOT_FOUND");
-            return Err(IpcError::window_not_found("前台窗口身份与绑定不匹配"));
-        }
-        let points = action::validation_points(action);
-        let check_points: Vec<Point> = if points.is_empty() {
-            // 非坐标动作：使用当前指针位置同样做区域/身份检查（03）。
-            vec![self.pointer.cursor_pos()]
-        } else {
-            points
-        };
-        for point in &check_points {
-            self.region.check_point(point.x, point.y, &context).map_err(|err| {
                 log_outcome(
                     execution_id,
                     action_id,
                     action,
                     self.clock.now_ms(),
-                    &format!("error:{}", err.code),
+                    "error:INVALID_STATE",
                 );
-                err
-            })?;
-        }
+                return Err(IpcError::invalid_state("输入租约不存在或与执行不匹配"));
+            }
+        };
 
-        // 5. 串行 SendInput（调用方持全局输入互斥锁 → 单点派发）。
-        if let Err(err) = self.execute(execution_id, action, ledger, gate) {
-            log_outcome(execution_id, action_id, action, self.clock.now_ms(), &format!("error:{}", err.code));
-            return Err(err);
+        if let Some(result) = self
+            .dedup
+            .get(lease_id)
+            .and_then(|seen| seen.get(action_id))
+        {
+            return result.clone();
         }
-
-        // 6. 账本更新已在 execute 内完成；登记去重并回 Ack。
-        let ack = ActionAck::dispatched(action_id);
-        self.dedup.insert(action_id.to_string(), ack.clone());
-        log_outcome(execution_id, action_id, action, self.clock.now_ms(), "dispatched");
-        Ok(ack)
+        let action_context = CheckedAction {
+            pipeline: self,
+            gate,
+            execution: execution_id,
+            context: &context,
+            revision: geometry_revision,
+            submitted: Cell::new(false),
+        };
+        let result = action_context.execute(action, ledger);
+        let submitted = action_context.submitted.get();
+        let result = match result {
+            Ok(()) => Ok(ActionAck::dispatched(action_id)),
+            Err(err) => {
+                ledger
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .release_owned(execution_id, self.input.as_ref());
+                if submitted && err.code != "INVALID_STATE" {
+                    Err(IpcError::input_failed(&err.message)
+                        .with_details(serde_json::json!({"partially_dispatched":true})))
+                } else {
+                    Err(err)
+                }
+            }
+        };
+        self.dedup
+            .entry(lease_id.to_owned())
+            .or_default()
+            .insert(action_id.to_owned(), result.clone());
+        log_outcome(
+            execution_id,
+            action_id,
+            action,
+            self.clock.now_ms(),
+            result
+                .as_ref()
+                .map(|_| "dispatched")
+                .unwrap_or_else(|e| &e.code),
+        );
+        result
     }
 
-    /// 执行动作原语（串行临界区内调用）。
+    pub fn query_pointer(&self) -> Result<serde_json::Value, IpcError> {
+        let p = self.pointer.cursor_pos()?;
+        Ok(serde_json::json!({"x":p.x, "y":p.y}))
+    }
+    pub fn forget_lease(&mut self, lease: &str) {
+        self.dedup.remove(lease);
+    }
+}
+
+struct CheckedAction<'a> {
+    pipeline: &'a DispatchPipeline,
+    gate: &'a GateTable,
+    execution: &'a str,
+    context: &'a InputContext,
+    revision: i64,
+    submitted: Cell<bool>,
+}
+
+impl CheckedAction<'_> {
+    fn current(&self) -> Result<Point, IpcError> {
+        self.pipeline.pointer.cursor_pos()
+    }
+
+    fn geometry(&self) -> Result<(), IpcError> {
+        let binding = self.context.binding_id.as_deref().unwrap_or("");
+        self.pipeline
+            .region
+            .check_geometry(binding, self.revision)?;
+        if !binding.is_empty()
+            && !self
+                .pipeline
+                .region
+                .foreground_matches(&self.pipeline.pointer.foreground_window())
+        {
+            return Err(IpcError::window_unavailable("绑定窗口未在前台"));
+        }
+        Ok(())
+    }
+
+    fn path(&self, start: Point, end: Point) -> Result<(), IpcError> {
+        self.pipeline.region.check_path(start, end, self.context)
+    }
+
+    fn send(
+        &self,
+        dest: Option<Point>,
+        op: impl FnOnce(&dyn InputPort) -> Result<(), PortError>,
+    ) -> Result<(), IpcError> {
+        // Check dynamic geometry immediately before each bounded OS operation. Gate close and the send
+        // share one critical section. Waiting between slices is always outside that section.
+        self.geometry()?;
+        let current = self.current()?;
+        self.path(current, dest.unwrap_or(current))?;
+        self.gate.submit(self.execution, || {
+            self.submitted.set(true); // SendInput failure can still indicate a partial dispatch.
+            op(self.pipeline.input.as_ref()).map_err(input_failed)
+        })
+    }
+
+    fn delay(&self, ms: u32) -> Result<(), IpcError> {
+        let deadline = std::time::Instant::now() + Duration::from_millis(ms.into());
+        while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()) {
+            if self.gate.paused(self.execution) {
+                return Err(IpcError::window_unavailable("执行已暂停"));
+            }
+            if !self.gate.is_open(self.execution) {
+                return Err(IpcError::invalid_state("输入闸门已关闭"));
+            }
+            std::thread::sleep(left.min(Duration::from_millis(MOVE_SLICE_MS.into())));
+        }
+        Ok(())
+    }
+
+    fn glide(&self, from: Point, to: Point, duration: u32) -> Result<(), IpcError> {
+        let slices = duration.div_ceil(MOVE_SLICE_MS).max(1);
+        for i in 1..=slices {
+            self.delay(duration * i / slices - duration * (i - 1) / slices)?;
+            let t = i as f64 / slices as f64;
+            let p = Point {
+                x: (from.x as f64 + (to.x as f64 - from.x as f64) * t).round() as i64,
+                y: (from.y as f64 + (to.y as f64 - from.y as f64) * t).round() as i64,
+            };
+            self.send(Some(p), |port| port.move_to(p.x, p.y))?;
+        }
+        Ok(())
+    }
+
+    fn key_down(&self, key: &Key, ledger: &std::sync::Mutex<Ledger>) -> Result<(), IpcError> {
+        let mut ledger = ledger.lock().unwrap_or_else(|e| e.into_inner());
+        if ledger.owns_key(self.execution, key) {
+            return Ok(());
+        }
+        if ledger.key_in_use(key) || self.pipeline.input.externally_held(key.vk) {
+            return Err(IpcError::input_failed("按键已由其他执行或用户持有"));
+        }
+        self.send(None, |p| p.key_event(key, true))?;
+        ledger.record_key_down(self.execution, key.clone());
+        Ok(())
+    }
+
+    fn key_up(&self, key: &Key, ledger: &std::sync::Mutex<Ledger>) -> Result<(), IpcError> {
+        let mut ledger = ledger.lock().unwrap_or_else(|e| e.into_inner());
+        if ledger.owns_key(self.execution, key) {
+            self.pipeline
+                .input
+                .key_event(key, false)
+                .map_err(input_failed)?;
+            ledger.record_key_up(self.execution, key);
+        }
+        Ok(())
+    }
+
+    fn button_free(&self, button: MouseButton, ledger: &Ledger) -> Result<(), IpcError> {
+        let vk = match button {
+            MouseButton::Left => 1,
+            MouseButton::Right => 2,
+            MouseButton::Middle => 4,
+        };
+        if ledger.button_in_use(button) || self.pipeline.input.externally_held(vk) {
+            return Err(IpcError::input_failed("鼠标按钮已被持有"));
+        }
+        Ok(())
+    }
+
+    fn button_down(
+        &self,
+        button: MouseButton,
+        ledger: &std::sync::Mutex<Ledger>,
+    ) -> Result<(), IpcError> {
+        let mut ledger = ledger.lock().unwrap_or_else(|e| e.into_inner());
+        self.button_free(button, &ledger)?;
+        self.send(None, |p| p.set_button(button, true))?;
+        ledger.record_button_down(self.execution, button);
+        Ok(())
+    }
+
+    fn button_up(
+        &self,
+        button: MouseButton,
+        ledger: &std::sync::Mutex<Ledger>,
+    ) -> Result<(), IpcError> {
+        let mut ledger = ledger.lock().unwrap_or_else(|e| e.into_inner());
+        if !ledger.held_buttons(self.execution).contains(&button) {
+            return Ok(());
+        }
+        self.pipeline
+            .input
+            .set_button(button, false)
+            .map_err(input_failed)?;
+        ledger.record_button_up(self.execution, button);
+        Ok(())
+    }
+
     fn execute(
         &self,
-        execution_id: &str,
         action: &InputAction,
-        ledger: &mut Ledger,
-        gate: &GateTable,
+        ledger: &std::sync::Mutex<Ledger>,
     ) -> Result<(), IpcError> {
-        let input = self.input.as_ref();
+        self.geometry()?;
+        let origin = self.current()?;
+        self.path(origin, origin)?;
         match action {
             InputAction::Move { x, y, duration_ms } => {
-                self.glide_move(execution_id, *x, *y, *duration_ms, gate)
+                let dest = Point { x: *x, y: *y };
+                self.path(origin, dest)?;
+                self.glide(origin, dest, *duration_ms)
             }
-            InputAction::Click { x, y, button, clicks } => {
-                input.move_to(*x, *y).map_err(input_failed)?;
+            InputAction::Click {
+                x,
+                y,
+                button,
+                clicks,
+            } => {
+                self.button_free(*button, &ledger.lock().unwrap_or_else(|e| e.into_inner()))?;
+                self.send(Some(Point { x: *x, y: *y }), |p| p.move_to(*x, *y))?;
                 for _ in 0..*clicks {
-                    input.set_button(*button, true).map_err(input_failed)?;
-                    input.set_button(*button, false).map_err(input_failed)?;
+                    self.button_down(*button, ledger)?;
+                    self.button_up(*button, ledger)?;
                 }
                 Ok(())
             }
-            InputAction::Drag { from, to, duration_ms } => {
-                input.move_to(from.x, from.y).map_err(input_failed)?;
-                input.set_button(MouseButton::Left, true).map_err(input_failed)?;
-                let glide = self.glide_move(execution_id, to.x, to.y, *duration_ms, gate);
-                // finally 语义：无论移动是否中止，都抬起左键。
-                let release = input.set_button(MouseButton::Left, false).map_err(input_failed);
-                glide?;
-                release
+            InputAction::Drag {
+                from,
+                to,
+                duration_ms,
+            } => {
+                self.button_free(
+                    MouseButton::Left,
+                    &ledger.lock().unwrap_or_else(|e| e.into_inner()),
+                )?;
+                self.path(origin, *from)?;
+                self.path(*from, *to)?;
+                self.send(Some(*from), |p| p.move_to(from.x, from.y))?;
+                self.button_down(MouseButton::Left, ledger)?;
+                self.glide(*from, *to, *duration_ms)?;
+                self.button_up(MouseButton::Left, ledger)
             }
             InputAction::Scroll { delta } => {
                 if *delta != 0 {
-                    input.wheel(*delta).map_err(input_failed)?;
+                    self.send(None, |p| p.wheel(*delta))?;
                 }
                 Ok(())
             }
-            InputAction::Key { key, state } => match state {
-                KeyState::Tap => {
-                    input.key_event(key, true).map_err(input_failed)?;
-                    ledger.record_key_down(execution_id, key.clone());
-                    if input.key_event(key, false).is_ok() {
-                        ledger.record_key_up(execution_id, key);
+            InputAction::Key {
+                key,
+                state: KeyState::Down,
+            } => self.key_down(key, ledger),
+            InputAction::Key {
+                key,
+                state: KeyState::Up,
+            } => self.key_up(key, ledger),
+            InputAction::Key {
+                key,
+                state: KeyState::Tap,
+            } => {
+                if ledger
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .owns_key(self.execution, key)
+                {
+                    return Err(IpcError::invalid_state("按键已由当前执行持有"));
+                }
+                self.key_down(key, ledger)?;
+                self.key_up(key, ledger)
+            }
+            InputAction::Hotkey { keys } => {
+                let mut pressed = Vec::new();
+                for key in keys {
+                    let held = ledger.lock().unwrap_or_else(|e| e.into_inner());
+                    if !held.owns_key(self.execution, key)
+                        && (held.key_in_use(key) || self.pipeline.input.externally_held(key.vk))
+                    {
+                        return Err(IpcError::input_failed(
+                            "组合键中含有已被其他执行或用户按住的键",
+                        ));
                     }
-                    Ok(())
                 }
-                KeyState::Down => {
-                    input.key_event(key, true).map_err(input_failed)?;
-                    ledger.record_key_down(execution_id, key.clone());
-                    Ok(())
+                for key in keys {
+                    if !ledger
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .owns_key(self.execution, key)
+                    {
+                        self.key_down(key, ledger)?;
+                        pressed.push(key);
+                    }
                 }
-                KeyState::Up => {
-                    input.key_event(key, false).map_err(input_failed)?;
-                    ledger.record_key_up(execution_id, key);
-                    Ok(())
+                for key in pressed.into_iter().rev() {
+                    self.key_up(key, ledger)?;
                 }
-            },
+                Ok(())
+            }
             InputAction::Text { text, interval_ms } => {
-                self.type_text(execution_id, text, *interval_ms, gate)
-            }
-            InputAction::Hotkey { keys } => self.hotkey(execution_id, keys, ledger),
-        }
-    }
-
-    /// 长移动切片（≤50ms/片，逐片查闸门；已派发不可撤回，不重试）。
-    fn glide_move(
-        &self,
-        execution_id: &str,
-        x: i64,
-        y: i64,
-        duration_ms: u32,
-        gate: &GateTable,
-    ) -> Result<(), IpcError> {
-        let input = self.input.as_ref();
-        if duration_ms == 0 {
-            return input.move_to(x, y).map_err(input_failed);
-        }
-        let start = self.pointer.cursor_pos();
-        let slices = duration_ms.div_ceil(MOVE_SLICE_MS).max(1);
-        for i in 1..=slices {
-            if !gate.is_open(execution_id) {
-                // 闸门在移动中途关闭：停止后续切片（部分已派发不自动重试）。
-                return Err(IpcError::invalid_state("移动中途闸门关闭，中止后续切片"));
-            }
-            let t = i as f64 / slices as f64;
-            let nx = (start.x as f64 + (x - start.x) as f64 * t).round() as i64;
-            let ny = (start.y as f64 + (y - start.y) as f64 * t).round() as i64;
-            input.move_to(nx, ny).map_err(input_failed)?;
-            if i < slices {
-                std::thread::sleep(Duration::from_millis(MOVE_SLICE_MS as u64));
-            }
-        }
-        Ok(())
-    }
-
-    /// Unicode 文本输入（按 interval 逐字符；逐字符查闸门）。
-    fn type_text(
-        &self,
-        execution_id: &str,
-        text: &str,
-        interval_ms: u32,
-        gate: &GateTable,
-    ) -> Result<(), IpcError> {
-        let input = self.input.as_ref();
-        if interval_ms == 0 {
-            return input.unicode_text(text).map_err(input_failed);
-        }
-        let mut buffer = [0u8; 4];
-        for ch in text.chars() {
-            if !gate.is_open(execution_id) {
-                return Err(IpcError::invalid_state("文本输入中途闸门关闭，中止后续字符"));
-            }
-            input
-                .unicode_text(ch.encode_utf8(&mut buffer))
-                .map_err(input_failed)?;
-            std::thread::sleep(Duration::from_millis(interval_ms as u64));
-        }
-        Ok(())
-    }
-
-    /// 组合键：依序按下、逆序释放（异常亦清理，07§5）。
-    fn hotkey(
-        &self,
-        execution_id: &str,
-        keys: &[super::model::Key],
-        ledger: &mut Ledger,
-    ) -> Result<(), IpcError> {
-        let input = self.input.as_ref();
-        for (index, key) in keys.iter().enumerate() {
-            if let Err(err) = input.key_event(key, true) {
-                // 已按下的键逆序释放后报错（不重试）。
-                for pressed in keys[..index].iter().rev() {
-                    let _ = input.key_event(pressed, false);
-                    ledger.record_key_up(execution_id, pressed);
+                let mut buffer = [0u8; 4];
+                for (i, ch) in text.chars().enumerate() {
+                    if i > 0 {
+                        self.delay(*interval_ms)?;
+                    }
+                    self.send(None, |p| p.unicode_text(ch.encode_utf8(&mut buffer)))?;
                 }
-                return Err(input_failed(err));
+                Ok(())
             }
-            ledger.record_key_down(execution_id, key.clone());
         }
-        for key in keys.iter().rev() {
-            let _ = input.key_event(key, false);
-            ledger.record_key_up(execution_id, key);
-        }
-        Ok(())
     }
 }
 

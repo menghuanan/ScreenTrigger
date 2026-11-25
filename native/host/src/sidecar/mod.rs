@@ -617,6 +617,7 @@ impl Supervisor {
         }
         // 步骤 1：先关闸门（结构性的第一步，§2.5 步骤 2）
         self.gate.close_gate("engine_stopping");
+        crate::window::end_session();
 
         // 步骤 1.5（TASK-005 接线）：Router Shutdown → 在途 ipc 请求全部以
         // ENGINE_UNAVAILABLE 快速失败（§7：sidecar 崩溃/stdout EOF 路径），
@@ -858,12 +859,10 @@ impl SupervisorHandle {
         // TASK-017：把输入宿主命令的真 handler 注册进 HostBridge（M05 接入点）。
         // 未装配 InputManager（如无窗口/测试）→ 不注册 → 命令回 CAPABILITY_DENIED（诚实降级）。
         if let Some(manager) = crate::input::shared_manager() {
-            for command in ["input_action", "acquire_input_lease", "release_input_lease"] {
-                bridge.register_handler(
-                    command,
-                    Box::new(crate::input::SharedInputManager(Arc::clone(&manager))),
-                );
-            }
+            bridge.attach_input(manager);
+        }
+        if let Some(windows) = crate::window::shared() {
+            bridge.register_handler("window_snapshot", Box::new(crate::window::SnapshotHandler(windows)));
         }
         // TASK-017：stop_script 转发前的输入闸门由 NullStopGate 换成共享 InputStopGate
         // （M05：停止必须先由 Rust 关输入闸门，不等待 Python）；未装配则维持 NullStopGate。
@@ -882,11 +881,10 @@ impl SupervisorHandle {
         );
         // TASK-008：注入 Rust 本地宿主能力 handler（框选三命令；未装配则默认
         // CapabilityDenied 诚实降级）。
-        let router = match crate::selection::shared_manager() {
-            Some(manager) => router
-                .with_host_commands(Box::new(crate::selection::SharedSelectionManager(manager))),
-            None => router,
-        };
+        let router = router.with_host_commands(Box::new(crate::window::DesktopCommands {
+            selection: crate::selection::shared_manager().map(crate::selection::SharedSelectionManager),
+            windows: crate::window::shared(), gate: crate::input::shared_gate(),
+        }));
         // 手工装配 spawn_router 等价流程：需要 tx 副本注入 system_ready 首事件
         // （契约④：system_ready 经事件总线 → UI seq=1，不直转）。
         let (tx, rx) = mpsc::channel::<RouterInput>();
@@ -912,6 +910,9 @@ impl SupervisorHandle {
             ),
         ));
         sup.router = Some(handle);
+        if let Some(windows)=crate::window::shared() {
+            crate::window::watch(windows,session_id.clone(),tx.clone());
+        }
         sup.router_tx = Some(tx.clone());
         if let Some(envelope) = ready_envelope {
             let _ = tx.send(RouterInput::Frame(envelope));
@@ -956,6 +957,12 @@ impl SupervisorHandle {
             .unwrap_or_else(|p| p.into_inner())
             .clear();
 
+        if crate::desktop_windows::attached() {
+            crate::window::new_session();
+            let input=crate::input::wiring::build_production_manager();
+            input.lock().unwrap_or_else(|p|p.into_inner()).gate().enable_input(false);
+            crate::input::install_manager(input);
+        }
         let session_id = Supervisor::generate_session_id();
         sup.session_id = Some(session_id.clone());
 
@@ -1033,8 +1040,10 @@ impl SupervisorHandle {
         // TASK-017：输入能力置位信号——仅当已装配 InputManager 时注入
         // （Python 侧据此把 hello.capabilities 的 input 置 available，否则维持
         // unavailable + reason，诚实降级）。
+        if crate::window::shared().is_some() { cmd.env("ST_WINDOW_AVAILABLE","1"); }
         if crate::input::shared_manager().is_some() {
             cmd.env("ST_INPUT_AVAILABLE", "1");
+            if crate::desktop_windows::attached() {cmd.env("ST_INPUT_MANAGED","1");}
         }
         #[cfg(target_os = "windows")]
         {
@@ -1231,6 +1240,14 @@ impl SupervisorHandle {
     }
 
     /// `engine_status`。
+    pub fn update_input_capability(&self,session:&str,enabled:bool,reason:Option<String>){
+        let mut sup=lock_sup(&self.inner);
+        if sup.session_id.as_deref()!=Some(session){return;}
+        if let Some(cap)=sup.capabilities.iter_mut().find(|c|c.id=="input") {
+            cap.state=if enabled {"available"} else {"unavailable"}.into(); cap.reason=reason;
+        }
+    }
+
     pub fn status(&self) -> EngineStatusView {
         lock_sup(&self.inner).status()
     }

@@ -50,7 +50,7 @@ use model::{
 pub struct InputManager {
     gate: Arc<GateTable>,
     leases: LeaseTable,
-    ledger: Ledger,
+    ledger: Arc<Mutex<Ledger>>,
     pipeline: DispatchPipeline,
 }
 
@@ -65,7 +65,7 @@ impl InputManager {
         InputManager {
             gate: Arc::new(GateTable::new()),
             leases: LeaseTable::new(),
-            ledger: Ledger::new(),
+            ledger: Default::default(),
             pipeline: DispatchPipeline::new(input, pointer, region, clock),
         }
     }
@@ -82,6 +82,8 @@ impl InputManager {
     /// 分派一条宿主命令，返回 03 约定的 `data` 形状。
     pub fn handle(&mut self, command: &str, params: &Value) -> Result<Value, IpcError> {
         match command {
+            "query_pointer" if params.as_object().is_some_and(|p| p.is_empty()) => self.pipeline.query_pointer(),
+            "query_pointer" => Err(IpcError::invalid_params("query_pointer 的参数必须为空对象")),
             "input_action" => self.handle_input_action(params),
             "acquire_input_lease" => self.handle_acquire_lease(params),
             "release_input_lease" => self.handle_release_lease(params),
@@ -96,8 +98,8 @@ impl InputManager {
         let action_id = req_str(params, "action_id")?;
         let geometry_revision = params
             .get("geometry_revision")
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
+            .and_then(Value::as_i64).filter(|r| *r >= 0)
+            .ok_or_else(|| IpcError::invalid_params("geometry_revision 必须是非负整数"))?;
         let action_value = params
             .get("action")
             .ok_or_else(|| IpcError::invalid_params("缺少 action（object）"))?;
@@ -140,7 +142,10 @@ impl InputManager {
         if !self.gate.is_open(execution_id) {
             return Err(IpcError::invalid_state("闸门已关闭，拒绝获取输入租约"));
         }
-        self.leases.acquire(execution_id, context)
+        let binding = context.binding_id.clone();
+        let lease=self.leases.acquire(execution_id,context)?;
+        if let Err(e)=self.gate.register(execution_id,binding) { self.leases.release(execution_id); return Err(e); }
+        Ok(lease)
     }
 
     /// 派发一个动作（闸门 → 租约 → 去重 → 复核 → 串行 SendInput → 账本）。
@@ -155,7 +160,7 @@ impl InputManager {
         self.pipeline.run(
             &self.gate,
             &self.leases,
-            &mut self.ledger,
+            &self.ledger,
             execution_id,
             lease_id,
             action_id,
@@ -166,17 +171,19 @@ impl InputManager {
 
     /// 释放该执行持有的键/鼠标按钮（账本逆序；只释放本程序持有者）。
     pub fn release_owned_inputs(&mut self, execution_id: &str) -> usize {
-        self.ledger.release_owned(execution_id, self.pipeline.input_port())
+        self.ledger.lock().unwrap_or_else(|e|e.into_inner()).release_owned(execution_id, self.pipeline.input_port())
     }
 
     /// 释放所有执行持有的键/鼠标按钮（退出清理）。
     pub fn release_all_owned(&mut self) -> usize {
-        self.ledger.release_all(self.pipeline.input_port())
+        self.ledger.lock().unwrap_or_else(|e|e.into_inner()).release_all(self.pipeline.input_port())
     }
 
     /// 释放租约（Lua 侧 release；未持有 → INVALID_STATE）。同时尽力释放账本。
     pub fn release_input_lease(&mut self, execution_id: &str) -> Result<(), IpcError> {
         let removed = self.leases.release(execution_id);
+        self.gate.unregister(execution_id);
+        if let Some(ref lease) = removed { self.pipeline.forget_lease(lease.as_str()); }
         let released = self.release_owned_inputs(execution_id);
         match removed {
             Some(_) => Ok(()),
@@ -259,7 +266,8 @@ impl InputStopGate {
             return;
         };
         let Ok(mut guard) = manager.try_lock() else {
-            return; // 派发进行中：留给派发侧自行释放
+            release_closed();
+            return;
         };
         match execution_id {
             Some(exec) => {
@@ -308,6 +316,7 @@ impl InputGate for LazyInputGate {
                 guard.release_all_owned();
             }
         }
+        release_closed();
         eprintln!("[input] LazyInputGate.close_gate reason={reason}");
     }
 }
@@ -316,21 +325,28 @@ impl InputGate for LazyInputGate {
 // 进程级共享（宿主初始化 装配；sidecar wire_router 取用）
 // ---------------------------------------------------------------------------
 
-static MANAGER: std::sync::OnceLock<Arc<Mutex<InputManager>>> = std::sync::OnceLock::new();
-
-/// 安装共享输入管理器（重复安装返回 false）。
-pub fn install_manager(m: Arc<Mutex<InputManager>>) -> bool {
-    MANAGER.set(m).is_ok()
+struct Installed { manager: Arc<Mutex<InputManager>>, gate: Arc<GateTable>, ledger:Arc<Mutex<Ledger>>, input:Arc<dyn InputPort> }
+pub fn release_closed(){
+    let held=MANAGER.lock().unwrap_or_else(|e|e.into_inner());
+    if let Some(s)=held.as_ref() {
+        let mut ledger=s.ledger.lock().unwrap_or_else(|e|e.into_inner());
+        for id in s.gate.active(None) {
+            if !s.gate.is_open(&id) || s.gate.paused(&id) {ledger.release_owned(&id,s.input.as_ref());}
+        }
+    }
 }
-
-/// 读取共享输入管理器（未装配 → None）。
+static MANAGER: Mutex<Option<Installed>> = Mutex::new(None);
+pub fn install_manager(manager: Arc<Mutex<InputManager>>) -> bool {
+    let (gate,ledger,input)={let m=manager.lock().unwrap_or_else(|p|p.into_inner());(m.gate(),m.ledger.clone(),m.pipeline.shared_input())};
+    let mut slot=MANAGER.lock().unwrap_or_else(|p|p.into_inner());
+    if let Some(old)=slot.as_ref() {old.gate.close_all("engine_session_changed");}
+    *slot=Some(Installed{manager,gate,ledger,input}); true
+}
 pub fn shared_manager() -> Option<Arc<Mutex<InputManager>>> {
-    MANAGER.get().cloned()
+    MANAGER.lock().unwrap_or_else(|p|p.into_inner()).as_ref().map(|s|s.manager.clone())
 }
-
-/// 读取共享闸门（未装配 → None）。
 pub fn shared_gate() -> Option<Arc<GateTable>> {
-    MANAGER.get().map(|m| m.lock().unwrap_or_else(|p| p.into_inner()).gate())
+    MANAGER.lock().unwrap_or_else(|p|p.into_inner()).as_ref().map(|s|s.gate.clone())
 }
 
 /// 构造共享停止闸门（未装配输入管理器 → None，路由层回退 `NullStopGate`）。

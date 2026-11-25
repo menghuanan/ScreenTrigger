@@ -137,6 +137,8 @@ def decode_png_to_rgb(data: bytes) -> Tuple[int, int, bytes]:
     seen_iend = False
     for tag, body in _iter_chunks(data):
         if tag == b"IHDR":
+            if ihdr:
+                raise PngDecodeError("重复的 IHDR")
             ihdr = body
         elif tag == b"PLTE":
             plte = body
@@ -175,7 +177,13 @@ def decode_png_to_rgb(data: bytes) -> Tuple[int, int, bytes]:
     row_bytes = (width * bits_per_pixel + 7) // 8
 
     try:
-        raw = zlib.decompress(b"".join(idat_parts))
+        size = height * (row_bytes + 1)
+        if width > 16384 or height > 16384 or width * height > 40_000_000:
+            raise PngDecodeError("图像尺寸超过解码预算")
+        decoder = zlib.decompressobj()
+        raw = decoder.decompress(b"".join(idat_parts), size + 1)
+        if len(raw) != size or not decoder.eof or decoder.unused_data:
+            raise PngDecodeError("IDAT 长度与声明的图像尺寸不符")
     except zlib.error as exc:
         raise PngDecodeError("IDAT 解压失败: %s" % exc) from exc
 

@@ -2,9 +2,14 @@
 
 pub mod commands;
 mod desktop_abi;
+mod desktop_windows;
 pub mod import;
 pub mod input;
 pub mod ipc;
 pub mod selection;
 pub mod sidecar;
 pub mod types;
+
+pub mod window;
+
+pub mod hotkey;

@@ -5,15 +5,10 @@
 //! - [`SendInputPort`]：SendInput 绝对移动/按键/滚轮/Unicode/按钮；
 //! - [`SystemPointer`]：虚拟屏/光标/前台窗口；
 //! - [`SystemClock`]：单调时钟（进程内起源）；
-//! - [`SystemRegionResolution`]：**TASK-017 自带的生产实现**——用 `EnumDisplayMonitors`
-//!   得到**实际显示器集合**判定点是否合法（06§不变量 3）；
-//!   `binding_id`/`geometry_revision` 与前台身份校验在本任务中经端口抽象**留待
-//!   TASK-018 丰富**（未绑定/无 binding_id 时按“无绑定会话”通过），**本任务不实现
-//!   窗口枚举**。
-//!
-//! **来源章节**：docs/01 §M05、docs/06 §坐标区域与输入不变量、docs/07 §5。
+//! - [`SystemRegionResolution`]：实际显示器、绑定客户区、前台身份和几何修订校验。
 
-use std::collections::HashMap;
+use super::model::{InputContext, Point};
+use crate::window::{self, Entry, Windows};
 use std::sync::Mutex;
 
 use crate::ipc::IpcError;
@@ -42,6 +37,10 @@ impl InputPort for SendInputPort {
         win32::button(button, down).map_err(PortError::new)
     }
 
+    fn externally_held(&self, vk: u16) -> bool {
+        win32::key_is_down(vk)
+    }
+
     fn wheel(&self, delta: i32) -> Result<(), PortError> {
         win32::wheel(delta).map_err(PortError::new)
     }
@@ -54,7 +53,12 @@ impl InputPort for SendInputPort {
         win32::unicode_text(text).map_err(PortError::new)
     }
 
-    fn release_keys(&self, _execution_id: &str, keys: &[super::model::Key], buttons: &[MouseButton]) {
+    fn release_keys(
+        &self,
+        _execution_id: &str,
+        keys: &[super::model::Key],
+        buttons: &[MouseButton],
+    ) {
         for button in buttons.iter().rev() {
             let _ = win32::button(*button, false);
         }
@@ -77,15 +81,17 @@ impl PointerPort for SystemPointer {
     }
 
     fn foreground_window(&self) -> WindowIdentity {
+        let hwnd = win32::foreground_window();
+        let actual = window::system::observe(hwnd as isize);
         WindowIdentity {
-            handle: win32::foreground_window(),
-            pid: 0,
-            process_started_at: String::new(),
+            handle: hwnd,
+            pid: actual.as_ref().map_or(0, |w| w.identity.pid),
+            process_started_at: actual.map(|w| w.identity.started).unwrap_or_default(),
         }
     }
 
-    fn cursor_pos(&self) -> super::model::Point {
-        win32::cursor_pos()
+    fn cursor_pos(&self) -> Result<super::model::Point, IpcError> {
+        win32::cursor_pos().ok_or_else(|| IpcError::window_unavailable("Windows 无法读取光标位置"))
     }
 }
 
@@ -101,7 +107,9 @@ pub struct SystemClock {
 impl SystemClock {
     /// 以当前时刻为起源构造。
     pub fn new() -> Self {
-        SystemClock { origin: std::time::Instant::now() }
+        SystemClock {
+            origin: std::time::Instant::now(),
+        }
     }
 }
 
@@ -121,70 +129,128 @@ impl ClockPort for SystemClock {
 // 区域/几何/前台复核端口（TASK-017 生产实现；TASK-018 将替换/扩展）
 // ---------------------------------------------------------------------------
 
-/// 系统区域复核端口（生产）。
-///
-/// **TASK-017 自带、可独立工作**：`check_point` 基于 `EnumDisplayMonitors` 的**实际
-/// 显示器集合**判定点是否合法（06§不变量 3）。
-///
-/// **TASK-018 将替换/扩展该端口实现**：本任务不实现窗口枚举，故 `check_geometry`
-/// 与 `foreground_matches` 在“无绑定会话”（binding_id 空）下按通过处理；已知
-/// geometry_revision 的旧帧拒绝逻辑由 TASK-018 经 `latest_revision` 注入。
+/// Snapshot client geometry and display membership for a whole motion segment.
 pub struct SystemRegionResolution {
     monitors: Box<dyn Fn() -> Vec<MonitorRect> + Send + Sync>,
-    latest_revision: Mutex<HashMap<String, i64>>,
+    windows: Option<Windows>,
+    physical: bool,
 }
-
-impl SystemRegionResolution {
-    /// 生产构造：真实显示器枚举。
-    pub fn new() -> Self {
-        SystemRegionResolution {
-            monitors: Box::new(win32::enum_monitors),
-            latest_revision: Mutex::new(HashMap::new()),
-        }
-    }
-
-    /// 测试构造：注入显示器集合提供器（确定性）。
-    pub fn with_monitors(
-        monitors: Box<dyn Fn() -> Vec<MonitorRect> + Send + Sync>,
-    ) -> Self {
-        SystemRegionResolution { monitors, latest_revision: Mutex::new(HashMap::new()) }
-    }
-}
-
 impl Default for SystemRegionResolution {
     fn default() -> Self {
         Self::new()
     }
 }
-
-impl RegionResolutionPort for SystemRegionResolution {
-    fn check_point(
-        &self,
-        x: i64,
-        y: i64,
-        ctx: &super::model::InputContext,
-    ) -> Result<(), IpcError> {
-        let monitors = (self.monitors)();
-        geometry_guard::evaluate_point(x, y, ctx, &monitors)
-    }
-
-    fn check_geometry(&self, binding_id: &str, geometry_revision: i64) -> Result<(), IpcError> {
-        // 未绑定/无 binding_id → 无绑定会话，通过（不提前实现 TASK-018 窗口枚举）。
-        if binding_id.is_empty() {
-            return Ok(());
+impl SystemRegionResolution {
+    pub fn new() -> Self {
+        Self {
+            monitors: Box::new(win32::enum_monitors),
+            windows: window::shared(),
+            physical: true,
         }
-        let known = self
-            .latest_revision
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .get(binding_id)
-            .copied();
-        geometry_guard::evaluate_geometry(binding_id, geometry_revision, known)
     }
-
-    fn foreground_matches(&self, _identity: &WindowIdentity) -> bool {
-        // TASK-018 将替换/扩展：本任务无窗口枚举，无法核对前台身份 → 视为匹配。
-        true
+    pub fn with_monitors(monitors: Box<dyn Fn() -> Vec<MonitorRect> + Send + Sync>) -> Self {
+        Self {
+            monitors,
+            windows: None,
+            physical: false,
+        }
+    }
+    fn binding(&self, id: &str) -> Result<Entry, IpcError> {
+        let entry = self
+            .windows
+            .as_ref()
+            .ok_or_else(|| IpcError::window_not_found("窗口服务不可用"))?
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .bound(id)?;
+        if !entry.live.visible || !entry.live.foreground || entry.live.minimized {
+            return Err(IpcError::window_unavailable(
+                "请手动恢复绑定窗口并使其位于前台",
+            ));
+        }
+        Ok(entry)
+    }
+}
+impl RegionResolutionPort for SystemRegionResolution {
+    fn check_point(&self, x: i64, y: i64, ctx: &InputContext) -> Result<(), IpcError> {
+        self.check_path(Point { x, y }, Point { x, y }, ctx)
+    }
+    fn check_path(&self, from: Point, to: Point, ctx: &InputContext) -> Result<(), IpcError> {
+        use crate::types::region::RegionSpace;
+        let monitors = (self.monitors)();
+        let mut effective = ctx.clone();
+        let bound = ctx
+            .binding_id
+            .as_deref()
+            .map(|b| self.binding(b))
+            .transpose()?;
+        if let Some(r) = effective.region.as_mut() {
+            match r.space {
+                RegionSpace::WindowClientPhysical
+                    if r.binding_id == ctx.binding_id && bound.is_some() =>
+                {
+                    let rect = &bound.as_ref().unwrap().live.rect;
+                    if r.x < 0
+                        || r.y < 0
+                        || r.x.saturating_add(r.width) > rect.width
+                        || r.y.saturating_add(r.height) > rect.height
+                    {
+                        return Err(IpcError::region_limit_violation(
+                            "输入区域超出绑定窗口客户区",
+                        ));
+                    }
+                    r.x += rect.x;
+                    r.y += rect.y;
+                }
+                RegionSpace::ScreenPhysical if r.display_id == ctx.display_id || !self.physical => {
+                }
+                _ => {
+                    return Err(IpcError::invalid_params(
+                        "输入区域与执行的窗口或显示器不一致",
+                    ))
+                }
+            }
+        }
+        let check = |p: Point| -> Result<(), IpcError> {
+            geometry_guard::evaluate_point(p.x, p.y, &effective, &monitors)?;
+            if let Some(w) = bound.as_ref() {
+                let r = &w.live.rect;
+                if p.x < r.x || p.y < r.y || p.x >= r.x + r.width || p.y >= r.y + r.height {
+                    return Err(IpcError::region_limit_violation("输入越出绑定窗口客户区"));
+                }
+            }
+            Ok(())
+        };
+        for p in [from, to] {
+            check(p)?;
+            if let Some(w) = bound.as_ref() {
+                if window::system::window_at(p.x, p.y) != Some(w.live.identity.hwnd) {
+                    return Err(IpcError::window_unavailable("绑定窗口的操作点被遮挡"));
+                }
+            } else if self.physical
+                && window::system::monitor_at(p.x, p.y).as_deref() != ctx.display_id.as_deref()
+            {
+                return Err(IpcError::region_limit_violation("输入点不在选定显示器"));
+            }
+        }
+        // A single display and a client/ROI rectangle are convex. The monitor union can contain holes.
+        geometry_guard::walk_segment(from, to, check)
+    }
+    fn check_geometry(&self, id: &str, revision: i64) -> Result<(), IpcError> {
+        let current = if id.is_empty() {
+            0
+        } else {
+            self.binding(id)?.revision
+        };
+        geometry_guard::evaluate_geometry(id, revision, Some(current))
+    }
+    fn foreground_matches(&self, id: &WindowIdentity) -> bool {
+        self.windows.as_ref().is_some_and(|windows| {
+            windows
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .matches_foreground(id)
+        })
     }
 }
 

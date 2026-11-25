@@ -45,6 +45,7 @@ REQUEST_REQUIRED_FIELDS: Tuple[str, ...] = GENERIC_REQUIRED_FIELDS + TYPE_REQUIR
 HOST_COMMAND_WHITELIST: Tuple[str, ...] = (
     "input_action",
     "window_snapshot",
+    "query_pointer",
     "acquire_input_lease",
     "release_input_lease",
 )

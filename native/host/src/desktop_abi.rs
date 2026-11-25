@@ -24,6 +24,21 @@ enum Call {
     Stop,
     Status,
     Diagnostics,
+    PickImage {
+        session_id: String,
+    },
+    SelectExecution {
+        session_id: String,
+        execution_id: Option<String>,
+    },
+    SelectionRegion {
+        session_id: String,
+        selection_id: String,
+        a: (f64, f64),
+        b: (f64, f64),
+        origin: (i64, i64),
+        scale: f64,
+    },
     Request {
         session_id: Option<String>,
         id: String,
@@ -43,20 +58,118 @@ impl DesktopHost {
             .map_err(|e| IpcError::new("INVALID_PARAMS", &e.to_string(), false))?;
         let run = &self.supervisor;
         match call {
-            Call::Start => commands::engine_start(run)
-                .map(|v| json!(v))
-                .map_err(|e| IpcError::new(&e.code, &e.message, e.retryable)),
-            Call::Stop => Ok(json!(run.stop("engine_stopping"))),
+            Call::Start => {
+                let before = run.status();
+                if matches!(
+                    before.state,
+                    crate::sidecar::EngineState::Idle | crate::sidecar::EngineState::Exited
+                ) {
+                    end_selection();
+                }
+                let state = commands::engine_start(run)
+                    .map_err(|e| IpcError::new(&e.code, &e.message, e.retryable))?;
+                if crate::desktop_windows::attached() && state.session_id != before.session_id {
+                    crate::hotkey::initialize_session(run);
+                }
+                Ok(json!(run.status()))
+            }
+            Call::SelectExecution {
+                session_id,
+                execution_id,
+            } => {
+                run.session_router(Some(&session_id))?;
+                crate::hotkey::select(&session_id, execution_id);
+                Ok(json!({"ok":true}))
+            }
+            Call::Stop => {
+                stop_input();
+                crate::hotkey::clear();
+                end_selection();
+                Ok(json!(run.stop("engine_stopping")))
+            }
             Call::Status => Ok(json!(commands::engine_status(run))),
             Call::Diagnostics => Ok(json!(commands::engine_diagnostics(run))),
+            Call::PickImage { session_id } => {
+                run.session_router(Some(&session_id))?;
+                let picked = crate::desktop_windows::pick_image(&session_id)?;
+                run.session_router(Some(&session_id))?;
+                Ok(picked)
+            }
+            Call::SelectionRegion {
+                session_id,
+                selection_id,
+                a,
+                b,
+                origin,
+                scale,
+            } => {
+                run.session_router(Some(&session_id))?;
+                let manager = crate::selection::shared_manager()
+                    .ok_or_else(|| IpcError::capability_denied("start_selection_mode"))?;
+                let mut lock = manager.lock().unwrap_or_else(|p| p.into_inner());
+                lock.report_region(&selection_id, a, b, origin, scale)
+            }
             Call::Request {
                 session_id,
                 id,
                 command,
                 params,
-            } => run.session_router(session_id.as_deref())?.request(&id, &command, params),
-            Call::Cancel { session_id, request_id } => run.session_router(session_id.as_deref())?.cancel(&request_id),
+            } => {
+                let router = run.session_router(session_id.as_deref())?;
+                let submit = || router.request(&id, &command, params.clone());
+                if crate::desktop_windows::attached()
+                    && (command == "reset_config"
+                        || (command == "update_config" && params["patch"].get("hotkeys").is_some()))
+                {
+                    crate::hotkey::configure(run, &command, &params, submit)
+                } else if let Some(root) = params["execution_id"].as_str().filter(|_| {
+                    matches!(
+                        command.as_str(),
+                        "stop_script" | "pause_script" | "resume_script"
+                    )
+                }) {
+                    crate::hotkey::with_control(&command, root, submit)
+                } else {
+                    submit()
+                }
+            }
+            Call::Cancel {
+                session_id,
+                request_id,
+            } => run
+                .session_router(session_id.as_deref())?
+                .cancel(&request_id),
         }
+    }
+}
+
+fn stop_input() {
+    if let Some(g) = crate::input::shared_gate() {
+        g.close_all("desktop_exit");
+        crate::input::release_closed();
+    }
+}
+
+fn end_selection() {
+    if let Some(manager) = crate::selection::shared_manager() {
+        manager
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .end_session();
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn st_host_attach_window(
+    host: *const DesktopHost,
+    callback: Option<crate::desktop_windows::WindowCallback>,
+) -> i32 {
+    match (host.as_ref(), callback) {
+        (Some(host), Some(cb)) if !host.closing.load(Ordering::Acquire) => {
+            crate::desktop_windows::attach(cb);
+            0
+        }
+        _ => -1,
     }
 }
 
@@ -124,6 +237,10 @@ pub unsafe extern "C" fn st_host_call(
 pub unsafe extern "C" fn st_host_begin_close(host: *const DesktopHost) {
     if let Some(host) = host.as_ref() {
         host.closing.store(true, Ordering::Release);
+        stop_input();
+        crate::hotkey::shutdown();
+        end_selection();
+        crate::desktop_windows::detach();
         host.event.write().unwrap_or_else(|p| p.into_inner()).take();
         host.supervisor.shutdown_sync("desktop_exit");
     }
@@ -136,6 +253,9 @@ pub unsafe extern "C" fn st_host_close(host: *mut DesktopHost) {
         return;
     }
     let host = Box::from_raw(host);
+    stop_input();
+    crate::hotkey::shutdown();
+    crate::desktop_windows::detach();
     // Taking the writer lock drains any callback still copying its borrowed bytes.
     host.event.write().unwrap_or_else(|p| p.into_inner()).take();
     host.supervisor.shutdown_sync("desktop_exit");

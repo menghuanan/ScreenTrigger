@@ -51,6 +51,7 @@ class StoredImage:
     sha256: str
     data: bytes
     owner: str
+    original_bytes: Optional[bytes] = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,7 @@ class SessionImageStore:
         # 已释放墓碑：image_id -> owner（会话）；同会话重复释放判幂等
         self._released: "OrderedDict[str, str]" = OrderedDict()
         self._bytes: int = 0
+        self._closed = False
 
     # -- 基本信息 -------------------------------------------------------------
 
@@ -143,6 +145,7 @@ class SessionImageStore:
         image_format: str = "png",
         *,
         frame_meta: Optional[FrameMeta] = None,
+        original_bytes: Optional[bytes] = None,
     ) -> ImageRef:
         """登记一帧 BGR 图像，返回 ImageRef。
 
@@ -156,7 +159,7 @@ class SessionImageStore:
             CaptureError: RESOURCE_LIMIT（超字节预算）或 INVALID_IMAGE（格式/缓冲非法）。
         """
         # 延迟 import 以避免 image <-> capture 顶层循环依赖。
-        from ..capture.errors import invalid_image, resource_limit
+        from ..capture.errors import image_expired, invalid_image, resource_limit
 
         if image_format not in IMAGE_FORMATS:
             raise invalid_image("不支持的图像格式: %s" % image_format, field="format")
@@ -170,11 +173,14 @@ class SessionImageStore:
         if len(data) != width * height * 3:
             raise invalid_image("BGR 缓冲区长度与 width*height*3 不符")
 
+        size = len(data) + (len(original_bytes) if original_bytes is not None else 0)
         with self._lock:
-            if self._bytes + len(data) > self._budget:
+            if self._closed:
+                raise image_expired("图像会话已经关闭")
+            if self._bytes + size > self._budget:
                 raise resource_limit(
                     "图像字节预算超出：当前 %d + 新增 %d > 上限 %d"
-                    % (self._bytes, len(data), self._budget)
+                    % (self._bytes, size, self._budget)
                 )
             image_id = self._image_id_factory()
             while image_id in self._entries:
@@ -188,11 +194,12 @@ class SessionImageStore:
                 sha256=sha256,
                 data=data,
                 owner=self._session_id,
+                original_bytes=original_bytes,
             )
             self._entries[image_id] = stored
             if frame_meta is not None:
                 self._frames[image_id] = frame_meta
-            self._bytes += len(data)
+            self._bytes += size
         return ImageRef(
             image_id=image_id,
             width=width,
@@ -247,6 +254,8 @@ class SessionImageStore:
                 del self._entries[image_id]
                 self._frames.pop(image_id, None)
                 self._bytes -= len(entry.data)
+                if entry.original_bytes is not None:
+                    self._bytes -= len(entry.original_bytes)
                 self._released[image_id] = entry.owner
                 while len(self._released) > self._released_capacity:
                     self._released.popitem(last=False)
@@ -275,6 +284,8 @@ class SessionImageStore:
     def close(self) -> None:
         """会话结束：清空全部引用（内存回收；不落盘）。"""
         with self._lock:
+            self._closed = True
             self._entries.clear()
             self._frames.clear()
+            self._released.clear()
             self._bytes = 0

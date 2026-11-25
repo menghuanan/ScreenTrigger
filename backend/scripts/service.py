@@ -138,6 +138,10 @@ class ScriptService:
         snapshot = self._repository.read_snapshot()
         scripts = domain.scripts_from_snapshot(snapshot)
         script = domain.ensure_script_found(domain.find_script(scripts, script_id), script_id)
+        return {"script": dict(script), "source": self.source_for(script)}
+
+    def source_for(self, script) -> str:
+        """Read and verify the immutable source named in a particular catalog generation."""
         raw = self._source_store.verify(
             str(script["source_path"]), str(script["source_sha256"])
         )
@@ -147,7 +151,7 @@ class ScriptService:
             raise data_corrupt(
                 "脚本源码不是合法 UTF-8: %s" % script["source_path"], field="source"
             ) from exc
-        return {"script": dict(script), "source": source}
+        return source
 
     # -- 写命令 --------------------------------------------------------------
 

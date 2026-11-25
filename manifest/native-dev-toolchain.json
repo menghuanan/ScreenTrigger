@@ -12,7 +12,7 @@
   "direct_nuget": {
     "Microsoft.WindowsAppSDK.WinUI": {"version": "2.7.0", "license": "Microsoft Windows App SDK license.txt"},
     "Microsoft.Windows.SDK.BuildTools": {"version": "10.0.28000.2957", "license": "Microsoft Windows SDK license", "build_only": true},
-    "WinUIEx": {"version": "2.9.3", "license": "MIT", "scope": "selection probe transparent backdrop"}
+    "WinUIEx": {"version": "2.9.3", "license": "MIT", "scope": "WinUI selection window and probe transparent backdrop"}
   },
   "dependency_locks": [
     "desktop/ScreenTrigger/packages.lock.json",

@@ -101,7 +101,7 @@ def window_unavailable(binding_id: str) -> CaptureError:
     """失焦/最小化导致不可操作（06：WINDOW_UNAVAILABLE，retryable=true）。"""
     return CaptureError(
         "WINDOW_UNAVAILABLE",
-        "窗口最小化或不可见，无法捕获",
+        "窗口失焦、最小化或不可见，无法捕获",
         details={"binding_id": binding_id},
         retryable=True,
     )

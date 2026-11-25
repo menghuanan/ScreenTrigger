@@ -95,13 +95,15 @@ impl DesktopCapturePort for HostGdiCapture {
         if region.width <= 0 || region.height <= 0 {
             return Err(PortError::permanent("区域尺寸必须为正"));
         }
+        crate::desktop_windows::prepare_capture(region)?;
         let frame = gdi::capture_bgr(
             region.x as i32,
             region.y as i32,
             region.width as i32,
             region.height as i32,
-        )
-        .map_err(PortError::transient)?;
+        );
+        crate::desktop_windows::end_capture()?;
+        let frame = frame.map_err(PortError::transient)?;
         let png_bytes = png::encode_bgr_png(frame.width, frame.height, &frame.bgr)
             .map_err(PortError::permanent)?;
         let sha256: String = Sha256::digest(&png_bytes)

@@ -161,6 +161,32 @@ class CancelJobTest(unittest.TestCase):
 
 
 class TimeoutTest(unittest.TestCase):
+    def test_uncooperative_provider_expires_before_late_return(self):
+        import threading
+        from backend.tests._vision_fakes import ConcurrencyProvider
+        released = threading.Event()
+        entered = threading.Event()
+        provider = ConcurrencyProvider(make_manifest("p", condition_types=("template",)))
+        original = provider.recognize
+        def blocked(frame, params, cancel):
+            entered.set()
+            released.wait(2)
+            return original(frame, params, cancel)
+        provider.recognize = blocked
+        service, pixels = build_service(provider)
+        service._deadline_ms = 100
+        pixels.add("img")
+        try:
+            job = service.submit("match_template", {"image_id":"img", "template_image_id":"img"})
+            self.assertTrue(entered.wait(1))
+            self.assertTrue(wait_until(lambda: service.jobs.get(job)["status"] == "error", timeout=.7))
+            self.assertEqual(service.jobs.get(job)["error"]["code"], "RECOGNITION_TIMEOUT")
+        finally:
+            released.set()
+            service.worker.shutdown(timeout=1)
+        self.assertEqual(service.jobs.get(job)["status"], "error")
+        self.assertEqual(service.worker.restarts, 1)
+
     def test_timeout_recognition_timeout_and_restart(self):
         provider = FakeProvider(
             make_manifest("p", condition_types=("template",)), spin=True, spinner=1_000_000

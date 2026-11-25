@@ -12,7 +12,7 @@ WinUI 客户端通过 P/Invoke 装入版本化的 x64 宿主 DLL。启动校验 
 
 已实现的 x64 C ABI v1 使用 cdecl。`st_host_abi_version()` 返回 1。`st_host_open(1, event_callback)` 返回进程内唯一宿主的句柄。版本不匹配、回调为空或已有宿主时返回空指针。`st_host_call(handle, utf8, length, response_callback)` 在调用线程上返回一次结果。两类回调均接收字节指针和字节数，C# 在回调内复制 JSON，事件随后进入 DispatcherQueue。合法响应包含 `success` 和 `data` 或 `error`。调用参数无效时函数返回负值。入参上限 2 MiB。
 
-ABI 消息的 `op` 可为 `start`、`stop`、`status`、`diagnostics`、`request` 或 `cancel`。`request` 传入 `id/command/params`，`cancel` 传入 `request_id`。引擎握手仍通过下方 NDJSON 协议。关闭前停止分配请求，调用 `st_host_begin_close` 退订并排空在途事件回调、关闭引擎。已有同步调用全部返回后调用一次 `st_host_close` 释放句柄与托管委托。实现与调用方分别见 `native/host/src/desktop_abi.rs`、`desktop/ScreenTrigger/Host/HostClient.cs`。
+ABI 消息的 `op` 可为 `start`、`stop`、`status`、`diagnostics`、`request` 或 `cancel`。`request` 传入 `id/command/params`，`cancel` 传入 `request_id`。桌面版本另支持内部窗口服务 attach，以及 pick_image、selection_region 和 select_execution 操作，均校验当前会话。pick_image 仅向界面交付一次性令牌。select_execution 记录多根并行时暂停/恢复热键所作用的根，停止热键立即关闭全部活动根的输入。引擎握手仍通过下方 NDJSON 协议。关闭前停止分配请求，调用 `st_host_begin_close` 退订并排空在途事件回调、关闭引擎。已有同步调用全部返回后调用一次 `st_host_close` 释放句柄与托管委托。实现与调用方分别见 `native/host/src/desktop_abi.rs`、`desktop/ScreenTrigger/Host/HostClient.cs`。
 
 ## 消息封装
 
@@ -40,7 +40,7 @@ request/response 的 id 必填且同会话唯一；成功含 data、失败含 er
 
 ## 全双工与宿主调用
 
-Lua 请求输入时 Python 发 `type=host_request,id=py-<uuid>,command=input_action,params={execution_id,lease_id,action_id,geometry_revision,action}`，Rust 回同 ID 的 `host_response`（相同 success/data/error 规则）。其他允许的 host 命令：window_snapshot、acquire_input_lease、release_input_lease。单独 reader 持续读两端流，不允许“发请求后直接 readline 等一条”抢走其他响应。
+Lua 请求输入时 Python 发 `type=host_request,id=py-<uuid>,command=input_action,params={execution_id,lease_id,action_id,geometry_revision,action}`，Rust 回同 ID 的 `host_response`（相同 success/data/error 规则）。其他允许的 host 命令：window_snapshot、acquire_input_lease、release_input_lease，以及只读 query_pointer。query_pointer 的 params 为 {}，返回物理屏幕整数 {x,y}，允许负数；未装配返回 CAPABILITY_DENIED，系统读取失败返回 WINDOW_UNAVAILABLE。它不属于对外命令目录。单独 reader 持续读两端流，不允许“发请求后直接 readline 等一条”抢走其他响应。
 
 UI 发给宿主的 start_selection_mode/list_windows/bind_window/hotkey 类命令由 Rust 处理；Rust 用同样信封转入事件总线。其余命令路由给 Python。消息 seq 由 Rust 面向 UI 出口统一分配，Python 内部序号不能冒充 UI seq。需要等待 host_response 的 Python worker 不占 IPC reader。
 

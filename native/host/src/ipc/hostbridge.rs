@@ -15,15 +15,13 @@
 //! [`IpcOutlet`] 是 B3 注入 Router 的组合出口（实现 B2 的 `EventHandler`）：
 //! event 帧 → [`EventBus`]；host_request 帧 → [`HostBridge`] 应答。
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
-use crate::sidecar::protocol::{
-    self, ProtocolEnvelope, SUPPORTED_PROTOCOL_VERSION,
-};
+use crate::sidecar::protocol::{self, ProtocolEnvelope, SUPPORTED_PROTOCOL_VERSION};
 
 use super::eventbus::EventBus;
-use super::HostHandler;
 use super::FrameSink;
+use super::HostHandler;
 
 /// 宿主 handler 注册表：命令名 → 真 handler（M01/M05 接入点）。
 ///
@@ -60,6 +58,7 @@ pub struct HostBridge {
     /// 与 Router 共享的底层传输（生产：Supervisor 单 writer 包装；测试：内存 spy）。
     sink: ArcMutexSink,
     registry: HostRegistry,
+    input_worker: Option<std::sync::mpsc::SyncSender<ProtocolEnvelope>>,
 }
 
 /// 共享 sink 句柄（跨线程互斥；FrameSink::send_frame 为 &mut self）。
@@ -67,7 +66,37 @@ pub type ArcMutexSink = std::sync::Arc<std::sync::Mutex<Box<dyn FrameSink>>>;
 
 impl HostBridge {
     pub fn new(sink: ArcMutexSink) -> Self {
-        HostBridge { sink, registry: HostRegistry::new() }
+        HostBridge {
+            sink,
+            registry: HostRegistry::new(),
+            input_worker: None,
+        }
+    }
+
+    /// Keep long input actions off the router so stop and event delivery stay responsive.
+    pub fn attach_input(
+        &mut self,
+        manager: std::sync::Arc<std::sync::Mutex<crate::input::InputManager>>,
+    ) {
+        let (tx, rx) = std::sync::mpsc::sync_channel(32);
+        let mut worker = HostBridge::new(self.sink.clone());
+        for cmd in [
+            "input_action",
+            "acquire_input_lease",
+            "release_input_lease",
+            "query_pointer",
+        ] {
+            worker.register_handler(
+                cmd,
+                Box::new(crate::input::SharedInputManager(manager.clone())),
+            );
+        }
+        self.input_worker = Some(tx);
+        std::thread::spawn(move || {
+            while let Ok(request) = rx.recv() {
+                worker.respond(&request)
+            }
+        });
     }
 
     /// 注册真宿主 handler（M05 接入点；wire 装配时调用）。
@@ -108,6 +137,37 @@ impl HostBridge {
             return;
         }
 
+        if let Some(worker) = &self.input_worker {
+            if matches!(
+                command,
+                "input_action" | "acquire_input_lease" | "release_input_lease" | "query_pointer"
+            ) {
+                if command == "release_input_lease" {
+                    if let (Some(gate), Some(root)) = (
+                        crate::input::shared_gate(),
+                        request
+                            .params
+                            .as_ref()
+                            .and_then(|p| p["execution_id"].as_str()),
+                    ) {
+                        if gate.active(None).iter().any(|id| id == root) {
+                            gate.close(root, "release_input_lease");
+                            crate::input::release_closed();
+                        }
+                    }
+                }
+                if worker.try_send(request.clone()).is_err() {
+                    self.send_reply(host_response_envelope(
+                        &request.session_id,
+                        id,
+                        false,
+                        None,
+                        Some(serde_json::json!(crate::ipc::IpcError::busy())),
+                    ));
+                }
+                return;
+            }
+        }
         let params = request.params.clone().unwrap_or(Value::Null);
         let reply = match self.registry.get_mut(command) {
             Some(handler) => match handler.handle(command, &params) {
@@ -134,7 +194,12 @@ impl HostBridge {
     }
 
     fn send_reply(&mut self, reply: Value) {
-        if let Err(e) = self.sink.lock().unwrap_or_else(|p| p.into_inner()).send_frame(&reply) {
+        if let Err(e) = self
+            .sink
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .send_frame(&reply)
+        {
             eprintln!("[ipc] host_response 写入失败（管道断裂，EOF 清理路径接管）: {e}");
         }
     }
@@ -155,7 +220,9 @@ fn host_response_envelope(
         "id": id,
         "success": success,
     });
-    let obj = envelope.as_object_mut().expect("host_response 信封为 object");
+    let obj = envelope
+        .as_object_mut()
+        .expect("host_response 信封为 object");
     if let Some(data) = data {
         obj.insert("data".to_string(), data);
     } else if let Some(error) = error {
@@ -295,7 +362,11 @@ mod tests {
     fn registered_handler_returns_data() {
         struct EchoHandler;
         impl HostHandler for EchoHandler {
-            fn handle(&mut self, command: &str, params: &Value) -> Result<Value, crate::ipc::IpcError> {
+            fn handle(
+                &mut self,
+                command: &str,
+                params: &Value,
+            ) -> Result<Value, crate::ipc::IpcError> {
                 Ok(json!({ "command": command, "echo": params }))
             }
         }
@@ -313,7 +384,11 @@ mod tests {
     fn registered_handler_error_is_propagated() {
         struct DenyHandler;
         impl HostHandler for DenyHandler {
-            fn handle(&mut self, _command: &str, _params: &Value) -> Result<Value, crate::ipc::IpcError> {
+            fn handle(
+                &mut self,
+                _command: &str,
+                _params: &Value,
+            ) -> Result<Value, crate::ipc::IpcError> {
                 Err(crate::ipc::IpcError::invalid_state("闸门已关"))
             }
         }

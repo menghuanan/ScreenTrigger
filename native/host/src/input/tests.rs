@@ -68,7 +68,8 @@ impl InputPort for FakeInputPort {
         *moves += 1;
         if let (Some(threshold), Some(gate)) = (self.close_on_move, &self.gate) {
             if *moves >= threshold {
-                gate.close(&self.execution_id, "stop_mid_action");
+                let (gate, id) = (Arc::clone(gate), self.execution_id.clone());
+                std::thread::spawn(move || gate.close(&id, "stop_mid_action"));
             }
         }
         Ok(())
@@ -117,8 +118,8 @@ impl PointerPort for FakePointer {
     fn foreground_window(&self) -> WindowIdentity {
         WindowIdentity { handle: 0, pid: 0, process_started_at: String::new() }
     }
-    fn cursor_pos(&self) -> super::model::Point {
-        self.cursor
+    fn cursor_pos(&self) -> Result<super::model::Point, IpcError> {
+        Ok(self.cursor)
     }
 }
 
@@ -186,7 +187,7 @@ fn ctx(region: Option<Region>, allow_exit: bool) -> InputContext {
 fn setup(
     monitors: Vec<MonitorRect>,
     ctx: InputContext,
-) -> (DispatchPipeline, GateTable, LeaseTable, Ledger, Arc<Mutex<Vec<String>>>) {
+) -> (DispatchPipeline, GateTable, LeaseTable, Mutex<Ledger>, Arc<Mutex<Vec<String>>>) {
     let events = Arc::new(Mutex::new(Vec::new()));
     let pipeline = DispatchPipeline::new(
         Box::new(FakeInputPort::new(Arc::clone(&events))),
@@ -196,7 +197,7 @@ fn setup(
     );
     let mut leases = LeaseTable::new();
     leases.acquire("exec-1", ctx).unwrap();
-    (pipeline, GateTable::new(), leases, Ledger::new(), events)
+    (pipeline, GateTable::new(), leases, Mutex::new(Ledger::new()), events)
 }
 
 fn lease_id(leases: &LeaseTable) -> String {
@@ -353,7 +354,7 @@ fn move_slicing_aborts_when_gate_closes_midway() {
     let mut leases = LeaseTable::new();
     leases.acquire("exec-1", ctx(None, false)).unwrap();
     let lid = lease_id(&leases);
-    let mut ledger = Ledger::new();
+    let mut ledger = Mutex::new(Ledger::new());
 
     // duration 200ms → 多片；第 1 片移动后闸门关闭 → 第 2 片起中止。
     let action = InputAction::Move { x: 1000, y: 1000, duration_ms: 200 };
@@ -406,7 +407,7 @@ fn hotkey_records_then_releases_all_keys() {
     let mut leases = LeaseTable::new();
     leases.acquire("exec-1", ctx(None, false)).unwrap();
     let lid = lease_id(&leases);
-    let mut ledger = Ledger::new();
+    let mut ledger = Mutex::new(Ledger::new());
     let action = action::parse_action(&json!({
         "kind": "hotkey", "keys": ["ctrl", "shift", "a"]
     }))
@@ -423,7 +424,7 @@ fn hotkey_records_then_releases_all_keys() {
         ],
         "依序按下、逆序释放"
     );
-    assert!(ledger.held_keys("exec-1").is_empty(), "异常/正常后账本应清空");
+    assert!(ledger.lock().unwrap().held_keys("exec-1").is_empty(), "异常/正常后账本应清空");
 }
 
 // ---------------------------------------------------------------------------
@@ -443,13 +444,13 @@ fn text_action_forwards_full_unicode_including_supplementary() {
     let mut leases = LeaseTable::new();
     leases.acquire("exec-1", ctx(None, false)).unwrap();
     let lid = lease_id(&leases);
-    let mut ledger = Ledger::new();
+    let mut ledger = Mutex::new(Ledger::new());
     let text = "中文a😀";
     let action = action::parse_action(&json!({ "kind": "text", "text": text, "interval_ms": 0 })).unwrap();
     pipeline
         .run(&gate, &leases, &mut ledger, "exec-1", &lid, "t-1", 0, &action)
         .unwrap();
-    assert_eq!(events.lock().unwrap().clone(), vec![format!("text:{text}")]);
+    assert_eq!(events.lock().unwrap().clone(), text.chars().map(|c| format!("text:{c}")).collect::<Vec<_>>());
 }
 
 #[test]
@@ -571,12 +572,12 @@ fn key_tap_leaves_empty_ledger() {
     let mut leases = LeaseTable::new();
     leases.acquire("exec-1", ctx(None, false)).unwrap();
     let lid = lease_id(&leases);
-    let mut ledger = Ledger::new();
+    let mut ledger = Mutex::new(Ledger::new());
     let action = InputAction::Key { key: action::parse_key("enter").unwrap(), state: KeyState::Tap };
     pipeline
         .run(&gate, &leases, &mut ledger, "exec-1", &lid, "k-1", 0, &action)
         .unwrap();
-    assert!(ledger.held_keys("exec-1").is_empty(), "tap 后不残留持有");
+    assert!(ledger.lock().unwrap().held_keys("exec-1").is_empty(), "tap 后不残留持有");
     assert_eq!(
         events.lock().unwrap().clone(),
         vec!["key:enter:true".to_string(), "key:enter:false".to_string()]
@@ -588,4 +589,40 @@ fn unused_import_guard() {
     // 保持 region_full 辅助函数被引用（整段区域校验路径），并避免 dead_code 警告。
     let r = region_full();
     assert_eq!(r.width, 1920);
+}
+
+#[test]
+fn rejects_origin_outside_before_entering_region() {
+    let (mut pipeline, gate, leases, held, events) = setup(single_monitor(), ctx(Some(region_small()), false));
+    let lease = lease_id(&leases);
+    let error = pipeline.run(&gate, &leases, &held, "exec-1", &lease, "entry", 0, &move_action(110, 110)).unwrap_err();
+    assert_eq!(error.code, "REGION_LIMIT_VIOLATION");
+    assert!(events.lock().unwrap().is_empty());
+}
+
+#[test]
+fn path_includes_single_pixel_monitor_gap_and_revision_must_equal() {
+    use super::{geometry_guard, model::Point};
+    let mut visited = Vec::new();
+    let error = geometry_guard::walk_segment(Point { x: -1, y: 2 }, Point { x: 4, y: 2 }, |point| {
+        visited.push(point.x);
+        if point.x == 1 { Err(IpcError::region_limit_violation("gap")) } else { Ok(()) }
+    }).unwrap_err();
+    assert_eq!(visited, vec![0,1]);
+    assert_eq!(error.code, "REGION_LIMIT_VIOLATION");
+    assert_eq!(geometry_guard::evaluate_geometry("b", 5, Some(4)).unwrap_err().code, "STALE_FRAME");
+}
+
+#[test]
+fn repeated_down_and_foreign_up_never_submit_an_extra_os_event() {
+    let (mut pipeline, gate, mut leases, ledger, events) = setup(single_monitor(), ctx(None,false));
+    let first = lease_id(&leases);
+    let second = leases.acquire("exec-2", ctx(None,false)).unwrap().0;
+    let key = |state| action::parse_action(&json!({"kind":"key","key":"shift","state":state})).unwrap();
+    for action_id in ["first", "repeat"] {
+        pipeline.run(&gate,&leases,&ledger,"exec-1",&first,action_id,0,&key("down")).unwrap();
+    }
+    pipeline.run(&gate,&leases,&ledger,"exec-2",&second,"foreign",0,&key("up")).unwrap();
+    pipeline.run(&gate,&leases,&ledger,"exec-1",&first,"release",0,&key("up")).unwrap();
+    assert_eq!(*events.lock().unwrap(), vec!["key:shift:true","key:shift:false"]);
 }

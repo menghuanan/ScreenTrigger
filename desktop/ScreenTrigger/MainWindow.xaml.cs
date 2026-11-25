@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window
         {
             // Only enqueue copied events from the native router thread.
             host = new HostClient(action => DispatcherQueue.TryEnqueue(() => action()));
+            host.AttachWindow(HandleWindowAction);
             mainSubscription = host.Events.Subscribe(ReceiveEvent);
             host.RecoveryFailed += ShowError;
             DiagnosticsButton.IsEnabled = true;
@@ -52,9 +53,23 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { Health.Text = "宿主不可用"; ShowError(ex); }
     }
 
-    private void ReceiveEvent(EngineEvent message)
+    private async void ReceiveEvent(EngineEvent message)
     {
         if (!closing && message.Name == "system_ready") RefreshHealth();
+        if (!closing && message.Name == "script_state_changed")
+        {
+            try { await UpdateRun(message.Payload); } catch (Exception ex) { RunStatus.Text = ex.Message; }
+        }
+        if (!closing && message.Name == "selection_completed")
+        {
+            try
+            {
+                var region = message.Payload.GetProperty("region");
+                await SetImageAsync(message.Payload.GetProperty("image"), message.Session,
+                                    region.GetProperty("x").GetInt32(), region.GetProperty("y").GetInt32());
+            }
+            catch (Exception ex) { ImageStatus.Text = ex.Message; }
+        }
     }
 
     private async void RefreshHealth()
@@ -98,6 +113,7 @@ public sealed partial class MainWindow : Window
     {
         string state = status.GetProperty("state").GetString()!;
         bool ready = state == "ready";
+        SetWorkspaceAvailability(ready, status.GetProperty("capabilities"));
         Health.Text = state switch { "ready" => "引擎就绪", "idle" => "引擎未启动", "starting" => "正在启动…",
             "stopping" => "正在停止…", "exited" => "引擎已退出", _ => state };
         StartButton.IsEnabled = state is "idle" or "exited";
@@ -125,7 +141,8 @@ public sealed partial class MainWindow : Window
             string? label = id switch { "ocr" => "文字识别（OCR）", "lua_script" => "Lua 脚本", _ => id };
             string? stateLabel = cap.GetProperty("state").GetString() switch
             { "available" => "可用", "pending" => "待确认", _ => "不可用" };
-            return new CapabilityRow(id ?? "", $"{label} · {stateLabel}", cap.GetProperty("reason").GetString() ?? "");
+            string reason = cap.GetProperty("reason").GetString() ?? "";
+            return new CapabilityRow(id ?? "", $"{label} · {stateLabel}", id == "ocr" ? OcrDescription(reason) : reason);
         }).ToList();
     }
 
@@ -139,6 +156,27 @@ public sealed partial class MainWindow : Window
             ModelList.Text = "";
             ModelsButton.Content = "查看 OCR 模型";
         }
+    }
+
+    private static string OcrDescription(string reason)
+    {
+        string[] required = ["state", "code", "models", "verified", "unverified", "models_dir", "library", "detail"];
+        var parts = reason.Split('|');
+        if (parts.Length != required.Length + 1 || parts[0] != "OCR") return reason;
+        var fields = new Dictionary<string, string>();
+        foreach (var part in parts.Skip(1))
+        {
+            int equal = part.IndexOf('=');
+            if (equal < 1 || !required.Contains(part[..equal]) || !fields.TryAdd(part[..equal], part[(equal + 1)..]))
+                return reason;
+        }
+        static string Languages(string list) => list is "" or "-" ? "无" : string.Join("、",
+            list.Split(',').Select(id => id switch { "zh" => "中文", "en" => "英文", "ja" => "日文", "ko" => "韩文", _ => id }));
+        var lines = new List<string> { $"已验证语言：{Languages(fields["verified"])}",
+            $"待验证语言：{Languages(fields["unverified"])}" };
+        if (fields["code"] != "-") lines.Add(fields["code"]);
+        if (!string.IsNullOrWhiteSpace(fields["detail"])) lines.Add(fields["detail"]);
+        return string.Join("\n", lines);
     }
 
     private async void InspectModels(object sender, RoutedEventArgs e)
@@ -157,9 +195,14 @@ public sealed partial class MainWindow : Window
         {
             var hello = await host.HelloAsync();
             if (closing || !ocrAvailable || generation != sessionGeneration) return;
-            var ids = hello.ModelManifests.Where(m => m.ProviderId == "builtin.ocr")
-                .SelectMany(m => m.ModelIds).Distinct().ToArray();
-            ModelList.Text = ids.Length == 0 ? "引擎未返回已安装的 OCR 模型。" : string.Join("\n", ids);
+            var manifests = hello.ModelManifests.Where(m => m.ProviderId == "builtin.ocr").ToArray();
+            var ids = manifests.SelectMany(m => m.ModelIds).Distinct().ToArray();
+            var verified = manifests.SelectMany(m => m.SupportedLanguages).Distinct().ToArray();
+            string[] firstBatch = ["zh", "en", "ja", "ko"];
+            static string Describe(IEnumerable<string> ids) => string.Join("、", ids.Select(id =>
+                id switch { "zh" => "中文", "en" => "英文", "ja" => "日文", "ko" => "韩文", _ => id }));
+            ModelList.Text = ids.Length == 0 ? "引擎未返回已安装的 OCR 模型。" :
+                $"已验证语言：{Describe(verified)}\n待验证语言：{Describe(firstBatch.Except(verified))}\n{string.Join("\n", ids)}";
             ModelList.Visibility = Visibility.Visible;
             ModelsButton.Content = "收起模型列表";
         }
@@ -194,6 +237,8 @@ public sealed partial class MainWindow : Window
         args.Cancel = true;
         if (closing) return;
         closing = true;
+        overlay?.CloseFromHost();
+        overlay = null;
         healthTimer.Stop();
         SetModelAvailability(false);
         mainSubscription?.Dispose();
