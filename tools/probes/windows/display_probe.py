@@ -3,8 +3,8 @@
 场景（对应任务卡 STEPS.01）：
 1. Per-Monitor V2 awareness 设置与验证；
 2. 逐显示器物理 rect、effective DPI、dpi_scale、primary 标记；
-3. 虚拟屏幕包围盒（负坐标能力：本机单屏时如实记录 origin，多屏负坐标行为 NOT_RUN）；
-4. 100/125/150/200/300% 缩放矩阵：本机无法改系统缩放，记录当前实际 scale 并把矩阵标记 NOT_RUN。
+3. 记录虚拟屏幕包围盒及实际原点；
+4. 记录本机可见的缩放，仅供描述测试环境。产品几何夹具和实际窗口另测像素误差。
 
 退出码：0=当前环境可测场景全过；1=有 FAIL；2=环境不可测。
 用法：python tools/probes/windows/display_probe.py --json-out reports/TASK-002/display-probe-result.json
@@ -52,7 +52,7 @@ def main() -> int:
     scenarios["virtual_screen"] = {
         "expected": "虚拟屏幕包围盒与主显示器一致或含负坐标",
         "actual": {**vs, "negative_origin": has_negative_origin,
-                   "note": "单屏时 origin 通常 (0,0)；负坐标行为需多屏环境，NOT_RUN"},
+                   "note": "负虚拟原点的坐标换算由几何夹具另测"},
         "pass": vs["w"] > 0 and vs["h"] > 0,
     }
 
@@ -61,12 +61,12 @@ def main() -> int:
     matrix_needed = {1.0, 1.25, 1.5, 2.0, 3.0}
     covered = [s for s in matrix_needed if any(abs(m["dpi_scale"] - s) < 0.01 for m in monitors)]
     scenarios["dpi_scale_matrix"] = {
-        "expected": "100/125/150/200/300% 混合 DPI 像素误差≤1",
+        "expected": "记录实际显示配置；按 TEST-001 另测本机拖选及参数化缩放的像素误差",
         "actual": {
             "current_scales": scales,
             "available_scales": sorted(covered),
             "status": "NOT_RUN",
-            "reason": "显示器清点只记录当前拓扑；各缩放下的像素误差需实际拖选动态目标测量",
+            "reason": "清点拓扑没有测量像素误差；独立几何夹具覆盖各缩放和负原点，专用窗口实测当前显示配置",
         },
         "pass": None,
     }

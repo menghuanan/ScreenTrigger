@@ -34,7 +34,9 @@ def anchors(text):
 def validate(root=ROOT):
     errors = []
     documents = [root / "README.md", root / "AGENTS.md", *sorted((root / "docs").rglob("*.md"))]
-    documents = [p for p in documents if "archive" not in p.relative_to(root).parts]
+    # The immutable v1 originals keep their historical links and IDs. Validate the
+    # newer archive's index and relocated references like other project documents.
+    documents = [p for p in documents if not p.is_relative_to(root / "docs/archive/v1")]
     texts = {p: p.read_text(encoding="utf-8-sig") for p in documents}
     try:
         model = build(root)

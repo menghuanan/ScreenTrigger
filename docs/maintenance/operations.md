@@ -1,0 +1,54 @@
+# 维护手册
+
+## 从问题现场开始
+
+先从主窗查看引擎状态、诊断和 OCR 能力，在设置中记下实际数据目录。记录 Windows build、显示缩放、应用版本或候选 SHA-256、出现问题的步骤、预期和实际结果。用临时数据根复现，保留原始数据。涉及脚本或监控时，记下 execution_id、终态和历史。只在专用前台测试窗口验证实际输入。
+
+| 现象 | 检查顺序与处理 |
+|---|---|
+| 应用可开，引擎启动或握手失败 | 核对应用旁的宿主 DLL、C ABI 和体系结构，再检查解释器路径、包内运行库、冷启动耗时和 stderr。分别记录首次启动及重启，退出后核对进程树。 |
+| OCR 不可用或误识别 | 在引擎页检查模型 ID、原因、实际权重根及文件哈希，先用固定图对照原文和结果。区分缺权重、坏权重、推理故障和有效空结果。纯脚本另走一次。 |
+| 点击被拒、停止或监控行为异常 | 对齐执行、租约、动作、绑定窗口、帧几何版本和真实事件。失焦、窗口关闭、选区外的拒绝均需保留记录。停止后核对新增派发数及持有键释放。 |
+| 保存冲突或重启后缺数据 | 先记设置页数据根、revision、current 指纹和 generation。复制整个数据根，在副本上核对 manifest、资产与编号；写入超时时先查结果。 |
+| 界面与历史不一致 | 对齐会话、事件 sequence、请求 ID 和引擎重启时刻。分别检查普通运行和调试暂停的日志展示。协议超时可查询既有请求。 |
+
+### 备份与恢复
+
+在设置页创建备份，预览要恢复的备份，再确认。预览与确认之间发生写入时重新预览。恢复会保护当前目录记录和资产，并维持样本号高水位。设置、执行历史和日志须另随完整数据根备份。主窗无法启动时先退出应用，在安装的版本目录内运行以下只读步骤，替换为设置页记录的数据根及实际备份 ID。
+
+```powershell
+$root = 'D:\ScreenTrigger-test-data'
+$engine = '.\resources\python\python.exe'
+& $engine -I -B -m backend.storage.backup --data-dir $root list
+$backupId = Read-Host '输入列表中的备份 ID'
+& $engine -I -B -m backend.storage.backup --data-dir $root preview $backupId
+```
+
+经核对后，用同一 CLI 的 `restore`，传入相同备份 ID。将预览结果中的 `expected_current` 和 `expected_backup` 分别传给 `--expected-current` 和 `--expected-backup`。恢复后重新打开目标、脚本和图像，检查编号以及一次新写入。[恢复实现](../../backend/storage/backup.py) · [安装与升级说明](../user/离线安装.md)
+
+## 候选包与发布
+
+1. 按 [Offline 发布配置](../../desktop/ScreenTrigger/Properties/PublishProfiles/Offline.pubxml)发布 x64 应用，用[介质脚本](../../tools/packaging/build_offline.py)指定发布输出、精确版本 CRT 及本地依赖。每批使用新 ZIP 文件名。构建产物为安装/卸载脚本、清单及应用载荷，记录 ZIP 与清单各自的 SHA-256。
+2. 在本机用同一介质、隔离的安装根/数据根/快捷方式目录走安装、启动、升级和卸载。对已有数据逐项比较目标编号、脚本、资产和设置，用一次性副本验证明确删除路径。核对安装后的入口、模块与进程树、包内 Python、模型、许可、外连观察及缺模型降级。平台结论写明实际系统 build 和显示配置。[安装程序](../../tools/packaging/Install.ps1) · [正式测试矩阵](../agent/验收与测试.md)
+3. 将确认过的真实产物登记在本地账本 `release_artifact`。用包内 Python 运行 [installed_regression](../../tests/acceptance/installed_regression.py) 等安装态用例，另收集真实 UI、安全输入、模型质量、备份恢复、性能与两小时长稳证据。记录机器、数据集、模型、源码与候选哈希、省略场景、复核人。相同样本换包后需要重新验证。
+4. 依序检查任务硬前置和累计阶段，最终执行 release。发布负责人核对审计报告，产品负责人审查体验、范围及候选并签核。RC11 及本轮结果见[实现审查](implementation-review.md)。
+
+```powershell
+$py = '.\.venv\Scripts\python.exe'
+& $py tools/check_docs.py
+& $py -m unittest discover -s tools/tests -v
+& $py tools/run_acceptance.py catalog
+& $py tools/run_acceptance.py audit --scope baseline
+foreach ($phase in 'P0','P1','P2','P3','release') {
+    & $py tools/run_acceptance.py audit --scope $phase
+    Write-Output "$phase exit=$LASTEXITCODE"
+}
+```
+
+审计每次产生独立目录 `reports/audits/<run_id>/`。退出码 0 表示指定门槛通过，1 表示未就绪或检查失败，2 表示工具或输入有误。baseline 只审计输入与证据有效性；P3 与 release 还校验全组证据及候选绑定。
+
+## 处理旧回执和失败
+
+以 `result.json` 的 errors 和 issues 为起点，按 run_id 和真实 SHA-256 对照原路径、备份与历史运行目录。可找回的原件须先验哈希；缺件保存清单和问题单。新跑的同一场景只产生新的回执。旧回执不一致会单独阻塞审计，重跑不能补出原字节。若原件最终无法取回，需由负责人另行裁定证据保全与发布规则，本次范围变更仅覆盖指定的两项环境要求。
+
+问题修复须重跑原用例及受影响用例，提交当前基线的原始输出和审查意见。规则、账本字段、文档快照以及变更后的失效处理见[检查与闭环](../agent/检查与闭环.md)。

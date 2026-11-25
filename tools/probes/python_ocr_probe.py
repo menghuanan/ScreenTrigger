@@ -343,7 +343,7 @@ def main() -> int:
         "model_manifest": dict(MODEL_MANIFEST_PLACEHOLDER),
         "offline_test": {
             "status": "NOT_RUN",
-            "reason": "本命令使用本地模型路径；测试机网络状态须单独取证",
+            "reason": "此探针使用本地模型；离线介质安装和进程外连依赖由候选包用例另测",
         },
         "ocr_scenarios": None,
         "alternatives": ALTERNATIVES,
@@ -354,7 +354,7 @@ def main() -> int:
     result["model_manifest"] = collect_model_manifest(library)
     result["limitations"] = [
         "本探针使用含中文的检测/识别模型对。每个样本的识别文本见 ocr_scenarios。",
-        "多语言 CER 和真实断网安装须在对应数据集和环境另行验证。",
+        "多语言 CER 按冻结数据集测量。安装与无外连依赖按 TEST-002、TEST-014 的候选包用例核验。",
     ]
 
     os.makedirs(os.path.dirname(args.json_out) or ".", exist_ok=True)

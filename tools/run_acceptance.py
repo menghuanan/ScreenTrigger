@@ -21,6 +21,10 @@ from check_model import build
 STATE = "docs/agent/check-state.json"
 SKIP = {"reports", ".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", "target", "dist", ".workbuddy"}
 RESULTS = {"PASS", "FAIL", "BLOCKED", "NOT_RUN", "N/A"}
+ARCHIVED_DESIGNS = {
+    "00-项目概览.md", "01-模块拆分.md", "05-功能流程图.md", "07-实现细节清单.md",
+    "开发指南.md", "winui3-migration.md", "agent/阶段任务.md", "agent/deferred-testing.md",
+}
 
 
 def record_time(record):
@@ -109,9 +113,13 @@ def verify_run_evidence(root, ref, source_files):
     if not source_files or not isinstance(ref, dict):
         return False
     name, sha = ref.get("path"), ref.get("sha256")
-    if (not isinstance(name, str) or name not in source_files
-            or not name.startswith("docs/") or name.startswith("docs/archive/") or not name.endswith(".md")):
+    if (not isinstance(name, str) or not name.startswith("docs/")
+            or name.startswith("docs/archive/") or not name.endswith(".md")):
         return False
+    if name not in source_files:
+        original = name.removeprefix("docs/")
+        if original not in ARCHIVED_DESIGNS or f"docs/archive/initial-development/{original}" not in source_files:
+            return False
     if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
         return False
     # Only a previous run's mutable specification can use an exact-byte snapshot.

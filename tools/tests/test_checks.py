@@ -22,11 +22,12 @@ class GateTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         for name in ("README.md", "AGENTS.md"):
             shutil.copy2(ROOT / name, self.root / name)
-        for name in ("docs", "tools", "manifest"):
-            shutil.copytree(ROOT / name, self.root / name, ignore=shutil.ignore_patterns("__pycache__", "check-state.json"))
-        profile = Path("desktop/ScreenTrigger/Properties/PublishProfiles/Offline.pubxml")
-        (self.root / profile.parent).mkdir(parents=True)
-        shutil.copy2(ROOT / profile, self.root / profile)
+        # The maintenance manuals link directly to real source and contract files.
+        # Keep those targets in the disposable fixture along with the documentation.
+        for name in ("docs", "tools", "manifest", "schema", "desktop", "native", "backend", "tests"):
+            shutil.copytree(ROOT / name, self.root / name, ignore=shutil.ignore_patterns(
+                "__pycache__", "bin", "obj", "target", "check-state.json",
+            ))
         self.model = build(self.root)
         self.state = {
             "schema_version": 1,
@@ -150,6 +151,32 @@ class GateTests(unittest.TestCase):
             self.assertEqual(report["gate"], "NOT_READY")
             self.assertEqual(report["verified_tasks"], 0)
             self.assertGreater(report["counts"].get("NOT_RUN", 0), 0)
+
+    def test_relocated_design_preserves_only_its_historical_receipt(self):
+        key = "TASK-003.CONTRACT"
+        original = "docs/开发指南.md"
+        source = self.root / original
+        source.write_text("Synthetic historical design", encoding="utf-8")
+        self.base = baseline(self.root)["sha256"]
+        record = self.record(key)
+        ref = file_ref(self.root, original)
+        record["evidence"].append(ref)
+        receipt = self.root / "reports/evidence" / (record["run_id"] + ".json")
+        save(receipt, record)
+        snapshot = self.root / "reports/raw/doc-sha256" / (ref["sha256"] + ".md")
+        snapshot.parent.mkdir(parents=True)
+        source.rename(snapshot)
+        report = evaluate(self.root)
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["checks"][key]["status"], "STALE")
+
+        ref["path"] = "docs/never-archived.md"
+        save(receipt, record)
+        self.assertIn("evidence missing or hash mismatch", " ".join(evaluate(self.root)["errors"]))
+        ref["path"] = original
+        record["baseline"] = report["baseline"]
+        save(receipt, record)
+        self.assertIn("evidence missing or hash mismatch", " ".join(evaluate(self.root)["errors"]))
 
     def test_previous_document_snapshot_cannot_accept_a_current_run_or_replace_raw_output(self):
         key = "TASK-003.CONTRACT"
