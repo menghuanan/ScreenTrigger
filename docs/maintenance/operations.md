@@ -31,7 +31,7 @@ $backupId = Read-Host '输入列表中的备份 ID'
 1. 按 [Offline 发布配置](../../desktop/ScreenTrigger/Properties/PublishProfiles/Offline.pubxml)发布 x64 应用，用[介质脚本](../../tools/packaging/build_offline.py)指定发布输出、精确版本 CRT 及本地依赖。每批使用新 ZIP 文件名。构建产物为安装/卸载脚本、清单及应用载荷，记录 ZIP 与清单各自的 SHA-256。
 2. 在本机用同一介质、隔离的安装根/数据根/快捷方式目录走安装、启动、升级和卸载。对已有数据逐项比较目标编号、脚本、资产和设置，用一次性副本验证明确删除路径。核对安装后的入口、模块与进程树、包内 Python、模型、许可、外连观察及缺模型降级。平台结论写明实际系统 build 和显示配置。[安装程序](../../tools/packaging/Install.ps1) · [正式测试矩阵](../agent/验收与测试.md)
 3. 将确认过的真实产物登记在本地账本 `release_artifact`。用包内 Python 运行 [installed_regression](../../tests/acceptance/installed_regression.py) 等安装态用例，另收集真实 UI、安全输入、模型质量、备份恢复、性能与两小时长稳证据。记录机器、数据集、模型、源码与候选哈希、省略场景、复核人。相同样本换包后需要重新验证。
-4. 依序检查任务硬前置和累计阶段，最终执行 release。发布负责人核对审计报告，产品负责人审查体验、范围及候选并签核。RC11 及本轮结果见[实现审查](implementation-review.md)。
+4. 依序检查任务硬前置和累计阶段，最终执行 release。发布负责人核对审计报告，产品负责人审查体验、范围及候选并签核。将候选哈希、技术验收报告、各阶段结果与签核结论保存在本地 `reports/TASK-029/`。接手时的对照数据见 [RC11 实现审查](implementation-review.md)。
 
 ```powershell
 $py = '.\.venv\Scripts\python.exe'

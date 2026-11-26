@@ -134,6 +134,7 @@ class JsonBridge:
             if depth > self.max_depth:
                 raise serialization_error("参数嵌套超过 %d 层" % self.max_depth, field="argument")
             table = self.interop.new_table()
+            self.interop.setmetatable(table, self.sentinels.array_mt)
             for index, item in enumerate(value, 1):
                 self.interop.table_set(table, index, self._to_lua(item, depth + 1))
             return table

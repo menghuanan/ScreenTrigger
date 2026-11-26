@@ -203,7 +203,7 @@ class JsonBridgeTest(unittest.TestCase):
         self.assertTrue(self.interop.rawequal(self.sentinels.null, produced))
 
     def test_json_to_lua_round_trips_and_is_not_shared(self):
-        source = {"a": [1, None, 3], "b": {"c": "x"}}
+        source = {"a": [1, None, [], {}], "b": {"c": "x", "empty": []}, "object": {}}
         first = self.bridge.json_to_lua(source)
         second = self.bridge.json_to_lua(source)
         self.assertFalse(self.interop.rawequal(first, second))  # 不共享

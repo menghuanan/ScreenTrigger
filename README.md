@@ -2,7 +2,7 @@
 
 ScreenTrigger 是 Windows x64 上的本地视觉自动化工具。用户通过屏幕框选或导入图片建立目标，用 Lua 5.4 执行识别、监控和受控键鼠操作，也可以运行纯脚本。桌面应用使用 WinUI 3，Rust 宿主管理引擎、窗口、热键与输入，Python 3.13 负责识别、脚本编排和本地数据。
 
-**当前交付是 RC11 候选。** 真实主窗口已接入截图与导入、目标库、脚本、测试识别、运行设置、区域监控、历史及设置。已有安装、备份恢复、停止和两小时运行记录。韩语识别质量、阻塞推理的回收、若干交互及正式验收证据仍需补齐。详见[实现审查与剩余工期](docs/maintenance/implementation-review.md)。
+主窗口支持截图、导入与本地裁剪、目标库、脚本、测试识别、运行设置、区域监控、历史及设置。候选安装包的路径与 SHA-256 见验收账本的 `release_artifact`。在项目根目录运行 `python tools/run_acceptance.py audit --scope release` 可核对该包的逐项结果和产品签核。本地发布报告保存在 `reports/TASK-029/`。[验收账本](docs/agent/check-state.json) · [RC11 接手时的缺口和估算](docs/maintenance/implementation-review.md)
 
 ## 开发与使用
 

@@ -111,6 +111,28 @@ class ExecutionRuntime(unittest.TestCase):
         logs = self.controller.command("get_execution_logs", dict(execution_id=execution))
         self.assertEqual([l["message"] for l in logs["items"] if l["event"] == "script_log"], ["child\t9"] * 3)
 
+    def test_child_vm_preserves_json_containers_in_arguments_and_returns(self):
+        child = self.save(
+            'local incoming=args.payload; incoming.items[1]="child"; incoming.drained[1]=nil; '
+            'return {incoming=incoming, made={empty=json_array({}), obj={}, '
+            'items={2,json_null}, named={flag=true}, null=json_null}}',
+            [dict(name="payload", type="object", required=True, default=None, description="")],
+        )
+        parent = self.save(
+            'local payload={empty=json_array({}), obj={}, items={"parent",json_null}, '
+            'drained={1}, named={flag=true}, null=json_null}; '
+            'return {parent=payload, child=call_script("%s",{payload=payload})}' % child
+        )
+        result = self.await_state(self.start(parent), "completed")["result"]
+        original = dict(empty=[], obj={}, items=["parent", None], drained=[1], named={"flag": True}, null=None)
+        self.assertEqual(result, dict(
+            parent=original,
+            child=dict(
+                incoming=dict(original, items=["child", None], drained=[]),
+                made=dict(empty=[], obj={}, items=[2, None], named={"flag": True}, null=None),
+            ),
+        ))
+
     def test_target_and_group_commits_preserve_scripts_across_restart(self):
         script = self.save("return 42")
         ref = self.store.put(RawImage(12, 12, bytes(432)), "png")
