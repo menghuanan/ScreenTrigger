@@ -137,18 +137,10 @@ class ImageImportService:
         # TASK-014：导入图按 02 明文登记 image_pixel / origin=(0,0) / gr=0 / binding=null
         # （**不得**成 screen_physical）；frame_id/captured_at 与像素一并登记，供
         # FrameResolver 真实还原且与消费方一致。
-        frame_meta = FrameMeta(
-            space="image_pixel",
-            origin=Point(0, 0),
-            geometry_revision=0,
-            binding_id=None,
-            captured_at=format_utc_timestamp(self._clock()),
-            frame_id=self._frame_id_factory(),
-        )
         asset = self._build_asset(data, bgr, image_format, out_w, out_h)
         image_ref = self._store.put(
             RawImage(width=out_w, height=out_h, data=bgr), image_format,
-            frame_meta=frame_meta, original_bytes=data,
+            frame_meta=self._local_frame(), original_bytes=data,
         )
         self._log(
             "import ok image_id=%s %dx%d format=%s mode=%s asset=%s"
@@ -156,6 +148,32 @@ class ImageImportService:
                self._storage_mode, asset.path)
         )
         return image_ref, asset
+
+    def _local_frame(self) -> FrameMeta:
+        return FrameMeta(space="image_pixel", origin=Point(0, 0), geometry_revision=0,
+                         binding_id=None, captured_at=format_utc_timestamp(self._clock()),
+                         frame_id=self._frame_id_factory())
+
+    def crop_image(self, image_id: str, x: int, y: int, width: int, height: int) -> ImageRef:
+        if not isinstance(image_id, str) or not image_id:
+            raise invalid_params("image_id", "请指定已导入的本地图像")
+        source = self._store.get(image_id)
+        frame = self._store.get_frame(image_id)
+        if frame is None or frame.space != "image_pixel":
+            raise invalid_params("image_id", "仅可裁剪已导入的本地图像及其副本")
+        for field, value, minimum in (("x", x, 0), ("y", y, 0), ("width", width, 1), ("height", height, 1)):
+            if type(value) is not int or value < minimum:
+                raise invalid_params(field, "裁剪坐标须为非负整数，尺寸须为正整数")
+        if x + width > source.width:
+            raise invalid_params("width", "裁剪范围超出图像右边界")
+        if y + height > source.height:
+            raise invalid_params("height", "裁剪范围超出图像下边界")
+        pixels = memoryview(source.data)
+        stride = source.width * 3
+        left = x * 3
+        data = b"".join(pixels[row * stride + left:row * stride + left + width * 3]
+                        for row in range(y, y + height))
+        return self._store.put(RawImage(width=width, height=height, data=data), frame_meta=self._local_frame())
 
     # -- 内部步骤 -------------------------------------------------------------
 
@@ -216,7 +234,7 @@ class ImageImportService:
         from .png import encode_png_bgr
 
         if self._storage_mode == "png_lossless":
-            asset_bytes = encode_png_bgr(bgr, width, height)
+            asset_bytes = encode_png_bgr(bgr, width, height, self._store.png_compression_level)
             asset_format, ext = "png", "png"
         else:  # original：保留原始字节
             asset_bytes = data

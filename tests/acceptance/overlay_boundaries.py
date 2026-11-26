@@ -1,7 +1,9 @@
 """Drive the installed product's overlay on the primary physical display."""
 import ctypes
 from ctypes import wintypes
+from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -11,6 +13,32 @@ sys.path.insert(0, str(PROBES))
 from common import enumerate_monitors, set_per_monitor_v2, user32
 from input_probe import vk_event
 from verify_selection import TimerTarget, drag, invoke, own_window, send
+
+
+@contextmanager
+def deny_frame_staging(output):
+    # The fixture owns this application's private data root and only swaps an empty staging folder.
+    root = Path(os.environ["SIDECAR_DATA_DIR"]).resolve(strict=True)
+    assert root == (output / "data").resolve(strict=True)
+    staging = root / "tmp/selection"
+    staging.parent.mkdir(exist_ok=True)
+    assert staging.resolve() == staging and staging.is_relative_to(root)
+    saved = staging.with_name("selection-before-error")
+    assert not saved.exists()
+    existed = staging.exists()
+    if existed:
+        assert staging.is_dir() and not any(staging.iterdir())
+        staging.rename(saved)
+    try:
+        with staging.open("xb") as blocker:
+            blocker.write(b"controlled capture failure")
+        try:
+            yield
+        finally:
+            staging.unlink()
+    finally:
+        if existed:
+            saved.rename(staging)
 
 
 def main():
@@ -24,7 +52,7 @@ def main():
     def overlay():
         return own_window(pid, "ScreenTrigger · 选择区域")
     try:
-        for scenario in ("escape", "close", "minimum"):
+        for scenario in ("escape", "close", "capture_failure", "minimum"):
             user32.SetForegroundWindow(hwnd)
             invoke(hwnd, "StartSelection")
             win = fixture.wait(overlay, 10)
@@ -50,22 +78,28 @@ if (!$control -or !$control.Current.IsEnabled) {{exit 2}}
                 fixture.wait(button_ready, 12)
                 x, y = fixture.region[:2]
                 a = (x+25,y+29)
-                drag(win, a, (a[0]+9,a[1]+10),fixture)
-                try:
-                    invoke(win, "ConfirmSelection")
-                except subprocess.CalledProcessError as error:
-                    assert error.returncode == 2
+                if scenario == "capture_failure":
+                    with deny_frame_staging(output):
+                        drag(win, a, (a[0]+32, a[1]+24), fixture)
+                        fixture.wait(lambda: not overlay() and user32.IsWindowVisible(hwnd), 8)
+                    observation["fault"] = "temp frame staging path occupied by a file"
                 else:
-                    raise AssertionError("9 × 10 incorrectly enabled confirmation")
-                assert overlay()==win
-                drag(win, a, (a[0]+10,a[1]+10), fixture)
-                def confirm():
-                    try: invoke(win,"ConfirmSelection"); return True
+                    drag(win, a, (a[0]+9,a[1]+10),fixture)
+                    try:
+                        invoke(win, "ConfirmSelection")
                     except subprocess.CalledProcessError as error:
-                        if error.returncode==2: return False
-                        raise
-                fixture.wait(confirm, 12)
-                observation.update(physical_origin=a, rejected_size=[9,10], accepted_size=[10,10])
+                        assert error.returncode == 2
+                    else:
+                        raise AssertionError("9 × 10 incorrectly enabled confirmation")
+                    assert overlay()==win
+                    drag(win, a, (a[0]+10,a[1]+10), fixture)
+                    def confirm():
+                        try: invoke(win,"ConfirmSelection"); return True
+                        except subprocess.CalledProcessError as error:
+                            if error.returncode==2: return False
+                            raise
+                    fixture.wait(confirm, 12)
+                    observation.update(physical_origin=a, rejected_size=[9,10], accepted_size=[10,10])
             fixture.wait(lambda:not overlay() and user32.IsWindowVisible(hwnd) and user32.GetForegroundWindow()==hwnd,10)
             observation["main_foreground_restored"] = True
             observations.append(observation)

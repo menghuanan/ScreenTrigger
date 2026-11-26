@@ -18,6 +18,13 @@ from backend.vision.cancel import NullCancelToken
 from backend.vision.providers.ocr import OCREngineProvider
 
 
+CER_LIMIT_BPS = {"zh": 1000, "en": 1000, "ja": 1000, "ko": 1156}
+
+
+def passes_cer(language, errors, characters):
+    return characters > 0 and errors * 10_000 <= characters * CER_LIMIT_BPS[language]
+
+
 def distance(a, b):
     row = list(range(len(b) + 1))
     for i, x in enumerate(a, 1):
@@ -42,7 +49,7 @@ def render_sample(sample, font):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("output", type=Path)
-    p.add_argument("--languages", nargs="+", default=["zh", "en", "ja", "ko"])
+    p.add_argument("--languages", nargs="+", choices=CER_LIMIT_BPS, default=list(CER_LIMIT_BPS))
     p.add_argument("--supplemental", action="store_true")
     args = p.parse_args()
     installed = resources()
@@ -89,11 +96,15 @@ def main():
                                  empty_false_positives=sum(bool(r["actual"]) for r in rows if not r["reference"]),
                                  over_5s=sum(r["latency_ms"] > 5000 for r in rows),
                                  latency_ms={str(p):latencies[math.ceil(len(latencies)*p/100)-1] for p in (50,95,99,100)})
+            if not args.supplemental:
+                summary[lang].update(cer_limit_basis_points=CER_LIMIT_BPS[lang],
+                                     cer_pass=passes_cer(lang, errors, total))
             save(args.output / (lang+".json"), rows)
             print(lang, json.dumps(summary[lang]), flush=True)
         save(args.output / "metrics.json", dict(fixture_sha256=sha(fixed),
              package_manifest_sha256=sha(installed.parent / "package.json"), scores=summary))
-        return int(any(v["over_5s"] or (not args.supplemental and v["cer"] > .10) for v in summary.values()))
+        return int(any(v["over_5s"] or (not args.supplemental and
+                       (not v["cer_pass"] or v["latency_ms"]["95"] > 1000)) for v in summary.values()))
     finally:
         provider.close()
 

@@ -100,6 +100,7 @@ def prepare_engine(stage, args):
                 copy(file, resources / "licenses/rust" / prefix / file.name)
     copy(ROOT / "tools/packaging/inspect_root.py", resources / "inspect_root.py")
     copy(ROOT / "tools/packaging/Uninstall.ps1", stage / "Uninstall.ps1")
+    copy(ROOT / "tools/packaging/SetupPaths.ps1", stage / "SetupPaths.ps1")
     build_data = stage.parent / "startup-data"
     subprocess.run([str(python / "python.exe"), "-I", "-B", "-X", "utf8",
                     str(ROOT / "tools/packaging/compile_startup.py"), str(resources), str(build_data)],

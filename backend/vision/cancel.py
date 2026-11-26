@@ -90,7 +90,7 @@ class JobBoundCancelToken:
             return True
         snapshot = self._jobs.get(self._job_id)
         if snapshot is None:
-            return False
+            return True
         return snapshot.get("status") == "cancelled"
 
     def throw_if_cancelled(self) -> None:

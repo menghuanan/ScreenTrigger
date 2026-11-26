@@ -82,7 +82,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 var region = message.Payload.GetProperty("region");
-                await SetImageAsync(message.Payload.GetProperty("image"), message.Session,
+                await SetImageAsync(WireContracts.Read<ImageRef>(message.Payload.GetProperty("image"), "imageRef"), message.Session,
                                     region.GetProperty("x").GetInt32(), region.GetProperty("y").GetInt32());
             }
             catch (Exception ex) { ImageStatus.Text = ex.Message; }
@@ -115,7 +115,10 @@ public sealed partial class MainWindow : Window
     }
 
     private void StartEngine(object sender, RoutedEventArgs e) => ChangeEngine("start");
-    private void StopEngine(object sender, RoutedEventArgs e) => ChangeEngine("stop");
+    private async void StopEngine(object sender, RoutedEventArgs e)
+    {
+        if (await ResolveWorkspaceDrafts()) ChangeEngine("stop");
+    }
 
     private async void ChangeEngine(string op)
     {
@@ -264,11 +267,31 @@ public sealed partial class MainWindow : Window
 
     private void ShowError(Exception ex) { ErrorBar.Message = ex.Message; ErrorBar.IsOpen = true; }
 
+    private async Task<bool> ResolveWorkspaceDrafts()
+    {
+        if (resolvingDraft || closing) return false;
+        resolvingDraft = true;
+        try
+        {
+            foreach (var (tag, page) in pages.ToArray())
+            {
+                if (page is not IWorkspaceDraft editor) continue;
+                if (!page.IsEnabled) { Notice("请等待当前编辑操作完成后重试。"); return false; }
+                if (!editor.HasChanges) continue;
+                DisplayPage(Navigation.MenuItems.OfType<NavigationViewItem>().First(item => Equals(item.Tag, tag)));
+                if (!await editor.ResolveChanges()) return false;
+            }
+            return true;
+        }
+        catch (Exception ex) { Notice(ex.Message); return false; }
+        finally { resolvingDraft = false; }
+    }
+
     private async void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
         if (drained) return;
         args.Cancel = true;
-        if (closing) return;
+        if (closing || !await ResolveWorkspaceDrafts()) return;
         closing = true;
         overlay?.CloseFromHost();
         overlay = null;

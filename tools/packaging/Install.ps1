@@ -5,43 +5,52 @@ param(
     [string]$ShortcutDir = [Environment]::GetFolderPath('Programs')
 )
 $ErrorActionPreference = 'Stop'
-function Assert-PlainPath([string]$Path) {
-    $item = [IO.DirectoryInfo]::new([IO.Path]::GetFullPath($Path))
-    while ($item) {
-        if ($item.Exists -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Linked directory: $($item.FullName)" }
-        $item = $item.Parent
-    }
-}
 if (![Environment]::Is64BitOperatingSystem) { throw 'Windows x64 is required.' }
 $program = [IO.Path]::GetFullPath($InstallRoot)
 $manifest = Join-Path $PSScriptRoot 'package.json'
 $build = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
 $media = Join-Path $PSScriptRoot 'app'
-$receipt = Join-Path $program 'installation.json'
-$prior = if (Test-Path -LiteralPath $receipt) { Get-Content -Raw -Encoding UTF8 -LiteralPath $receipt | ConvertFrom-Json }
-if ((Test-Path -LiteralPath $program) -and !$prior -and @(Get-ChildItem -Force -LiteralPath $program).Count) {
-    throw "Choose an empty install directory: $program"
-}
-if ($prior -and $prior.product -ne 'ScreenTrigger') { throw 'Unrecognized installation record.' }
-if ($prior -and !$PSBoundParameters.ContainsKey('ShortcutDir')) { $ShortcutDir = $prior.shortcutDir }
-$defaultRoot = Join-Path $env:LOCALAPPDATA 'ScreenTrigger'
-$legacy = Join-Path $env:LOCALAPPDATA 'com.screentrigger.app'
-$requested = @($DataRoot, $prior.dataRoot, $defaultRoot, $legacy) | Where-Object { $_ } | ForEach-Object { [IO.Path]::GetFullPath($_) } | Select-Object -Unique
 $metadata = Get-Content -Raw -Encoding UTF8 -LiteralPath $manifest | ConvertFrom-Json
+$helper = Join-Path $media 'SetupPaths.ps1'
+$entry = @($metadata.files | Where-Object path -eq 'SetupPaths.ps1')
+if ($entry.Count -ne 1 -or (Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash -ne $entry[0].sha256) {
+    throw 'Package verification failed: SetupPaths.ps1'
+}
+. $helper
+$receipt = Join-Path $program 'installation.json'
+function Assert-InstallDirectory {
+    if (!(Test-Path -LiteralPath $program) -or (Test-Path -LiteralPath $receipt)) { return }
+    foreach ($item in Get-ChildItem -Force -LiteralPath $program) {
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Linked path: $($item.FullName)" }
+        if ($item.Name -eq '.setup.lock' -and !$item.PSIsContainer -and $item.Length -eq 0) { continue }
+        if ($item.Name -eq 'versions' -and $item.PSIsContainer -and
+            !(@(Get-ChildItem -Force -LiteralPath $item.FullName).Count)) { continue }
+        throw "Choose an empty install directory: $program"
+    }
+}
 $versionRoot = Join-Path $program 'versions'
 Assert-PlainPath $versionRoot
-[IO.Directory]::CreateDirectory($versionRoot) | Out-Null
+Assert-InstallDirectory
+[IO.Directory]::CreateDirectory($program) | Out-Null
 $mutexFile = [IO.File]::Open((Join-Path $program '.setup.lock'),'OpenOrCreate','ReadWrite','None')
 $stage = Join-Path $versionRoot ([guid]::NewGuid().ToString('N'))
 $installed = $false
 try {
+    Assert-InstallDirectory
+    $prior = if (Test-Path -LiteralPath $receipt) { Get-Content -Raw -Encoding UTF8 -LiteralPath $receipt | ConvertFrom-Json }
+    if ($prior -and $prior.product -ne 'ScreenTrigger') { throw 'Unrecognized installation record.' }
+    if ($prior -and !$PSBoundParameters.ContainsKey('ShortcutDir')) { $ShortcutDir = $prior.shortcutDir }
+    $defaultRoot = Join-Path $env:LOCALAPPDATA 'ScreenTrigger'
+    $legacy = Join-Path $env:LOCALAPPDATA 'com.screentrigger.app'
+    $requested = @($DataRoot, $prior.dataRoot, $defaultRoot, $legacy) | Where-Object { $_ } | ForEach-Object { [IO.Path]::GetFullPath($_) } | Select-Object -Unique
     $null = [IO.Directory]::CreateDirectory($stage)
     foreach ($file in $metadata.files) {
         $target = [IO.Path]::GetFullPath((Join-Path $stage $file.path))
         if (!$target.StartsWith(($stage + '\'), [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid package path.' }
-        $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))
-        [IO.File]::Copy((Join-Path $media $file.path), $target)
-        $inputStream = [IO.File]::OpenRead($target)
+        $physical = Get-SetupIoPath $target
+        $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($physical))
+        [IO.File]::Copy((Get-SetupIoPath (Join-Path $media $file.path)), $physical)
+        $inputStream = [IO.File]::OpenRead($physical)
         $hasher = [Security.Cryptography.SHA256]::Create()
         try {
             $hash = [BitConverter]::ToString($hasher.ComputeHash($inputStream)).Replace('-','')
@@ -105,10 +114,10 @@ try {
     Write-Output "Installed $targetExe"
     Write-Output "Data $selected"
 } finally {
-    $mutexFile.Dispose()
-    $target = [IO.Path]::GetFullPath($stage)
-    if (!$installed -and (Split-Path $target -Parent) -eq $versionRoot -and (Test-Path -LiteralPath $target)) {
-        Assert-PlainPath $target
-        Remove-Item -LiteralPath $target -Recurse -Force
-    }
+    try {
+        $target = [IO.Path]::GetFullPath($stage)
+        if (!$installed -and (Split-Path $target -Parent) -eq $versionRoot -and (Test-Path -LiteralPath $target)) {
+            Remove-PlainSetupTree $target
+        }
+    } finally { $mutexFile.Dispose() }
 }

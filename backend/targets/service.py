@@ -137,7 +137,8 @@ class TargetService:
         if storage_mode == "original" and stored.original_bytes is not None:
             raw, image_format = stored.original_bytes, stored.format
         else:
-            raw = encode_png_bgr(bytes(stored.data), int(stored.width), int(stored.height))
+            raw = encode_png_bgr(bytes(stored.data), int(stored.width), int(stored.height),
+                                 store.session_store.png_compression_level)
             image_format = "png"
         write = AssetWrite(
             raw=raw,

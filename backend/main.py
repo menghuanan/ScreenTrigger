@@ -551,6 +551,7 @@ class SidecarApp:
         script_service: Optional[Any] = None,
         vision_service: Optional[Any] = None,
         enable_input: bool = False,
+        config_service: Optional[ConfigService] = None,
     ) -> None:
         self.args = args
         self.session = SessionState(args.session_id)
@@ -589,7 +590,7 @@ class SidecarApp:
         # 设计 §2.3——HOST_COMMANDS 移除后经通用面转发，数据权威在 backend/config）
         self.config_service: Optional[ConfigService] = None
         if getattr(args, "data_dir", None):
-            self.config_service = ConfigService(args.data_dir, logger=self._log)
+            self.config_service = config_service or ConfigService(args.data_dir, logger=self._log)
             try:
                 self.config_service.load()
             except Exception as exc:  # ConfigError：坏档/未来 schema/存储故障不阻断启动
@@ -853,6 +854,8 @@ class SidecarApp:
             self.executions.stop_all("engine_exit")
             with self.executions.changed:
                 self.executions.changed.wait_for(lambda: not self.executions.roots, timeout=1)
+        if self.vision_service is not None:
+            self.vision_service.close()
         if self.history_store is not None:
             self.history_store.close()
         self.transport.close_stdout()
@@ -1229,7 +1232,9 @@ def _run_engine(args: SidecarArgs) -> int:
     transport = StdioTransport(stdout=sys.stdout, stdin=sys.stdin, stderr=sys.stderr,
                                on_delivery_failure=lambda: os._exit(PROTOCOL_ERROR_EXIT_CODE))
     # 捕获与导入共享同一会话级图像注册表（ImageRef 生命周期一致，release/preview 通用）。
-    image_store = SessionImageStore(session_id=args.session_id)
+    config = ConfigService(args.data_dir, logger=_stderr_log) if args.data_dir else None
+    image_store = SessionImageStore(session_id=args.session_id,
+                                   compression_level=config.png_compression_level if config else None)
     capture_service = None
     try:
         capture_service = build_default_capture_service(
@@ -1275,7 +1280,7 @@ def _run_engine(args: SidecarArgs) -> int:
                 image_store, AssetDataRoot(args.data_dir), logger=_stderr_log
             )
             vision_service = build_default_vision_service(
-                args, repository=repository, image_store=image_store, logger=_stderr_log,
+                args, repository=repository, image_store=image_store, config_service=config, logger=_stderr_log,
                 evaluator_factory=lambda reg: ConditionTreeEvaluator(
                     registry=reg,
                     target_image_resolver=target_image_resolver,
@@ -1302,6 +1307,7 @@ def _run_engine(args: SidecarArgs) -> int:
         script_service=script_service,
         vision_service=vision_service,
         enable_input=enable_input,
+        config_service=config,
     )
     return app.run()
 

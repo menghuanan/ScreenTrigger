@@ -208,6 +208,7 @@ class AssemblySharingTest(unittest.TestCase):
             self.args, repository=repository, image_store=self.image_store
         )
         # 结构性身份：同一 Repository / 同一 image_store
+        self.addCleanup(vision_service.close)
         self.assertIs(vision_service.targets._repository, repository)
         self.assertIs(vision_service.targets._repository, target_service.repository)
         self.assertIs(vision_service.pixels._store, self.image_store)
@@ -218,6 +219,7 @@ class AssemblySharingTest(unittest.TestCase):
             self.args, repository=repository, image_store=self.image_store
         )
         raw = types.SimpleNamespace(width=2, height=2, data=bytes([1, 2, 3]) * 4)
+        self.addCleanup(vision_service.close)
         image_ref = self.image_store.put(raw, "png")
         # 只有共用同一 store，才能读到该 image_id（否则 IMAGE_EXPIRED）
         pixels = vision_service.pixels.read(image_ref.image_id)
@@ -234,6 +236,7 @@ class AssemblySharingTest(unittest.TestCase):
             self.args, repository=repository, image_store=self.image_store
         )
         registry = vision_service.registry
+        self.addCleanup(vision_service.close)
         factory = registry.factories["builtin.ocr"]
         provider = factory(registry._pixel_reader)  # noqa: SLF001
         self.assertIsInstance(provider, OCREngineProvider)
@@ -262,6 +265,7 @@ class AssemblySharingTest(unittest.TestCase):
             self.args, repository=repository, image_store=self.image_store
         )
         transport = RecordingTransport()
+        self.addCleanup(vision_service.close)
         app = SidecarApp(
             args=self.args,
             transport=transport,

@@ -7,10 +7,10 @@ using ScreenTrigger.Host;
 
 namespace ScreenTrigger.Settings;
 
-public sealed partial class SettingsPage : UserControl
+public sealed partial class SettingsPage : UserControl, IWorkspaceDraft
 {
     private readonly WorkspaceCommands commands;
-    private readonly Action<string> applyTheme;
+    private readonly Action<JsonElement> applyDisplayConfig;
     private readonly JsonElement definitions;
     private readonly List<(string[] Path, Func<JsonNode?> Read, JsonNode? Default)> fields = [];
     private JsonObject? config;
@@ -25,9 +25,9 @@ public sealed partial class SettingsPage : UserControl
         ["level"]="记录级别", ["rotate_bytes"]="单个日志文件上限（字节）", ["file_count"]="分卷数"
     };
     private static string Label(string key) => Labels.GetValueOrDefault(key, key);
-    internal SettingsPage(HostClient host, Action<string> theme)
+    internal SettingsPage(HostClient host, Action<JsonElement> apply)
     {
-        InitializeComponent(); commands = new(host, this, Feedback); applyTheme = theme;
+        InitializeComponent(); commands = new(host, this, Feedback); applyDisplayConfig = apply;
         using var stream = typeof(SettingsPage).Assembly.GetManifestResourceStream("ScreenTrigger.config.json")!;
         using var schema = JsonDocument.Parse(stream);
         definitions = schema.RootElement.GetProperty("definitions").Clone();
@@ -35,7 +35,10 @@ public sealed partial class SettingsPage : UserControl
     }
     private async void FirstLoad(object sender, RoutedEventArgs args)
     { Loaded -= FirstLoad; await commands.Run(Read); }
-    private async void Reload(object sender, RoutedEventArgs args) => await commands.Run(Read);
+    private async void Reload(object sender, RoutedEventArgs args) => await commands.Run(async () =>
+    {
+        if (await CanReplace()) await Read();
+    });
     private async Task Read()
     {
         var data = await commands.Call("get_config", new { });
@@ -113,7 +116,7 @@ public sealed partial class SettingsPage : UserControl
             Groups.Children.Add(expander);
             AddFields(panel, [group], contents, definitions.GetProperty(group));
         }
-        applyTheme(config["general"]!["theme"]!.GetValue<string>());
+        applyDisplayConfig(value);
     }
     private void AddFields(StackPanel panel, string[] prefix, JsonObject values, JsonElement section)
     {
@@ -137,10 +140,11 @@ public sealed partial class SettingsPage : UserControl
             }
             else if (value?.GetValueKind() == JsonValueKind.Number)
             {
-                var box=new NumberBox { Header=text, Value=value.GetValue<double>() };
+                var box=new NumberBox { Header=text, Value=value.GetValue<double>(), Text=value.GetValue<double>().ToString() };
                 if (spec.TryGetProperty("minimum",out var min)) box.Minimum=min.GetDouble();
                 if (spec.TryGetProperty("maximum",out var max)) box.Maximum=max.GetDouble();
-                field=box; read=()=> JsonValue.Create(box.Value);
+                field=box; read=()=> double.TryParse(box.Text, out var number) && double.IsFinite(number)
+                    ? JsonValue.Create(number) : JsonValue.Create(box.Text);
             }
             else if (value?.GetValueKind() is JsonValueKind.True or JsonValueKind.False)
             {
@@ -159,12 +163,23 @@ public sealed partial class SettingsPage : UserControl
     }
 
     private JsonNode? Original(string[] path) => path.Aggregate((JsonNode?)config,(node,key)=>node?[key]);
-    private void Cancel(object sender, RoutedEventArgs args)
+    private bool HasChanges => config != null && fields.Any(f => !JsonNode.DeepEquals(Original(f.Path), f.Read()));
+    bool IWorkspaceDraft.HasChanges => HasChanges;
+    Task IWorkspaceDraft.WhenIdle => commands.WhenIdle;
+    Task<bool> IWorkspaceDraft.ResolveChanges() => commands.Guard(CanReplace);
+    private Task<bool> CanReplace() => HasChanges
+        ? commands.ResolveDraft("设置", SaveDraft, RestoreDraft) : Task.FromResult(true);
+    private void RestoreDraft()
     {
         if (config != null) Display(JsonSerializer.SerializeToElement(config));
+    }
+    private void Cancel(object sender, RoutedEventArgs args)
+    {
+        RestoreDraft();
         Feedback.Text="已撤销设置编辑。";
     }
-    private async void Save(object sender, RoutedEventArgs args) => await commands.Run(async () =>
+    private async void Save(object sender, RoutedEventArgs args) => await commands.Run(SaveDraft);
+    private async Task SaveDraft()
     {
         if (config == null) return;
         var patch = new JsonObject();
@@ -180,7 +195,7 @@ public sealed partial class SettingsPage : UserControl
         var data=await commands.Call("update_config",new {expected_revision=config["revision"]!.GetValue<long>(), patch});
         Display(data.GetProperty("config"));
         Feedback.Text="设置已保存。热键立即生效，运行参数用于新执行，模型目录将在引擎重启后生效。";
-    });
+    }
     private async void Reset(object sender, RoutedEventArgs args) => await commands.Run(async () =>
     {
         if (config == null) return;

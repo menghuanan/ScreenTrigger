@@ -6,6 +6,13 @@ using ScreenTrigger.Host;
 
 namespace ScreenTrigger;
 
+internal interface IWorkspaceDraft
+{
+    bool HasChanges { get; }
+    Task WhenIdle { get; }
+    Task<bool> ResolveChanges();
+}
+
 internal sealed record CatalogItem(string? Id, string Label, JsonElement Document = default)
 {
     public override string ToString() => Label;
@@ -16,6 +23,8 @@ internal sealed class WorkspaceCommands(HostClient host, FrameworkElement contro
 {
     private readonly string? session = host.Events.Session;
     private bool dialogShown;
+    private TaskCompletionSource? idle;
+    public Task WhenIdle => idle?.Task ?? Task.CompletedTask;
 
     public async Task<JsonElement> Call(string command, object parameters)
     {
@@ -43,6 +52,8 @@ internal sealed class WorkspaceCommands(HostClient host, FrameworkElement contro
         if (controls is not Control panel || !panel.IsEnabled) return;
         var origin = panel.XamlRoot is { } root ? FocusManager.GetFocusedElement(root) as Control : null;
         var focusState = origin?.FocusState ?? FocusState.Unfocused;
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        idle = completed;
         dialogShown = false;
         panel.IsEnabled = false;
         try { feedback.Text = ""; await action(); }
@@ -55,6 +66,8 @@ internal sealed class WorkspaceCommands(HostClient host, FrameworkElement contro
         finally
         {
             panel.IsEnabled = true;
+            idle = null;
+            completed.TrySetResult();
             if (dialogShown && panel.IsLoaded && origin is { IsLoaded: true, IsEnabled: true } &&
                 origin.XamlRoot == panel.XamlRoot && focusState != FocusState.Unfocused)
                 origin.Focus(focusState);
@@ -67,5 +80,26 @@ internal sealed class WorkspaceCommands(HostClient host, FrameworkElement contro
             PrimaryButtonText = accept, CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
         dialogShown = true;
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    public async Task<bool> ResolveDraft(string name, Func<Task> save, Action discard)
+    {
+        var dialog = new ContentDialog { XamlRoot = controls.XamlRoot, Title = $"保存{name}的修改？",
+            PrimaryButtonText = "保存", SecondaryButtonText = "放弃", CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close };
+        dialogShown = true;
+        switch (await dialog.ShowAsync())
+        {
+            case ContentDialogResult.Primary: await save(); return true;
+            case ContentDialogResult.Secondary: discard(); return true;
+            default: return false;
+        }
+    }
+
+    public async Task<bool> Guard(Func<Task<bool>> resolve)
+    {
+        bool proceed = false;
+        await Run(async () => { proceed = await resolve(); });
+        return proceed;
     }
 }

@@ -61,6 +61,27 @@ def verify_assets(folder):
                           original_sha256=imported["image"]["sha256"], group=imported["group_id"])))
 
 
+def measure_frequency(target, folder, hz, trace, start):
+    pattern = re.compile(r"\[preview-presented\] (\d+) (\d+)")
+    def read_ticks():
+        with trace.open("rb") as stream:
+            stream.seek(start)
+            values = pattern.findall(stream.read().decode("utf-8", errors="replace"))
+        return values if len(values) >= (8 if hz == 1 else 30) else None
+    values = target.wait(read_ticks, 20)
+    ticks = [int(t) for t, _ in values[1:]]
+    clock = int(values[-1][1])
+    intervals = [(b - a) * 1000 / clock for a, b in zip(ticks, ticks[1:])]
+    observed = 1000 * len(intervals) / sum(intervals)
+    result = dict(requested_hz=hz, observed_hz=observed, ticks=ticks, clock=clock, intervals_ms=intervals)
+    (folder / f"preview-{hz}hz.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    if hz == 1:
+        require(0.75 <= observed <= 1.25, str(result))
+    else:
+        # A tick skips an unfinished capture or presentation.
+        require(18 <= observed <= 22, str(result))
+
+
 def main():
     pid, main_hwnd, folder = int(sys.argv[1]), int(sys.argv[2]), Path(sys.argv[3])
     set_per_monitor_v2()
@@ -68,6 +89,10 @@ def main():
     target = TimerTarget(monitor["physical_rect"])
     cursor = wt.POINT()
     user32.GetCursorPos(ctypes.byref(cursor))
+    cadence = int(sys.argv[4]) if len(sys.argv) > 4 else None
+    if cadence:
+        trace = folder / "stderr-1.log"
+        trace_start = trace.stat().st_size
     try:
         user32.SetForegroundWindow(main_hwnd)
         invoke(main_hwnd, "StartSelection")
@@ -93,7 +118,9 @@ $root.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Co
         controls = read_controls()
         (folder/"overlay-after-drag.json").write_text(json.dumps(controls, ensure_ascii=False), encoding="utf8")
         target.wait(lambda:len(target.frames) >= 5, 3)
-        if os.environ.get("ST_MEASURE_TIMING") == "1":
+        if cadence:
+            measure_frequency(target, folder, cadence, trace, trace_start)
+        elif os.environ.get("ST_MEASURE_TIMING") == "1":
             measure_preview(target, folder)
         def confirm_when_enabled():
             try:

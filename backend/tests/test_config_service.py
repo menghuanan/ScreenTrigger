@@ -20,6 +20,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -252,6 +253,34 @@ class CorruptedRecoveryTest(unittest.TestCase):
         self.assertIn("备份恢复", "\n".join(self.logger.lines))
         on_disk = json.loads(_read_bytes(self.service.config_path).decode("utf-8"))
         self.assertEqual(on_disk, recovered)  # 原子拷贝回 config.json
+
+    def test_get_config_reports_recovery_after_vision_startup(self):
+        from backend import main as sidecar
+
+        # Back up a selection distinct from the shipped library. Startup must
+        # consume the recovered directory and report that same recovery to UI.
+        rev = self.service.get_config()["revision"]
+        chosen = "recovery-test-models"
+        self.service.update_config({"recognition": {"model_directory": chosen}}, rev)
+        self.service.update_config({"general": {"theme": "dark"}}, rev + 1)
+        _write_bytes(self.service.config_path, b"{truncated")
+        request = dict(protocol_version=1, session_id="recovery", type="request",
+                       id="configuration", command="get_config", params={})
+        process = subprocess.run(
+            [sys.executable, "-B", "-X", "utf8", sidecar.__file__,
+             "--session-id", "recovery", "--data-dir", self.data_dir],
+            input=json.dumps(request) + "\n", capture_output=True, text=True,
+            encoding="utf-8", timeout=40,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        frames = [json.loads(line) for line in process.stdout.splitlines()]
+        ready = next(frame for frame in frames if frame.get("name") == "system_ready")
+        self.assertIn(chosen, json.dumps(ready, ensure_ascii=False))
+        reply = next(frame for frame in frames if frame.get("id") == "configuration")
+        self.assertTrue(reply["success"], reply)
+        self.assertEqual(reply["data"]["config"]["revision"], rev + 1)
+        self.assertEqual(reply["data"]["config"]["recognition"]["model_directory"], chosen)
+        self.assertEqual(reply["data"].get("recovery"), {"revision": rev + 1}, reply)
 
     def test_unknown_field_same_version_uses_backup(self):
         doc = json.loads(_read_bytes(self.service.config_path).decode("utf-8"))

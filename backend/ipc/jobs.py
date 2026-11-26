@@ -14,7 +14,9 @@ threading.Lock 串行化，读快照与写迁移线程安全。
 from __future__ import annotations
 
 import threading
+import time
 import uuid
+from collections import deque
 from typing import Any, Callable, Dict, FrozenSet, Optional
 
 Status = str
@@ -34,9 +36,17 @@ class JobManager:
         {STATUS_COMPLETED, STATUS_CANCELLED, STATUS_ERROR}
     )
 
-    def __init__(self, job_id_factory: Optional[Callable[[], str]] = None) -> None:
+    def __init__(self, job_id_factory: Optional[Callable[[], str]] = None, *,
+                 terminal_capacity: int = 256, terminal_ttl: float = 300,
+                 monotonic: Callable[[], float] = time.monotonic) -> None:
+        if terminal_capacity <= 0 or terminal_ttl <= 0:
+            raise ValueError("终态容量与留存时长必须为正")
         self._lock = threading.Lock()
         self._jobs: Dict[str, Dict[str, Any]] = {}
+        self._terminal = deque()
+        self._capacity = terminal_capacity
+        self._ttl = terminal_ttl
+        self._clock = monotonic
         # 可注入 id 工厂（单测确定性）；缺省 job-<uuid4>（03 风格）
         self._job_id_factory: Callable[[], str] = (
             job_id_factory if job_id_factory is not None else self._default_job_id
@@ -48,6 +58,14 @@ class JobManager:
 
     # -- 查询 ---------------------------------------------------------------
 
+    def _prune(self, now: float) -> None:
+        while self._terminal:
+            at, job_id = self._terminal[0]
+            if len(self._terminal) <= self._capacity and now - at < self._ttl:
+                break
+            self._terminal.popleft()
+            del self._jobs[job_id]
+
     @staticmethod
     def _snapshot(state: Dict[str, Any]) -> Snapshot:
         """get_job data 形状：{status, result, error}，仅此三字段（03 逐字）。"""
@@ -56,6 +74,7 @@ class JobManager:
     def get(self, job_id: str) -> Optional[Snapshot]:
         """未知 job_id 返回 None（dispatcher 转 NOT_FOUND）；否则返回快照。"""
         with self._lock:
+            self._prune(self._clock())
             state = self._jobs.get(job_id)
             return self._snapshot(state) if state is not None else None
 
@@ -68,6 +87,7 @@ class JobManager:
     def create_job(self, kind: Optional[str] = None, *, cancellable_while_running: bool = True) -> str:
         """创建 job（pending）；返回 job_id。kind 仅供诊断，不出 get_job data。"""
         with self._lock:
+            self._prune(self._clock())
             job_id = self._job_id_factory()
             while job_id in self._jobs:  # uuid 撞车防御（概率可忽略）
                 job_id = self._job_id_factory()
@@ -101,6 +121,10 @@ class JobManager:
                 state["result"] = result
             if error is not None:
                 state["error"] = error
+            if new_status in self.TERMINAL_STATUSES:
+                now = self._clock()
+                self._terminal.append((now, job_id))
+                self._prune(now)
             return True
 
     def mark_running(self, job_id: str) -> bool:

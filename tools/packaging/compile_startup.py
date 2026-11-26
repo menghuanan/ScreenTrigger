@@ -6,7 +6,8 @@ import sys
 
 from backend.image.store import SessionImageStore
 from backend.main import SidecarArgs, build_catalog_services
-from backend.vision.registry import build_default_vision_service
+from backend.vision.registry import ProviderRegistry
+from backend.vision.ports import SessionPixelReader
 
 
 def main(resources, data):
@@ -16,9 +17,12 @@ def main(resources, data):
     images = SessionImageStore(args.session_id)
     repository, _, _ = build_catalog_services(args, images)
     try:
-        vision = build_default_vision_service(args, image_store=images, repository=repository)
+        # Discover library imports in the interpreter collecting sys.modules.
+        # At runtime these same factories execute in isolated provider processes.
+        vision = ProviderRegistry(SessionPixelReader(images))
         try:
-            status, detail = vision.capability_state("ocr")
+            vision.initialize_all(str(data / "models"))
+            status, detail = vision.capability_reason("ocr")
             if status != "available":
                 raise RuntimeError(f"Offline OCR could not start: {detail}")
             sources = set((resources / "backend").rglob("*.py"))
@@ -29,7 +33,7 @@ def main(resources, data):
                     if path.is_relative_to(resources) and path.suffix == ".py" and path.is_file():
                         sources.add(path)
         finally:
-            vision.close()
+            vision.close_all()
     finally:
         repository.close()
 

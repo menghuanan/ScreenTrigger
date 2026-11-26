@@ -237,8 +237,9 @@ const FRAMEWORK_COMMANDS: [&str; 9] = [
 /// `backend/capture/commands.py` + `backend/image/commands.py`。按 03「其余命令路由
 /// 给 Python」转发 Python（此前误置 HostDenied，导致 import_image / capture_region /
 /// get_image_preview 等经 UI 的端到端路径返回 CAPABILITY_DENIED——TASK-008 修正）。
-const HOST_PYTHON_COMMANDS: [&str; 7] = [
+const HOST_PYTHON_COMMANDS: [&str; 8] = [
     "import_image",
+    "crop_image",
     "get_display_list",
     "capture_region",
     "capture_full_screen",
@@ -449,15 +450,15 @@ mod tests {
 
     #[test]
     fn routing_table_covers_full_command_catalog() {
-        // 03 命令目录 68 条 = 框架 9（含 config 三命令，TASK-006 §2.3）
-        //   + 宿主-Python 7（TASK-007/009 已实现）+ 框选 3（TASK-008 Rust 处理）
+        // 03 命令目录 69 条 = 框架 9（含 config 三命令，TASK-006 §2.3）
+        //   + 宿主-Python 8（含本地图像裁剪）+ 框选 3（TASK-008 Rust 处理）
         //   + 窗口 5（TASK-018 前 HostDenied）+ 引擎 44；无重叠、无遗漏
         let total = FRAMEWORK_COMMANDS.len()
             + HOST_PYTHON_COMMANDS.len()
             + HOST_HANDLED_COMMANDS.len()
             + HOST_COMMANDS.len()
             + ENGINE_COMMANDS.len();
-        assert_eq!(total, 68);
+        assert_eq!(total, 69);
         for cmd in ["list_execution_history", "clear_execution_logs", "list_catalog_backups",
                     "create_catalog_backup", "preview_catalog_restore", "restore_catalog_backup"] {
             assert!(ENGINE_COMMANDS.contains(&cmd));
@@ -515,6 +516,7 @@ mod tests {
             "capture_window",
             "release_image",
             "get_image_preview",
+            "crop_image",
         ] {
             assert_eq!(route_command(cmd), Route::ForwardPython, "{cmd}");
             assert!(!HOST_COMMANDS.contains(&cmd), "{cmd} 不应残留 HostDenied 表");

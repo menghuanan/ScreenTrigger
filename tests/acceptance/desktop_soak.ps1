@@ -89,6 +89,23 @@ try {
     if (!$app.WaitForExit(15000) -or $app.ExitCode) {throw 'Unclean WinUI exit'}
     $measure=@(Get-Content -Encoding UTF8 -LiteralPath (Join-Path $folder 'processes.jsonl') | ForEach-Object {$_|ConvertFrom-Json})
     $result=[ordered]@{requested_s=$Seconds;observed_s=$watch.Elapsed.TotalSeconds;samples=$measure.Count;status=$status;beforeStop=$before;terminal=$terminal;exit=$app.ExitCode}
+    $histories=@(Get-ChildItem -LiteralPath (Join-Path $env:SIDECAR_DATA_DIR 'history') -File -Filter '*.json')
+    if ($histories.Count -ne 1) {throw 'Expected exactly one root execution in isolated history'}
+    $history=Get-Content -Encoding utf8 -Raw -LiteralPath $histories[0].FullName | ConvertFrom-Json
+    $events=@(Get-Content -Encoding utf8 -LiteralPath ([IO.Path]::ChangeExtension($histories[0].FullName,'jsonl')) |
+        ForEach-Object {$_ | ConvertFrom-Json} | Where-Object {$_.event -eq 'script_state_changed'})
+    $states=@($events | ForEach-Object {$_.message})
+    if ($history.status -ne 'cancelled' -or $history.reason -ne 'user_requested' -or $history.error_code -or
+        @($events | Where-Object {$_.execution_id -ne $history.execution_id -or $_.details.error_code}).Count -or
+        ($states -join ',') -ne 'starting,running,stopping,cancelled') {
+        throw "Unexpected root history for $($history.execution_id): $states"
+    }
+    $runningAt=[datetimeoffset]::Parse($events[1].timestamp)
+    $stoppingAt=[datetimeoffset]::Parse($events[2].timestamp)
+    $result.executionId=$history.execution_id
+    $result.runningSeconds=($stoppingAt-$runningAt).TotalSeconds
+    $result.terminalReason=$history.reason
+    if ($result.runningSeconds -lt $Seconds) {throw 'Execution duration was shorter than requested'}
     if ($Seconds -ge 7200) {
         $early=@($measure|Where-Object {$_.elapsed -ge 300 -and $_.elapsed -lt 2100}|Sort-Object rss)
         $late=@($measure|Where-Object {$_.elapsed -ge ($Seconds-1800)}|Sort-Object rss)

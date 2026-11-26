@@ -309,34 +309,7 @@ class VisionService:
 
     def _execute_provider(self, command: str, params: Dict[str, Any], token: Any) -> Dict[str, Any]:
         condition_type = CONDITION_OF_COMMAND[command]
-        provider = self._registry.provider_for(condition_type)
-        if provider is None:
-            # TASK-014 §6：区分「引擎不具备」（缺 cv2/numpy → ENGINE_UNAVAILABLE）与
-            # 「未装配」（CAPABILITY_DENIED）。retryable=false，无 field。
-            code = None
-            unavailable_code = getattr(self._registry, "unavailable_code", None)
-            if callable(unavailable_code):
-                code = unavailable_code(condition_type)
-            if code == "ENGINE_UNAVAILABLE":
-                raise RecognitionError(
-                    "ENGINE_UNAVAILABLE",
-                    "识别引擎不可用：条件类型 %s 的 Provider 依赖缺失（须在探针 venv 运行）"
-                    % condition_type,
-                    retryable=False,
-                )
-            if code == "MODEL_UNAVAILABLE":
-                # Q2（ISSUE-TASK013-002）加法式：模型缺失分支与缺引擎分支**按原因分类一致**；
-                # 缺模型 → MODEL_UNAVAILABLE（而**非** CAPABILITY_DENIED）。无 field（能力级，
-                # 非请求字段；请求级缺模型另在下方 model_id ∉ manifest.model_ids 处定位）。
-                raise RecognitionError(
-                    "MODEL_UNAVAILABLE",
-                    "识别模型不可用：条件类型 %s 的 Provider 缺已安装模型（须离线安装模型）"
-                    % condition_type,
-                    retryable=False,
-                )
-            raise RecognitionError(
-                "CAPABILITY_DENIED", "无就绪 Provider 覆盖条件类型 %s" % condition_type
-            )
+        provider = self._registry.require_provider(condition_type)
         manifest = self._registry.manifest_for(provider)
         raw = self._pixels.read(params.get("image_id"))
         frame = self._frames.resolve(self._image_ref(raw))

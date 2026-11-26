@@ -37,7 +37,7 @@ Select-Item (ByName 'P2 调试')
 NamedClick '打开脚本'
 $null=Wait-For { (Item ScriptSource).GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -match 'local n=2' } 'script loaded'
 Set-Field ScriptSource 'wait(8)'
-Modal-Key '新建脚本' '放弃脚本草稿？' 'script-draft'
+Modal-Key '新建脚本' '保存脚本的修改？' 'script-draft'
 Modal-Key '删除脚本' '删除脚本？' 'script-delete'
 Invoke-ItemButton SaveScript
 $null=Wait-For { (Find-Item ScriptFeedback).Current.Name -match '修订 2' } 'timed fixture saved'
@@ -60,7 +60,7 @@ try {
     $seen.retainedDraft=(Item TargetName).GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
     if ($seen.retainedDraft -ne 'P3 临时编辑') {throw 'Failed save discarded the target draft'}
 } finally {$locked.Dispose()}
-Modal-Key '新建目标' '放弃当前目标草稿？' 'target-draft'
+Modal-Key '新建目标' '保存目标的修改？' 'target-draft'
 Modal-Key '删除目标' '删除目标？' 'target-delete'
 $expand=ByName '分组管理'
 $expand.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()

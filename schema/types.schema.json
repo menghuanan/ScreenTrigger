@@ -402,7 +402,7 @@
         "id": {"type": "string", "minLength": 1},
         "revision": {"type": "integer", "minimum": 1},
         "name": {"type": "string", "minLength": 1, "maxLength": 100},
-        "parent_group_id": {"type": ["string", "null"]},
+        "parent_group_id": {"type": ["string", "null"], "minLength": 1},
         "depth": {"type": "integer", "minimum": 0, "maximum": 2},
         "created_at": {"$ref": "#/definitions/rfc3339Utc"},
         "updated_at": {"$ref": "#/definitions/rfc3339Utc"}

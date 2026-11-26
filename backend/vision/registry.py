@@ -19,6 +19,7 @@ import os
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ..config.service import ConfigService
 from ..types.capabilities import ModelManifest, ProviderManifest
 from .manifest import (
     check_api_version,
@@ -38,6 +39,7 @@ from .ports import (
 )
 from .providers import ColorProvider, ContourProvider, OCREngineProvider, TemplateProvider
 from .providers.ocr_models import resolve_models_dir
+from .process_provider import ProcessProvider
 from .types import RecognitionError
 
 #: 条件类型 → 能力 id 映射（对齐 ``types.capabilities.CAPABILITY_IDS``）。
@@ -91,9 +93,11 @@ class ProviderRegistry:
         *,
         factories: Optional[Dict[str, ProviderFactory]] = None,
         logger: Optional[Callable[[str], None]] = None,
+        isolate_native: bool = False,
     ) -> None:
         self._pixel_reader = pixel_reader
         self._logger = logger
+        self._isolate_native = isolate_native
         self._factories: Dict[str, ProviderFactory] = dict(
             factories if factories is not None else BUILTIN_PROVIDER_FACTORIES
         )
@@ -132,16 +136,17 @@ class ProviderRegistry:
             raise ValueError("重复注册 Provider 工厂: %s" % provider_id)
         self._factories[provider_id] = factory
 
-    def initialize_all(self, models_dir: str) -> None:
+    def initialize_all(self, models_dir: str, *, library_root=None, models_error=None) -> None:
         """对每个工厂：实例化 → ``capabilities`` → 校验 → api_version → ``initialize``。
 
         任一步失败仅记诊断并把该 provider 置不可用（**不阻断引擎启动**）；但**重复条件类型**
         （Q10）在装配期**明确失败**。
         """
         for provider_id, factory in self._factories.items():
-            self._initialize_one(provider_id, factory, models_dir)
+            self._initialize_one(provider_id, factory, models_dir, library_root, models_error)
 
-    def _initialize_one(self, provider_id: str, factory: ProviderFactory, models_dir: str) -> None:
+    def _initialize_one(self, provider_id: str, factory: ProviderFactory, models_dir: str,
+                        library_root, models_error) -> None:
         try:
             provider = factory(self._pixel_reader)
         except Exception as exc:  # 工厂构造失败：记诊断，置不可用
@@ -163,6 +168,13 @@ class ProviderRegistry:
             self._log("vision provider %s api_version 不受支持：%s" % (provider_id, exc.message))
             return
         try:
+            if self._isolate_native:
+                options = {}
+                if isinstance(provider, OCREngineProvider):
+                    if models_error is not None:
+                        raise RecognitionError("MODEL_UNAVAILABLE", str(models_error))
+                    options["library_root"] = library_root
+                provider = ProcessProvider(self._pixel_reader, type(provider), **options)
             provider.initialize(models_dir)
         except RecognitionError as exc:
             # 缺 cv2/numpy 等引擎缺失：记录 code（ENGINE_UNAVAILABLE），使 service
@@ -181,6 +193,7 @@ class ProviderRegistry:
             try:
                 models.append(load_model_manifest(model_manifest_path(models_dir, model_id)))
             except RecognitionError as exc:
+                provider.close()
                 self._unavailable[provider_id] = (manifest, exc.message)
                 # Q2（ISSUE-TASK013-002）加法式修复：模型缺失分支**同样**记错误码，
                 # 使 service 调用期抛 MODEL_UNAVAILABLE（而非 CAPABILITY_DENIED），
@@ -211,6 +224,15 @@ class ProviderRegistry:
         if provider_id is None:
             return None
         return self._ready[provider_id][0]
+
+    def require_provider(self, condition_type: str) -> Any:
+        """Use the same recorded initialization error for commands and condition leaves."""
+        provider = self.provider_for(condition_type)
+        if provider is not None:
+            return provider
+        _, reason = self.capability_reason(condition_type)
+        raise RecognitionError(self.unavailable_code(condition_type) or "CAPABILITY_DENIED",
+                               reason or "无就绪 Provider 覆盖条件类型 %s" % condition_type)
 
     def manifest_for(self, provider: Any) -> Optional[ProviderManifest]:
         for _pid, (candidate, manifest) in self._ready.items():
@@ -275,6 +297,7 @@ def build_default_vision_service(
     *,
     repository: Any = None,
     image_store: Any = None,
+    config_service: Optional[ConfigService] = None,
     jobs: Any = None,
     logger: Optional[Callable[[str], None]] = None,
     pixel_reader: Any = None,
@@ -319,14 +342,23 @@ def build_default_vision_service(
         else:
             frame_resolver = IdentityFrameResolver(clock=clock)
 
-    reg = registry if registry is not None else ProviderRegistry(pixel_reader, logger=logger)
+    reg = registry if registry is not None else ProviderRegistry(pixel_reader, logger=logger,
+                                                                 isolate_native=True)
     if registry is None:
         # Q6：`models_dir` 解析优先 `<data_dir>/models/`，其次可配置模型库路径
         # （`--models-dir`/`ST_MODELS_DIR`）；来源记诊断（可审计）。**不下载/不联网**。
-        models_dir, models_dir_source = resolve_models_dir(data_dir)
+        from ..config.service import ConfigError
+        from ..storage.errors import StorageError
+        models_error = None
+        try:
+            models_dir, models_dir_source = resolve_models_dir(data_dir, config_service=config_service)
+        except (ConfigError, StorageError) as exc:
+            models_error = exc
+            models_dir, models_dir_source = "", "invalid"
         if logger is not None:
             logger("vision models_dir=%s（来源=%s）" % (models_dir, models_dir_source))
-        reg.initialize_all(models_dir)
+        reg.initialize_all(models_dir, library_root=models_dir if models_dir_source == "settings"
+                           else None, models_error=models_error)
 
     # TASK-016：条件树 evaluator 由组合根经 `evaluator_factory(reg)` 构造（需要**同一**
     # ProviderRegistry 实例做逐叶 provider 分派）；显式传入 `evaluator` 时优先。

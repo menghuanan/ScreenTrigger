@@ -65,6 +65,10 @@
                         AutomationProperties.AutomationId="StartSelection" />
                 <Button x:Name="ImportButton" Content="导入图片" Click="ImportImage" IsEnabled="False"
                         AutomationProperties.AutomationId="ImportImage" />
+                <Button x:Name="CropButton" Content="裁剪…" Click="CropImage" IsEnabled="False"
+                        AutomationProperties.AutomationId="CropImage" />
+                <Button x:Name="OriginalButton" Content="返回原图" Click="RestoreOriginal" Visibility="Collapsed"
+                        AutomationProperties.AutomationId="RestoreOriginal" />
             </StackPanel>
             <TextBlock x:Name="ImageStatus" AutomationProperties.AutomationId="ImageStatus"
                        AutomationProperties.LiveSetting="Polite" TextWrapping="Wrap" />

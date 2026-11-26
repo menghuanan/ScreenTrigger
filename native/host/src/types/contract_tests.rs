@@ -98,7 +98,8 @@ fn type_validation_cases_match_python_source() {
     // type-group-nested-depth2-valid）→ type_validation 39→41
     // TASK-012：新增 3 条 script 结构共享用例（type-script-name-101-invalid、
     // type-script-parameters-not-array-invalid、type-script-minimal-valid）→ 41→44
-    assert_eq!(ran, 44, "rust 侧 type_validation 用例数应与 B1+group+script 用例集一致");
+    // AUDIT-20261012-004：五种分组字段错误和一条空条件树共享原用例。
+    assert_eq!(ran, 50, "Rust 共享类型契约用例数不符");
 }
 
 #[test]

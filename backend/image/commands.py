@@ -58,6 +58,19 @@ def register_image_commands(dispatcher: Any, import_service: ImageImportService)
 
     dispatcher.register("import_image", _handler)
 
+    def crop(envelope: Dict[str, Any]) -> Dict[str, Any]:
+        params = envelope.get("params") or {}
+        fields = ("image_id", "x", "y", "width", "height")
+        try:
+            for key in params:
+                if key not in fields:
+                    raise invalid_params(key, "crop_image 未声明参数: %s" % key)
+            return {"image": image_ref_to_dict(import_service.crop_image(**{key: params.get(key) for key in fields}))}
+        except CaptureError as exc:
+            raise DispatcherError(exc.code, exc.message, details=exc.details, retryable=exc.retryable) from exc
+
+    dispatcher.register("crop_image", crop)
+
 
 def register_host_frame_command(
     dispatcher: Any, registration_service: HostFrameRegistrationService

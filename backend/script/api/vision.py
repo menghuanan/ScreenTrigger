@@ -180,7 +180,9 @@ class ScreenApi:
         mode = "exact" if match_mode is None else match_mode
         if not isinstance(text, str) or not text or mode not in MATCH_MODES:
             fail("text", "文本或匹配模式无效")
-        blocks = [b for b in self.ocr(None, region) if b["confidence"] >= DEFAULT_MIN_CONFIDENCE
+        minimum = self.root.settings.get("recognition", {}).get(
+            "ocr_min_confidence", DEFAULT_MIN_CONFIDENCE)
+        blocks = [b for b in self.ocr(None, region) if b["confidence"] >= minimum
                   and match_text(b["text"], text, mode=mode) is not None]
         return bool(blocks), blocks
 

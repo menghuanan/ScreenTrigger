@@ -5,7 +5,7 @@ using ScreenTrigger.Host;
 
 namespace ScreenTrigger.Scripts;
 
-public sealed partial class ScriptsPage : UserControl
+public sealed partial class ScriptsPage : UserControl, IWorkspaceDraft
 {
     private readonly WorkspaceCommands commands;
     private readonly HostClient host;
@@ -13,6 +13,7 @@ public sealed partial class ScriptsPage : UserControl
     private CatalogItem? edited;
     private int offset;
     private string original = "";
+    private string savedSource = "";
 
     internal ScriptsPage(HostClient host)
     {
@@ -33,14 +34,18 @@ public sealed partial class ScriptsPage : UserControl
     private static CatalogItem Item(JsonElement script) =>
         new(script.GetProperty("id").GetString(), script.GetProperty("name").GetString()!, script);
     private string Snapshot() => JsonSerializer.Serialize(new[] { ScriptName.Text, Source.Text, Parameters.Text });
+    bool IWorkspaceDraft.HasChanges => original != Snapshot();
+    Task IWorkspaceDraft.WhenIdle => commands.WhenIdle;
+    Task<bool> IWorkspaceDraft.ResolveChanges() => commands.Guard(CanReplace);
     private Task<bool> CanReplace() => original == Snapshot() ? Task.FromResult(true) :
-        commands.Confirm("放弃脚本草稿？", "更换脚本后，尚未保存的源码和参数将丢失。", "放弃草稿");
+        commands.ResolveDraft("脚本", SaveDraft, () => Edit(edited, savedSource));
     private void Edit(CatalogItem? item, string source)
     {
         if (edited?.Id != item?.Id || edited?.Revision != item?.Revision) { DebugTools.Content = null; debugger = null; }
         edited = item;
         ScriptName.Text = item?.Label ?? "";
         Source.Text = source;
+        savedSource = source;
         Parameters.Text = item?.Document.GetProperty("parameters").GetRawText() ?? "[]";
         original = Snapshot();
     }
@@ -55,6 +60,17 @@ public sealed partial class ScriptsPage : UserControl
     private void OpenDebug(object sender, RoutedEventArgs e) => ShowDebugger();
 
     internal async Task Inspect(string execution) => await ShowDebugger().Attach(execution);
+
+    private async Task SaveDraft()
+    {
+        var fields = new Dictionary<string, object?> { ["name"] = ScriptName.Text, ["source"] = Source.Text,
+            ["parameters"] = JsonSerializer.Deserialize<JsonElement>(Parameters.Text) };
+        if (edited != null) { fields["script_id"] = edited.Id; fields["expected_revision"] = edited.Revision; }
+        var saved = await commands.Call("save_script", fields);
+        Edit(Item(saved.GetProperty("script")), Source.Text);
+        await List();
+        Feedback.Text = $"已保存「{edited!.Label}」，修订 {edited.Revision}。";
+    }
 
     private async void Action(object sender, RoutedEventArgs e)
     {
@@ -81,12 +97,7 @@ public sealed partial class ScriptsPage : UserControl
                     if (diagnostics.Count > 0) diagnosticLine = diagnostics[0].GetProperty("line").GetInt32();
                     break;
                 case "save":
-                    var fields = new Dictionary<string, object?> { ["name"] = ScriptName.Text, ["source"] = Source.Text,
-                        ["parameters"] = JsonSerializer.Deserialize<JsonElement>(Parameters.Text) };
-                    if (edited != null) { fields["script_id"] = edited.Id; fields["expected_revision"] = edited.Revision; }
-                    var saved = await commands.Call("save_script", fields);
-                    Edit(Item(saved.GetProperty("script")), Source.Text); await List();
-                    Feedback.Text = $"已保存「{edited!.Label}」，修订 {edited.Revision}。";
+                    await SaveDraft();
                     break;
                 case "delete":
                     if (edited != null && await commands.Confirm("删除脚本？", edited.Label, "删除"))

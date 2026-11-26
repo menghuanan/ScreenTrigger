@@ -93,10 +93,12 @@ class SessionImageStore:
         logger: Optional[Callable[[str], None]] = None,
         image_id_factory: Optional[Callable[[], str]] = None,
         released_capacity: Optional[int] = None,
+        compression_level: Optional[Callable[[], int]] = None,
     ) -> None:
         if not session_id:
             raise ValueError("session_id 不能为空")
         self._session_id = session_id
+        self._compression_level = compression_level
         self._budget = budget_bytes if budget_bytes is not None else self.DEFAULT_BUDGET_BYTES
         self._logger = logger
         self._image_id_factory = image_id_factory or self._default_image_id
@@ -128,6 +130,10 @@ class SessionImageStore:
     @property
     def budget_bytes(self) -> int:
         return self._budget
+
+    @property
+    def png_compression_level(self) -> int:
+        return self._compression_level() if self._compression_level else 6
 
     @staticmethod
     def _default_image_id() -> str:
@@ -272,7 +278,8 @@ class SessionImageStore:
             CaptureError: IMAGE_EXPIRED（引用无效）。
         """
         entry = self.get(image_id)
-        png, _w, _h = render_preview_png(entry.data, entry.width, entry.height, max_edge)
+        png, _w, _h = render_preview_png(entry.data, entry.width, entry.height, max_edge,
+                                          self.png_compression_level)
         if len(png) > PREVIEW_MAX_BYTES:  # 防御：render 已保证，除非 max_edge=1 仍超
             from ..capture.errors import resource_limit
 

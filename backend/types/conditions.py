@@ -188,7 +188,7 @@ def _validate_condition_node(node: Any, branch_depth: int, leaf_ids: List[str],
         enum_field(data, "op", "conditions.op", ("all", "any"))
         children = data.get("children")
         if not isinstance(children, list) or len(children) < 1:
-            fail("INVALID_PARAMS", "conditions.children",
+            fail("INVALID_PARAMS", "conditions",
                  "conditions.children 必须为非空数组")
         depth = branch_depth + 1
         if depth > _MAX_BRANCH_DEPTH:
@@ -328,28 +328,26 @@ def validate_group_fields(value: Any) -> Group:
          "updated_at"),
         "group",
     )
-    raw_name = data.get("name")
-    if not isinstance(raw_name, str):
-        fail("INVALID_PARAMS", "group.name", "group.name 必须为字符串")
-    name = raw_name.strip()
-    if not 1 <= len(name) <= 100:
-        fail("INVALID_PARAMS", "group.name", "group.name 去首尾空白后须为 1–100 字符")
-    parent_group_id = _validate_optional_str_or_null(data, "parent_group_id",
-                                                     "group.parent_group_id")
-    depth = int_field(data, "depth", "group.depth", minimum=0, maximum=2)
+    name = str_field(data, "name", "name", max_length=100, strip_first=True)
+    if "parent_group_id" not in data:
+        fail("INVALID_PARAMS", "parent_group_id", "缺少 parent_group_id")
+    parent_group_id = data["parent_group_id"]
+    if parent_group_id is not None:
+        parent_group_id = str_field(data, "parent_group_id", "parent_group_id")
+    depth = int_field(data, "depth", "depth", minimum=0, maximum=2)
     # 02：parent 顶层 null（depth=0）、否则 depth≥1（=父 depth+1 由 Repository 保证）
     if parent_group_id is None and depth != 0:
-        fail("INVALID_PARAMS", "group.depth", "顶层分组 depth 必须为 0")
+        fail("INVALID_PARAMS", "depth", "顶层分组 depth 必须为 0")
     if parent_group_id is not None and depth < 1:
-        fail("INVALID_PARAMS", "group.depth", "子分组 depth 必须不小于 1")
+        fail("INVALID_PARAMS", "depth", "子分组 depth 必须不小于 1")
     return Group(
-        id=str_field(data, "id", "group.id"),
-        revision=int_field(data, "revision", "group.revision", minimum=1),
+        id=str_field(data, "id", "id"),
+        revision=int_field(data, "revision", "revision", minimum=1),
         name=name,
         parent_group_id=parent_group_id,
         depth=depth,
-        created_at=validate_rfc3339_utc(data.get("created_at"), "group.created_at"),
-        updated_at=validate_rfc3339_utc(data.get("updated_at"), "group.updated_at"),
+        created_at=validate_rfc3339_utc(data.get("created_at"), "created_at"),
+        updated_at=validate_rfc3339_utc(data.get("updated_at"), "updated_at"),
     )
 
 

@@ -437,6 +437,11 @@ class ConfigService:
         with self._lock:
             return copy.deepcopy(self._load_from_disk())
 
+    def png_compression_level(self) -> int:
+        """Read the last committed capture setting without disk I/O on each preview."""
+        with self._lock:
+            return self._doc["capture"]["png_compression_level"] if self._doc else 6
+
     # -- 写（§5.4 算法） ---------------------------------------------------------
 
     def describe(self):
@@ -465,6 +470,14 @@ class ConfigService:
             # 4. patch 校验+深合并（在副本上进行，非法 patch 不变旧配置）
             merged = _deep_merge(current, patch, "", "INVALID_PARAMS")
             _validate_document(merged, code="INVALID_PARAMS")
+            if "model_directory" in patch.get("recognition", {}):
+                from ..storage.paths import DataRoot
+                from ..storage.errors import StorageError
+                try:
+                    DataRoot(self._data_dir).resolve(merged["recognition"]["model_directory"])
+                except StorageError as exc:
+                    raise ConfigError("INVALID_PARAMS", exc.message,
+                                      field="recognition.model_directory") from exc
             merged["revision"] = current["revision"] + 1
             self._atomic_write(merged, previous_exists=True)
             self._doc = merged

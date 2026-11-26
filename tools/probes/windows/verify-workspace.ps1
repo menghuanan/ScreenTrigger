@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory)][string]$Executable, [Parameter(Mandatory)][string]$OutputDirectory, [switch]$Extended, [switch]$ReleaseCases)
+﻿param([Parameter(Mandatory)][string]$Executable, [Parameter(Mandatory)][string]$OutputDirectory, [switch]$Extended, [switch]$ReleaseCases, [switch]$DraftCases)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $folder = New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop
@@ -48,7 +48,11 @@ function Save-Tree($tag) {
     })
     $rows | ConvertTo-Json | Out-File -Encoding utf8 (Join-Path $folder.FullName "$tag.json")
 }
-if ($Extended) { . (Join-Path $PSScriptRoot 'workspace-image-cases.ps1') }
+if ($Extended -or $DraftCases) { . (Join-Path $PSScriptRoot 'workspace-image-cases.ps1') }
+if ($DraftCases) {
+    $env:ST_MEASURE_PREVIEW_CADENCE = '1'
+    . (Join-Path $PSScriptRoot '../../../tests/acceptance/desktop_drafts.ps1')
+}
 if ($ReleaseCases) {
     if (!$Extended) { throw 'Release cases require the persisted extended image fixture' }
     . (Join-Path $PSScriptRoot '../../../tests/acceptance/workspace_release.ps1')
@@ -61,6 +65,14 @@ try {
         $hwnd = Wait-Until { $app.Refresh(); if ($app.MainWindowHandle -ne [IntPtr]::Zero) { $app.MainWindowHandle } } 'WinUI window'
         $main = $ae::FromHandle($hwnd)
         Element StopEngine | Out-Null
+        if ($DraftCases) {
+            Test-DesktopDrafts $iteration
+            if (!$app.WaitForExit(15000) -or $app.ExitCode -ne 0) { throw 'Draft test did not close cleanly' }
+            if ($iteration -eq 2 -and (Get-FileHash -LiteralPath (Join-Path $env:SIDECAR_DATA_DIR 'catalog/current.json')).Hash -ne $observations.beforeDiscard) {
+                throw 'Discard changed the persisted script'
+            }
+            continue
+        }
         foreach ($entry in @(@('NavImages','StartSelection'),@('NavTargets','TargetName'),@('NavRecognition','TestRecognition'),@('NavScripts','ScriptSource'))) {
             Select-Element (Element $entry[0])
             Wait-Until { Find-Element $entry[1] } $entry[1] | Out-Null

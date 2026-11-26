@@ -305,9 +305,7 @@ class ConditionTreeEvaluator:
 
     def _invoke_provider(self, leaf: LeafSpec, frame: Any, template_image_id: Optional[str],
                          cancel: Any, roi: Any) -> Any:
-        provider = self._registry.provider_for(leaf.type)
-        if provider is None:
-            raise self._provider_unavailable_error(leaf.type)
+        provider = self._registry.require_provider(leaf.type)
         params = dict(leaf.params or {})
         if leaf.type in ("template", "contour"):
             if not isinstance(template_image_id, str) or not template_image_id:
@@ -320,28 +318,6 @@ class ConditionTreeEvaluator:
             with self._registry.serial_lock(provider):
                 return provider.recognize(frame, params, cancel, roi=roi)
         return provider.recognize(frame, params, cancel, roi=roi)
-
-    def _provider_unavailable_error(self, condition_type: str) -> RecognitionError:
-        """与 ``VisionService._execute_provider`` 同口径的能力错误（06，不新造同义码）。"""
-        code = None
-        unavailable_code = getattr(self._registry, "unavailable_code", None)
-        if callable(unavailable_code):
-            code = unavailable_code(condition_type)
-        if code == "ENGINE_UNAVAILABLE":
-            return RecognitionError(
-                "ENGINE_UNAVAILABLE",
-                "识别引擎不可用：条件类型 %s 的 Provider 依赖缺失" % condition_type,
-                retryable=False,
-            )
-        if code == "MODEL_UNAVAILABLE":
-            return RecognitionError(
-                "MODEL_UNAVAILABLE",
-                "识别模型不可用：条件类型 %s 的 Provider 缺已安装模型" % condition_type,
-                retryable=False,
-            )
-        return RecognitionError(
-            "CAPABILITY_DENIED", "无就绪 Provider 覆盖条件类型 %s" % condition_type
-        )
 
     # -- Match 构造 ----------------------------------------------------------
 

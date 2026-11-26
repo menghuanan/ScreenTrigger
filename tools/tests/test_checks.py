@@ -178,6 +178,76 @@ class GateTests(unittest.TestCase):
         save(receipt, record)
         self.assertIn("evidence missing or hash mismatch", " ".join(evaluate(self.root)["errors"]))
 
+    def test_void_receipt_needs_linked_retest_and_regression_on_same_candidate(self):
+        key, regression = "TASK-005.CONTRACT", "TASK-005.REGRESSION"
+        path = self.root / "backend/main.py"
+        missing = file_ref(self.root, "backend/main.py")
+        original = self.record(key)
+        original["evidence"].append(missing)
+        run_id = original["run_id"]
+        receipt_path = self.root / "reports/evidence" / (run_id + ".json")
+        save(receipt_path, original)
+        saved = file_ref(self.root, receipt_path)
+        inventory = "reports/raw/retirements.json"
+        save(self.root / inventory, [dict(run_id=run_id, check_id=key, receipt_sha256=saved["sha256"],
+                                          missing_sources=[missing], regression_checks=[regression])])
+        self.state["scope_changes"].append(dict(id="synthetic-decision", reason="Synthetic scope test", approved_by="fixture",
+            approved_at=self.clock.isoformat(), version="fixture", expires_at="9999-12-31T00:00:00+00:00",
+            confirmation=self.raw, retired_inventory=file_ref(self.root, inventory), affected_checks=[key, regression]))
+        self.state["release_artifact"] = self.raw
+        self.state_save()
+        path.write_bytes(b"new")
+        self.base = baseline(self.root)["sha256"]
+        report = evaluate(self.root)
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["retired_receipts"][0]["pending_retests"], [key, regression])
+        new = self.record(key, artifact=self.raw)
+        self.record(regression, artifact=self.raw)
+        self.assertEqual(evaluate(self.root)["retired_receipts"][0]["pending_retests"], [key])
+        new["retested_original_runs"] = [run_id]
+        save(self.root / "reports/evidence" / (new["run_id"] + ".json"), new)
+        self.assertEqual(evaluate(self.root)["retired_receipts"][0]["pending_retests"], [])
+        self.state["release_artifact"] = file_ref(self.root, "backend/main.py")
+        self.state_save()
+        self.assertEqual(evaluate(self.root)["retired_receipts"][0]["pending_retests"], [key, regression])
+        original["actual"] += " altered"
+        save(receipt_path, original)
+        self.assertIn("retirement receipt missing, changed or ineligible", " ".join(evaluate(self.root)["errors"]))
+
+    def test_recovered_source_requires_original_path_baseline_and_exact_bytes(self):
+        name = "backend/main.py"
+        source = self.root / name
+        original = source.read_bytes()
+        receipt = self.record("TASK-004.OUTPUT.01")
+        ref = file_ref(self.root, name)
+        receipt["evidence"].append(ref)
+        saved = self.root / "reports/evidence" / (receipt["run_id"] + ".json")
+        save(saved, receipt)
+        files = baseline(self.root)["files"]
+        manifest = self.root / "reports/raw/history-baselines" / (self.base + ".json")
+        save(manifest, files)
+        snapshot = self.root / "reports/raw/history-source-sha256" / ref["sha256"]
+        snapshot.parent.mkdir()
+        snapshot.write_bytes(original)
+        source.write_bytes(original + b"\n")
+        report = evaluate(self.root)
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(report["checks"][receipt["check_id"]]["status"], "STALE")
+
+        ref["path"] = "backend/missing.py"
+        save(saved, receipt)
+        self.assertIn("evidence missing or hash mismatch", " ".join(evaluate(self.root)["errors"]))
+        ref["path"] = name
+        receipt["baseline"] = report["baseline"]
+        save(saved, receipt)
+        self.assertIn("evidence missing or hash mismatch", " ".join(evaluate(self.root)["errors"]))
+        receipt["baseline"] = self.base
+        save(saved, receipt)
+        snapshot.write_bytes(b"different bytes")
+        self.assertIn("evidence missing or hash mismatch", " ".join(evaluate(self.root)["errors"]))
+        save(manifest, {name: ref["sha256"]})
+        self.assertIn("Invalid historical source manifest", " ".join(evaluate(self.root)["errors"]))
+
     def test_previous_document_snapshot_cannot_accept_a_current_run_or_replace_raw_output(self):
         key = "TASK-003.CONTRACT"
         record = self.record(key)

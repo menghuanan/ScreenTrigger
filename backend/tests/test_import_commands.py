@@ -39,7 +39,7 @@ class ImportCommandTest(unittest.TestCase):
         self.cap = make_service(
             displays=[display("d1", 0, 0, 800, 600, primary=True)], store=self.store
         )
-        png = encode_png_bgr(bytes(4 * 3 * 3), 4, 3)
+        png = encode_png_bgr(bytes(range(4 * 3 * 3)), 4, 3)
         self.authority = FakeTokenAuthority({"good": "C:/pick/a.png", "bad": "C:/pick/bad.png"})
         self.reader = FakeFileReader({"C:/pick/a.png": png, "C:/pick/bad.png": corrupt_crc_png()})
         self.import_service = ImageImportService(
@@ -87,6 +87,31 @@ class ImportCommandTest(unittest.TestCase):
         self.assertFalse(response["success"])
         self.assertEqual(response["error"]["code"], "INVALID_PARAMS")
         self.assertEqual(response["error"]["details"]["field"], "import_token")
+
+    def test_crop_preserves_source_and_uses_original_pixel_coordinates(self):
+        source = self._request("import_image", {"import_token": "good"})["data"]["image"]
+        result = self._request("crop_image", dict(image_id=source["image_id"], x=2, y=1, width=2, height=2), "crop")
+        cropped = result["data"]["image"]
+        self.assertEqual((cropped["width"], cropped["height"], cropped["format"]), (2, 2, "png"))
+        self.assertEqual(self.store.get(cropped["image_id"]).data, bytes(range(18, 24)) + bytes(range(30, 36)))
+        self.assertEqual(self.store.get(source["image_id"]).data, bytes(range(36)))
+        frame = self.store.get_frame(cropped["image_id"])
+        self.assertEqual((frame.space, frame.origin.x, frame.origin.y, frame.binding_id), ("image_pixel", 0, 0, None))
+        self.assertNotEqual(frame.frame_id, self.store.get_frame(source["image_id"]).frame_id)
+
+    def test_crop_rejects_invalid_rectangle_and_expired_or_screen_sources(self):
+        image = self._request("import_image", {"import_token": "good"})["data"]["image"]
+        valid = dict(image_id=image["image_id"], x=0, y=0, width=4, height=3)
+        for n, (key, value) in enumerate([("x", -1), ("y", False), ("width", 0), ("height", 4), ("x", 1), ("path", "a.png")]):
+            with self.subTest(key=key, value=value):
+                reply = self._request("crop_image", {**valid, key: value}, "bad%d" % n)
+                self.assertEqual(reply["error"]["code"], "INVALID_PARAMS")
+        from backend.capture.ports import RawImage
+        screen = self.store.put(RawImage(width=4, height=3, data=bytes(36)))
+        reply = self._request("crop_image", {**valid, "image_id": screen.image_id}, "screen")
+        self.assertEqual(reply["error"]["code"], "INVALID_PARAMS")
+        self.store.release(image["image_id"])
+        self.assertEqual(self._request("crop_image", valid, "expired")["error"]["code"], "IMAGE_EXPIRED")
 
     def test_unknown_token(self) -> None:
         response = self._request("import_image", {"import_token": "nope"})

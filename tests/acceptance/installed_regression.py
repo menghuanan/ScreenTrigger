@@ -1,4 +1,5 @@
 """Run existing component assertions against the installed backend, grouped by acceptance scenario."""
+import argparse
 import importlib.util
 import json
 from pathlib import Path
@@ -16,7 +17,7 @@ GROUPS = {
     "TEST-005": ["input_proxy","script_hostapi"],
     "TEST-006": ["frame_registration","capture_gdi_flag"],
     "TEST-007": ["execution_runtime","script_commands"],
-    "TEST-008": ["lua_cancel","vision_worker_cancel","vision_jobs"],
+    "TEST-008": ["lua_cancel","vision_worker_cancel","vision_jobs","inference_lifecycle"],
     "TEST-009": ["debug_service"],
     "TEST-010": ["json_bridge","script_hostapi","scripts_contract"],
     "TEST-011": ["monitor_scheduler"],
@@ -28,11 +29,16 @@ GROUPS = {
 }
 
 
-def main():
-    output = Path(sys.argv[1])
-    output.mkdir(exist_ok=False)
-    install = resources()
+def bind_external_tests():
+    # A spawned interpreter inherits the mutated sys.path of the current test.
+    # Legacy fixtures add the checkout root to find helper modules. Remove it
+    # before importing even backend.main in the candidate identity check.
+    checkout = ROOT.resolve()
+    sys.path[:] = [entry for entry in sys.path if Path(entry or ".").resolve() != checkout]
+    installed_backend = Path(sys.executable).resolve().parents[1] / "backend"
     import backend
+    backend.__path__ = [str(installed_backend)]
+    install = resources()
     # Some legacy test modules prepend the checkout to sys.path. Freeze this
     # namespace package's product path before loading their external fixtures.
     backend.__path__ = [str(install / "backend")]
@@ -43,8 +49,20 @@ def main():
     sys.modules["backend.tests"] = package
     backend.tests = package
     spec.loader.exec_module(package)
+    return install, tests
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--modules", nargs="+")
+    options = parser.parse_args()
+    output = options.output
+    output.mkdir(exist_ok=False)
+    install, tests = bind_external_tests()
     by_module = {}
-    for module in sorted({name for names in GROUPS.values() for name in names}):
+    modules = options.modules or sorted({name for names in GROUPS.values() for name in names})
+    for module in modules:
         suite = unittest.defaultTestLoader.loadTestsFromName("backend.tests.test_"+module)
         with (output/(module+".log")).open("x",encoding="utf8") as stream:
             result = unittest.TextTestRunner(stream=stream,verbosity=2).run(suite)
@@ -54,7 +72,8 @@ def main():
     unexpected = [name for name, mod in sys.modules.items() if (name=="backend" or name.startswith("backend."))
                   and not name.startswith("backend.tests") and getattr(mod,"__file__",None)
                   and not Path(mod.__file__).resolve().is_relative_to(install)]
-    save(output/"metrics.json",dict(manifest=sha(install.parent/"package.json"),groups=GROUPS,modules=by_module,
+    tested = {group:[n for n in names if n in by_module] for group,names in GROUPS.items()}
+    save(output/"metrics.json",dict(manifest=sha(install.parent/"package.json"),groups=tested,modules=by_module,
                                    unexpected_backend_modules=unexpected))
     failures = sum(len(m["failed"])+len(m["errors"]) for m in by_module.values())
     print(json.dumps(dict(cases=sum(m["cases"] for m in by_module.values()),failed_or_error=failures,
@@ -62,5 +81,8 @@ def main():
     return int(bool(failures or unexpected))
 
 
-if __name__=="__main__":
+if __name__ == "__mp_main__":
+    # Windows spawn must resolve the same fixture factory inside a provider child.
+    bind_external_tests()
+elif __name__=="__main__":
     raise SystemExit(main())

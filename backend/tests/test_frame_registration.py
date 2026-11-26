@@ -235,6 +235,7 @@ class AssemblyStoreSharingTest(unittest.TestCase):
             args, repository=repository, image_store=image_store
         )
         # 默认解析器为 StoreFrameResolver，且包裹**同一** store
+        self.addCleanup(vision_service.close)
         self.assertIsInstance(vision_service._frames, StoreFrameResolver)  # noqa: SLF001
         self.assertIs(vision_service._frames._store, image_store)  # noqa: SLF001
         # 行为：capture 登记 → vision 解析出真实 screen_physical

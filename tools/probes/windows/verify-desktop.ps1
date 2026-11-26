@@ -161,6 +161,28 @@ try {
             [ordered]@{pid=$_.Id; name=$_.ProcessName; image=$_.Path; rss=$_.WorkingSet64; private_bytes=$_.PrivateMemorySize64}
         })
         $observations.modules = @((Get-Process -Id $app.Id).Modules | ForEach-Object ModuleName)
+        $install = Split-Path $exe -Parent
+        if (Test-Path -LiteralPath (Join-Path $install 'package.json')) {
+            $loaded = @((Get-Process -Id $app.Id).Modules)
+            $runtimePaths = [ordered]@{}
+            foreach ($name in 'coreclr.dll','Microsoft.UI.Xaml.dll','screen_trigger_lib.dll') {
+                $path = @($loaded | Where-Object ModuleName -eq $name | ForEach-Object FileName)
+                if ($path.Count -ne 1 -or $path[0] -ne (Join-Path $install $name)) {
+                    throw "Unexpected loaded runtime path for $name"
+                }
+                $runtimePaths[$name] = $path[0]
+            }
+            $engines = @(Get-Process -Id $childIds | Where-Object Path -eq (Join-Path $install 'resources/python/python.exe'))
+            if (!$engines.Count) {throw 'Packaged interpreter missing from the running process tree'}
+            foreach ($engine in $engines) {
+                $dll = @($engine.Modules | Where-Object ModuleName -eq 'python313.dll' | ForEach-Object FileName)
+                if ($dll.Count -ne 1 -or $dll[0] -ne (Join-Path $install 'resources/python/python313.dll')) {
+                    throw 'Unexpected loaded CPython library path'
+                }
+                $runtimePaths["python-$($engine.Id)"] = @($engine.Path,$dll[0])
+            }
+            $observations.runtimePaths = $runtimePaths
+        }
         if ($observations.processes.name -match 'msedgewebview2') { throw 'Unexpected WebView2 process' }
         foreach ($iteration in 1,2,3) {
             if ($iteration -eq 3) {

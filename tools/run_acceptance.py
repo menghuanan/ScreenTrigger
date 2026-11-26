@@ -107,12 +107,34 @@ def verify_file(root, ref):
         return False
 
 
-def verify_run_evidence(root, ref, source_files):
+def historical_manifest(root, baseline_id):
+    """Bind a saved source manifest to the baseline hash in the original receipt."""
+    if not isinstance(baseline_id, str) or len(baseline_id) != 64 or any(c not in "0123456789abcdef" for c in baseline_id):
+        return {}
+    path = local(root, f"reports/raw/history-baselines/{baseline_id}.json")
+    if not path.is_file():
+        return {}
+    files = load(path)
+    if not isinstance(files, dict) or hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest() != baseline_id:
+        raise ValueError(f"Invalid historical source manifest: {baseline_id}")
+    return files
+
+
+def verify_run_evidence(root, ref, source_files, archived_files=None):
     if verify_file(root, ref):
         return True
     if not source_files or not isinstance(ref, dict):
         return False
     name, sha = ref.get("path"), ref.get("sha256")
+    if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+        return False
+    # Both the historical manifest and receipt must independently identify the same file.
+    if (archived_files and isinstance(name, str) and archived_files.get(name) == sha
+            and name.startswith(("src/", "src-tauri/", "backend/", "desktop/", "native/", "models/",
+                                 "manifest/", "tools/", "schema/", "tests/", "docs/"))
+            and not name.startswith("docs/archive/") and name != STATE):
+        if verify_file(root, {"path": f"reports/raw/history-source-sha256/{sha}", "sha256": sha}):
+            return True
     if (not isinstance(name, str) or not name.startswith("docs/")
             or name.startswith("docs/archive/") or not name.endswith(".md")):
         return False
@@ -120,14 +142,12 @@ def verify_run_evidence(root, ref, source_files):
         original = name.removeprefix("docs/")
         if original not in ARCHIVED_DESIGNS or f"docs/archive/initial-development/{original}" not in source_files:
             return False
-    if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
-        return False
     # Only a previous run's mutable specification can use an exact-byte snapshot.
     snapshot = f"reports/raw/doc-sha256/{sha}.md"
     return verify_file(root, {"path": snapshot, "sha256": sha})
 
 
-def record_errors(root, record, model, historical_sources=None):
+def record_errors(root, record, model, historical_sources=None, archived_files=None, verify_artifact=verify_file):
     errors = []
     if not isinstance(record, dict):
         return ["evidence record must be an object"]
@@ -171,9 +191,9 @@ def record_errors(root, record, model, historical_sources=None):
     evidence = record.get("evidence", [])
     if record.get("status") in ("PASS", "FAIL", "N/A") and not evidence:
         errors.append("raw evidence required")
-    if not isinstance(evidence, list) or not all(verify_run_evidence(root, ref, historical_sources) for ref in evidence):
+    if not isinstance(evidence, list) or not all(verify_run_evidence(root, ref, historical_sources, archived_files) for ref in evidence):
         errors.append("evidence missing or hash mismatch")
-    if record.get("artifact") is not None and not verify_file(root, record["artifact"]):
+    if record.get("artifact") is not None and not verify_artifact(root, record["artifact"]):
         errors.append("artifact missing or hash mismatch")
     if record.get("status") in ("PASS", "N/A"):
         review = record.get("review", {})
@@ -204,19 +224,73 @@ def validate_state(state, model):
     return errors
 
 
+def receipt_retirements(root, state, model):
+    entries = {}
+    for change in state["scope_changes"]:
+        ref = change.get("retired_inventory")
+        if ref is None:
+            continue
+        if not verify_file(root, ref) or not verify_file(root, change.get("confirmation")):
+            raise ValueError("Historical retirement inventory or authorization has changed")
+        for item in load(local(root, ref["path"])):
+            rid = item["run_id"]
+            checks = [item["check_id"], *item["regression_checks"]]
+            if (rid in entries or not item["regression_checks"] or not item["missing_sources"]
+                    or any(k not in model["checks"] or k not in change["affected_checks"] for k in checks)):
+                raise ValueError(f"Invalid historical retirement entry: {rid}")
+            entries[rid] = dict(item, approved_at=change["approved_at"])
+    return entries
+
+
+def matches_retired_receipt(root, path, record, item, sources, archived):
+    if (record["status"] not in ("PASS", "BLOCKED") or record["check_id"] != item["check_id"]
+            or path.name != record["run_id"] + ".json" or digest(path) != item["receipt_sha256"]):
+        return False
+    allowed = {(ref["path"], ref["sha256"]) for ref in item["missing_sources"]}
+    refs = record.get("evidence", [])
+    # Raw output, archives, user authorizations and package files must still verify.
+    if not allowed <= {(r["path"], r["sha256"]) for r in refs} or any(
+            not name.startswith(("backend/", "docs/", "schema/", "src/", "src-tauri/")) or
+            name.startswith("docs/archive/") or name == STATE for name, _ in allowed):
+        return False
+    return all((r["path"], r["sha256"]) in allowed or verify_run_evidence(root, r, sources, archived)
+               for r in refs)
+
+
 def evaluate(root, scope="baseline", task_id=None):
     model, state, current = build(root), load(root / STATE), baseline(root)
     errors = validate_state(state, model)
     docs = validate_docs(root)
     errors += docs["errors"]
     records = {}
+    archived_manifests = {}
+    artifact_results = {}
+
+    def verify_shared_artifact(folder, ref):
+        if not isinstance(ref, dict) or not all(isinstance(ref.get(k), str) for k in ("path", "sha256")):
+            return False
+        key = (ref["path"], ref["sha256"])
+        if key not in artifact_results:
+            artifact_results[key] = verify_file(folder, ref)
+        return artifact_results[key]
+
+    retired = receipt_retirements(root, state, model)
+    seen_retired = set()
     per_check = {key: [] for key in model["checks"]}
     for path in sorted((root / "reports/evidence").glob("*.json")):
         try:
             record = load(path)
             previous = isinstance(record, dict) and record.get("baseline") != current["sha256"]
-            invalid = record_errors(root, record, model, current["files"] if previous else None)
+            old_baseline = record.get("baseline") if previous else None
+            if old_baseline and old_baseline not in archived_manifests:
+                archived_manifests[old_baseline] = historical_manifest(root, old_baseline)
+            invalid = record_errors(root, record, model, current["files"] if previous else None,
+                                    archived_manifests.get(old_baseline), verify_shared_artifact)
             rid = record.get("run_id")
+            if rid in retired and previous and invalid in ([], ["evidence missing or hash mismatch"]):
+                if matches_retired_receipt(root, path, record, retired[rid], current["files"], archived_manifests.get(old_baseline)):
+                    seen_retired.add(rid)
+                    continue
             if rid in records:
                 invalid.append("duplicate run ID")
             if invalid:
@@ -319,6 +393,23 @@ def evaluate(root, scope="baseline", task_id=None):
             blocked_checks.add(record["check_id"])
             issue_rows.append({"id": f"UNTRIAGED:{rid}", "status": "OPEN", "owner": model["checks"][record["check_id"]]["owner"],
                                "errors": ["Failed attempt must be linked to an issue; retry cannot erase it"]})
+    retirement_rows = []
+    for rid, item in retired.items():
+        if rid not in seen_retired:
+            errors.append(f"Historical retirement receipt missing, changed or ineligible: {rid}")
+        pending = []
+        for key in [item["check_id"], *item["regression_checks"]]:
+            row = result[key]
+            new = records.get(row["run_id"], {})
+            if (row["status"] != "PASS" or not state.get("release_artifact")
+                    or new.get("artifact") != state["release_artifact"]
+                    or stamp(new["started_at"]) < stamp(item["approved_at"])
+                    or (key == item["check_id"] and rid not in new.get("retested_original_runs", []))):
+                pending.append(key)
+        if pending or rid not in seen_retired:
+            blocked_checks.add(item["check_id"])
+        retirement_rows.append(dict(run_id=rid, status="VOID", check_id=item["check_id"],
+                                    original_preserved=rid in seen_retired, pending_retests=pending))
     for key in blocked_checks:
         if key in result:
             result[key]["status"] = "BLOCKED"
@@ -429,6 +520,11 @@ def evaluate(root, scope="baseline", task_id=None):
         requirement_rows[uid] = {"tasks": item["tasks"], "tests": item["tests"],
                                  "status": "PASS" if all(task_rows[t]["acceptance"] == "VERIFIED" for t in item["tasks"])
                                  and all(accepted(c) for c in test_checks) else "NOT_VERIFIED"}
+    # A release ZIP may be referenced by hundreds of receipts. Recheck the bytes
+    # before issuing the audit so that changes during a shared verification fail it.
+    for (name, sha), valid in artifact_results.items():
+        if valid and not verify_file(root, {"path": name, "sha256": sha}):
+            errors.append(f"Artifact changed during audit: {name}")
     ready = not errors and all(task_rows[t]["acceptance"] == "VERIFIED" for t in selected_tasks) and all(accepted(k) for k in selected_checks)
     if full_release and any(i["status"] != "CLOSED" for i in issue_rows):
         ready = False
@@ -440,7 +536,7 @@ def evaluate(root, scope="baseline", task_id=None):
                 implementation_counts=dict(Counter(task_rows[t]["implementation"] for t in selected_tasks)),
                 verified_tasks=sum(task_rows[t]["acceptance"] == "VERIFIED" for t in selected_tasks),
                 task_denominator=len(selected_tasks), tasks=task_rows, checks=result,
-                requirements=requirement_rows, issues=issue_rows,
+                requirements=requirement_rows, issues=issue_rows, retired_receipts=retirement_rows,
                 release_artifact=state.get("release_artifact"),
                 limits=["Baseline PASS validates documentation/registry integrity only; it does not accept product functionality.",
                         "Task-level partial tests cannot satisfy full TEST groups.",

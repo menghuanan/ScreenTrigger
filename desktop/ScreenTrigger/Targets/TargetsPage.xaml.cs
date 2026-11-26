@@ -6,7 +6,7 @@ using ScreenTrigger.Host;
 
 namespace ScreenTrigger.Targets;
 
-public sealed partial class TargetsPage : UserControl
+public sealed partial class TargetsPage : UserControl, IWorkspaceDraft
 {
     private readonly WorkspaceCommands commands;
     private readonly Func<ImageRef?> image;
@@ -15,6 +15,8 @@ public sealed partial class TargetsPage : UserControl
     private CatalogItem? edited;
     private int offset;
     private string originalDraft = "";
+    private CatalogItem? editedGroup;
+    private bool populatingGroups;
 
     internal TargetsPage(HostClient host, Func<ImageRef?> image, Action<object> test)
     {
@@ -22,6 +24,7 @@ public sealed partial class TargetsPage : UserControl
         InitializeComponent();
         commands = new(host, this, Feedback);
         Conditions.Text = InitialConditions;
+        originalDraft = EditorSnapshot();
         Loaded += Initialize;
     }
 
@@ -40,7 +43,10 @@ public sealed partial class TargetsPage : UserControl
         Fill(Filter, [new("*", "全部分组"), new(null, "未分组"), .. groups]);
         Fill(TargetGroup, [new(null, "未分组"), .. groups]);
         Fill(ParentGroup, [new(null, "顶层"), .. groups]);
-        Fill(Groups, groups);
+        bool wasPopulating = populatingGroups;
+        populatingGroups = true;
+        try { Fill(Groups, groups); EditGroup(Groups.SelectedItem as CatalogItem); }
+        finally { populatingGroups = wasPopulating; }
     }
 
     private static void Fill(ComboBox box, List<CatalogItem> rows)
@@ -65,8 +71,17 @@ public sealed partial class TargetsPage : UserControl
     }
     private string EditorSnapshot() => JsonSerializer.Serialize(new { TargetName.Text, group = Id(TargetGroup),
         anchor = Anchor.Text, conditions = Conditions.Text, storage = Storage.SelectedIndex, replace = ReplaceImage.IsChecked });
-    private async Task<bool> CanReplaceDraft() => originalDraft == EditorSnapshot() ||
-        await commands.Confirm("放弃当前目标草稿？", "打开其他目标后，尚未保存的编辑将丢失。", "放弃草稿");
+    private bool TargetChanged => originalDraft != EditorSnapshot();
+    private bool GroupChanged => GroupName.Text != (editedGroup?.Document.GetProperty("name").GetString() ?? "") ||
+        Id(ParentGroup) != editedGroup?.Document.GetProperty("parent_group_id").GetString();
+    bool IWorkspaceDraft.HasChanges => TargetChanged || GroupChanged;
+    Task IWorkspaceDraft.WhenIdle => commands.WhenIdle;
+    Task<bool> IWorkspaceDraft.ResolveChanges() => commands.Guard(async () =>
+        await CanReplaceDraft() && await CanReplaceGroup());
+    private Task<bool> CanReplaceDraft() => TargetChanged ?
+        commands.ResolveDraft("目标", SaveDraft, () => Edit(edited?.Document)) : Task.FromResult(true);
+    private Task<bool> CanReplaceGroup() => GroupChanged ?
+        commands.ResolveDraft("分组", SaveGroup, () => EditGroup(editedGroup)) : Task.FromResult(true);
 
     private void Edit(JsonElement? target)
     {
@@ -92,6 +107,24 @@ public sealed partial class TargetsPage : UserControl
         return fields;
     }
 
+    private async Task SaveDraft()
+    {
+        var saved = edited == null ? await commands.Call("create_target", new { draft = Fields(true) }) :
+            await commands.Call("update_target", new { target_id = edited.Id, expected_revision = edited.Revision,
+                patch = Fields(ReplaceImage.IsChecked == true) });
+        Edit(saved.GetProperty("target"));
+        await List();
+        Feedback.Text = $"已保存目标 #{edited!.Document.GetProperty("sample_no")}";
+    }
+
+    private async Task SaveGroup()
+    {
+        if (editedGroup == null) await commands.Call("create_group", new { name = GroupName.Text, parent_group_id = Id(ParentGroup) });
+        else await commands.Call("update_group", new { group_id = editedGroup.Id, expected_revision = editedGroup.Revision,
+            name = GroupName.Text, parent_group_id = Id(ParentGroup) });
+        await LoadGroups();
+    }
+
     private async void Action(object sender, RoutedEventArgs args) => await commands.Run(async () =>
     {
         switch (((Button)sender).Tag as string)
@@ -105,10 +138,7 @@ public sealed partial class TargetsPage : UserControl
                     Edit((await commands.Call("get_target", new { target_id = current.Id })).GetProperty("target"));
                 break;
             case "save":
-                var saved = edited == null ? await commands.Call("create_target", new { draft = Fields(true) }) :
-                    await commands.Call("update_target", new { target_id = edited.Id, expected_revision = edited.Revision,
-                        patch = Fields(ReplaceImage.IsChecked == true) });
-                Edit(saved.GetProperty("target")); await List(); Feedback.Text = $"已保存目标 #{edited!.Document.GetProperty("sample_no")}"; break;
+                await SaveDraft(); break;
             case "delete":
                 if (edited != null && await commands.Confirm("删除目标？", edited.Label, "删除"))
                 { await commands.Call("delete_target", new { target_id = edited.Id, expected_revision = edited.Revision }); Edit(null); await List(); }
@@ -116,21 +146,45 @@ public sealed partial class TargetsPage : UserControl
             case "test": test(Fields(true)); break;
             case "group-new": await commands.Call("create_group", new { name = GroupName.Text, parent_group_id = Id(ParentGroup) }); await LoadGroups(); break;
             case "group-save":
-                if (Groups.SelectedItem is CatalogItem g)
-                { await commands.Call("update_group", new { group_id = g.Id, expected_revision = g.Revision, name = GroupName.Text, parent_group_id = Id(ParentGroup) }); await LoadGroups(); }
-                break;
+                await SaveGroup(); break;
             case "group-delete":
                 if (Groups.SelectedItem is CatalogItem del && await commands.Confirm("删除分组？", $"「{del.Label.Trim()}」中的目标将移入未分组。", "删除"))
-                { await commands.Call("delete_group", new { group_id = del.Id, expected_revision = del.Revision }); await LoadGroups(); await List(); }
+                {
+                    bool refreshEdited = !TargetChanged && edited?.Document.GetProperty("group_id").GetString() == del.Id;
+                    await commands.Call("delete_group", new { group_id = del.Id, expected_revision = del.Revision });
+                    await LoadGroups();
+                    if (refreshEdited && edited != null)
+                        Edit((await commands.Call("get_target", new { target_id = edited.Id })).GetProperty("target"));
+                    await List();
+                }
                 break;
         }
     });
 
-    private void SelectGroup(object sender, SelectionChangedEventArgs e)
+    private async void SelectGroup(object sender, SelectionChangedEventArgs e)
     {
-        if (Groups.SelectedItem is not CatalogItem group) return;
-        GroupName.Text = group.Document.GetProperty("name").GetString()!;
-        var parent = group.Document.GetProperty("parent_group_id").GetString();
+        if (populatingGroups) return;
+        var next = Groups.SelectedItem as CatalogItem;
+        if (GroupChanged)
+        {
+            populatingGroups = true;
+            try
+            {
+                Groups.SelectedItem = editedGroup;
+                if (!await commands.Guard(CanReplaceGroup)) return;
+                next = Groups.Items.Cast<CatalogItem>().FirstOrDefault(g => g.Id == next?.Id);
+                Groups.SelectedItem = next;
+            }
+            finally { populatingGroups = false; }
+        }
+        EditGroup(next);
+    }
+
+    private void EditGroup(CatalogItem? group)
+    {
+        editedGroup = group;
+        GroupName.Text = group?.Document.GetProperty("name").GetString() ?? "";
+        var parent = group?.Document.GetProperty("parent_group_id").GetString();
         ParentGroup.SelectedItem = ParentGroup.Items.Cast<CatalogItem>().FirstOrDefault(g => g.Id == parent);
     }
     private void ConditionsChanged(object sender, TextChangedEventArgs e)

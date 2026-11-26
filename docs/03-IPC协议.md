@@ -73,12 +73,13 @@ InputAction 为带 kind 的对象：move `{x,y,duration_ms}`；click `{x,y,butto
 | query_request | {request_id:string} | {status:pending/completed/unknown,response:object或null} | 只查询同会话 |
 | cancel_request | {request_id:string} | {cancelled:boolean,reason:string} | 幂等 |
 | cancel_job | {job_id:string} | {cancelled:boolean} | 终态取消为 false；未知 job_id 亦返回 cancelled=false（幂等） |
-| get_job | {job_id:string} | {status,result,error} | result 为对应识别结果或 null |
+| get_job | {job_id:string} | {status,result,error} | 会话内可查询进行中的作业及最近 256 个终态作业。终态自结束起最多保留 300 秒，先到数量或时间上限即淘汰，淘汰后返回 NOT_FOUND。查询不延长留存。 |
 | get_display_list | {} | {displays:DisplayInfo[]} | 物理像素 |
 | start_selection_mode | {display_id?:string} | {selection_id:string} | 受理不代表确认 |
 | confirm_selection | {selection_id:string,region:Region} | {image:ImageRef,region:Region} | 主窗口恢复后再结束 |
 | stop_selection_mode | {selection_id:string} | {ok:true} | 等价取消，恢复窗口 |
 | import_image | {import_token:string} | {image:ImageRef} | token 只由文件选择器生成 |
+| crop_image | {image_id:string,x:integer,y:integer,width:integer,height:integer} | {image:ImageRef} | 在已导入图或其裁剪副本的原尺寸像素中取半开矩形，左上角从零计。尺寸须为正且矩形完全在图内；越界报 INVALID_PARAMS。产生独立的 image_pixel 引用，保留源图。 |
 | capture_region | {region:Region} | {image:ImageRef,frame_id:string} | 当前 UI 会话；不改变运行区域 |
 | capture_full_screen | {display_id:string} | {image:ImageRef,frame_id:string} | 单显示器 |
 | capture_window | {binding_id:string} | {image:ImageRef,frame_id:string} | 可见前台客户区 |
@@ -173,7 +174,7 @@ Breakpoint=`{id,script_id,source_hash,line,enabled}`，line 为 ≥1 的可执�
 | preview_catalog_restore | {backup_id} | {job_id}；result 含 backup_id、generation、counts、expected_current、expected_backup、current_state |
 | restore_catalog_backup | {backup_id,expected_current,expected_backup} | {job_id}；result 含 generation、protection。成功后发送 catalog_changed |
 
-P3 新增上述四条命令，公开路由共 68 条。长操作用 get_job 查询。用户在确认恢复前可以取消对话框。存储写作业开始后 cancel_job 返回 cancelled=false，终态按实际指针提交结果记录。预览后当前指针或备份指纹改变返回 CONFLICT，客户端重新预览。CLI 复用相同的数据根锁、预览指纹和恢复实现。
+P3 新增上述四条备份命令，后续增加本地图像裁剪，当前公开路由共 69 条。长操作用 get_job 查询。用户在确认恢复前可以取消对话框。存储写作业开始后 cancel_job 返回 cancelled=false，终态按实际指针提交结果记录。预览后当前指针或备份指纹改变返回 CONFLICT，客户端重新预览。CLI 复用相同的数据根锁、预览指纹和恢复实现。
 
 输入通过 host_request/input_action 处理；不向 WinUI 客户端提供绕过 execution_id/lease 的裸 move_mouse/click_mouse/type_text 入口。手动输入测试需专用一次性 RunConfig，同样受停止与区域约束。旧 set_region_limit/clear_region_limit 已合并入启动配置，运行中不能扩权。热键注册归配置事务管理，不给 UI 任意 unregister 停止热键的命令。
 

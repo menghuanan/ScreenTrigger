@@ -188,6 +188,25 @@ class ErrorCodeClassificationTest(unittest.TestCase):
             service._execute_provider("recognize_text", {"image_id": "x"}, NullCancelToken())  # noqa: SLF001
         self.assertEqual(ctx.exception.code, "MODEL_UNAVAILABLE")
 
+    def test_corrupt_weights_and_initialization_failure_remain_distinct(self):
+        from backend.vision.condition_evaluator import ConditionTreeEvaluator
+        from types import SimpleNamespace
+
+        for expected in ("DATA_CORRUPT", "RECOGNITION_FAILED"):
+            with self.subTest(expected=expected):
+                def factory(pixels):
+                    return FakeProvider(make_manifest("p", condition_types=("ocr",)), pixels,
+                                        initialize_error=RecognitionError(expected, "fixture init failure"))
+                registry = ProviderRegistry(RecordingPixelReader(), factories={"p": factory})
+                registry.initialize_all(_models_dir())
+                with self.assertRaises(RecognitionError) as direct:
+                    self._service(registry)._execute_provider("recognize_text", {}, NullCancelToken())
+                with self.assertRaises(RecognitionError) as leaf:
+                    ConditionTreeEvaluator(registry=registry)._invoke_provider(
+                        SimpleNamespace(type="ocr"), None, None, NullCancelToken(), None)
+                self.assertEqual(direct.exception.code, expected)
+                self.assertEqual(leaf.exception.to_dict(), direct.exception.to_dict())
+
     def test_unassembled_is_capability_denied(self):
         registry = ProviderRegistry(RecordingPixelReader(), factories={})
         registry.initialize_all(_models_dir())

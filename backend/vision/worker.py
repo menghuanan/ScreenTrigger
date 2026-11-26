@@ -1,19 +1,8 @@
 # -*- coding: utf-8 -*-
-"""推理 worker 端口与线程实现（TASK-013 §7.2；超时/取消落点）。
+"""Coordinate recognition jobs and propagate per-call deadlines.
 
-设计：
-- ``WorkerRunner`` 端口正式命名（线程实现 + **进程实现预留**，Q2）；TASK-014/015 视原生
-  可中断性决定是否引入进程级实现；
-- ``ThreadInferenceWorker``：每个 job 一个**独立守护线程**执行 ``run``；**不阻塞** IPC reader
-  与输入闸门（命令 handler 只创建 job 即刻返回）；
-- ``DeadlineCancelToken``：基于**单调时钟**的 5s deadline（注入 ``monotonic`` 便于确定性测试），
-  与基础取消令牌（``JobBoundCancelToken``）合成；provider 的协作式取消点调用
-  ``cancel.throw_if_cancelled()`` 即感知超时；provider 返回/抛错后 runner 检查 ``timed_out()``
-  判定 ``RECOGNITION_TIMEOUT``（超时**丢弃结果**）；
-- **不可中断原生调用**（线程级实现局限）：`restart()` 为 **abandon 语义**（丢弃该 job 执行上下文，
-  守护线程泄漏至原生调用返回；**不阻塞**后续 job）。
-
-**不改** ``backend/ipc/jobs.py``/``dispatcher.py``。
+Each orchestration thread owns job state and waits on ProcessProvider. Native
+recognition runs in the provider child, which is killed on cancellation or timeout.
 """
 
 from __future__ import annotations
@@ -62,7 +51,7 @@ class DeadlineCancelToken:
 
 @runtime_checkable
 class WorkerRunner(Protocol):
-    """推理执行端口（线程实现 + 进程实现预留）。"""
+    """推理作业编排端口。"""
 
     def submit(self, run: Callable[[CancelToken], None], *, deadline_ms: int,
                cancel: Optional[CancelToken] = None) -> None:
@@ -70,7 +59,7 @@ class WorkerRunner(Protocol):
         ...
 
     def restart(self) -> None:
-        """超时/故障后清理/重启（线程级 = abandon）。"""
+        """登记超时重启；子进程由持有该调用的 ProcessProvider 清理。"""
         ...
 
     def shutdown(self, timeout: Optional[float] = None) -> None:
@@ -120,13 +109,13 @@ class ThreadInferenceWorker:
         with self._lock:
             self._threads = [item for item in self._threads if item.is_alive()]
             self._threads.append(thread)
-        thread.start()
+            thread.start()
 
     def restart(self) -> None:
-        """线程级重启 = abandon（丢弃执行上下文；不阻塞后续 job/闸门）。"""
+        """Record a timed-out orchestration; child ownership is per provider call."""
         with self._lock:
             self._restarts += 1
-        self._log("vision worker restart（线程级：abandon 已超时 job 的执行上下文）")
+        self._log("vision job 超时，丢弃结果")
 
     def shutdown(self, timeout: Optional[float] = None) -> None:
         """尽力 join 已知 worker 线程（守护线程，不强杀）。"""

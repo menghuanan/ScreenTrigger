@@ -26,8 +26,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from ...config.service import ConfigService
 from ...storage.errors import StorageError
 from ...storage.fsops import write_atomic_bytes
+from ...storage.paths import DataRoot
 from ...types.capabilities import ModelManifest, validate_model_manifest
 from ..types import RecognitionError
 
@@ -271,7 +273,10 @@ class OcrModelCatalog:
                 raise RecognitionError("MODEL_UNAVAILABLE", "模型不在目录中: %s" % model_id,
                                        retryable=False)
             for item in entry.files:
-                path = os.path.join(model_root, model_id, item.name)
+                try:
+                    path = DataRoot(model_root).resolve(os.path.join(model_id, item.name))
+                except StorageError as exc:
+                    raise RecognitionError("MODEL_UNAVAILABLE", exc.message) from exc
                 if not os.path.isfile(path):
                     raise RecognitionError(
                         "MODEL_UNAVAILABLE", "模型文件缺失: %s" % path, retryable=False
@@ -305,20 +310,28 @@ def _sha256_file(path: str) -> str:
 # 目录/模型库解析 + 元数据 seed（Q6）
 # ---------------------------------------------------------------------------
 
-def resolve_models_dir(data_dir: str, override: Optional[str] = None) -> Tuple[str, str]:
+def resolve_models_dir(data_dir: str, override: Optional[str] = None, *,
+                       config_service: Optional[ConfigService] = None) -> Tuple[str, str]:
     """解析 ``models_dir``（供 registry 读 ``models/<id>/manifest.json``）。
 
-    返回 ``(绝对路径, 来源标记)``；来源 ∈ ``{"config", "data_dir_default"}``（可审计）。
-    优先 ``--models-dir``/``ST_MODELS_DIR``；否则 ``<data_dir>/models/``。
+    显式调用参数优先，其次为设置页保存的非默认数据根相对目录。
+    默认目录兼容 ST_MODELS_DIR 及随包权重路径。
     """
-    from ..manifest import models_dir_for
-
-    chosen = override if override else os.environ.get(ENV_MODELS_DIR)
-    if chosen:
-        return os.path.abspath(chosen), "config"
+    if override:
+        return os.path.abspath(override), "config"
+    if data_dir:
+        # Startup recovery belongs to the same service backing the UI's get_config.
+        settings = config_service if config_service is not None else ConfigService(data_dir)
+        if os.path.isfile(settings.config_path):
+            directory = settings.load()["recognition"]["model_directory"]
+            if directory != "models":
+                return DataRoot(data_dir).resolve(directory), "settings"
+    env_dir = os.environ.get(ENV_MODELS_DIR)
+    if env_dir:
+        return os.path.abspath(env_dir), "config"
     if not data_dir:
         raise ValueError("resolve_models_dir 需要 data_dir 或 override")
-    return models_dir_for(data_dir), "data_dir_default"
+    return DataRoot(data_dir).resolve("models"), "data_dir_default"
 
 
 def resolve_library_root(override: Optional[str] = None) -> Tuple[str, str]:
@@ -347,9 +360,8 @@ def seed_repo_model_metadata(models_dir: str) -> List[str]:
         source = os.path.join(REPO_MODELS_DIR, model_id, MODEL_MANIFEST_NAME)
         if not os.path.isfile(source):
             continue
-        target_dir = os.path.join(models_dir, model_id)
-        target = os.path.join(target_dir, MODEL_MANIFEST_NAME)
         try:
+            target = DataRoot(models_dir).resolve(os.path.join(model_id, MODEL_MANIFEST_NAME))
             if os.path.isfile(target):
                 previous = _PREVIOUS_METADATA.get(model_id)
                 if not previous or os.path.islink(target):

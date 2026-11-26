@@ -23,6 +23,7 @@ public sealed partial class OverlayWindow : Window
     private readonly RectInt32 bounds;
     private readonly Action<string> showError;
     private readonly DispatcherQueueTimer timer;
+    private long periodTicks, nextPreviewTick;
     private readonly TaskCompletionSource loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly nint hwnd;
     private RectInt32 region;
@@ -31,16 +32,19 @@ public sealed partial class OverlayWindow : Window
     private double scale;
     private bool closed, reading, finishing, clearVisuals, active, hasPreview;
     private readonly bool measureTiming = Environment.GetEnvironmentVariable("ST_MEASURE_TIMING") == "1";
+    private readonly bool measureCadence = Environment.GetEnvironmentVariable("ST_MEASURE_PREVIEW_CADENCE") == "1";
+    private bool waitingForPresentation;
     internal string Id { get; }
 
-    internal OverlayWindow(HostClient host, string id, string display, RectInt32 bounds, Action<string> showError)
+    internal OverlayWindow(HostClient host, string id, string display, RectInt32 bounds, int previewHz, Action<string> showError)
     {
         this.host = host; Id = id; this.display = display; this.bounds = bounds; this.showError = showError;
         session = host.Events.Session ?? throw new InvalidOperationException("引擎会话已结束。");
         InitializeComponent();
         hwnd = WindowNative.GetWindowHandle(this);
         timer = DispatcherQueue.CreateTimer();
-        timer.Interval = TimeSpan.FromMilliseconds(100);
+        timer.IsRepeating = false;
+        SetPreviewFrequency(previewHz);
         timer.Tick += PreviewTick;
         Root.Loaded += (_, _) => loaded.TrySetResult();
         AppWindow.Closing += (_, args) => { if (!closed) { args.Cancel = true; Cancel(); } };
@@ -49,6 +53,27 @@ public sealed partial class OverlayWindow : Window
             if (e.WindowActivationState != WindowActivationState.Deactivated) active = true;
             else if (active && !closed) Cancel();
         };
+    }
+
+    internal void SetPreviewFrequency(int hz)
+    {
+        periodTicks = Stopwatch.Frequency / hz;
+        if (timer.IsRunning) StartPreviewTimer();
+    }
+
+    private void StartPreviewTimer()
+    {
+        nextPreviewTick = Stopwatch.GetTimestamp();
+        SchedulePreview();
+    }
+
+    private void SchedulePreview()
+    {
+        long now = Stopwatch.GetTimestamp();
+        long periods = Math.Max(1, (now - nextPreviewTick) / periodTicks + 1);
+        nextPreviewTick += periods * periodTicks;
+        timer.Interval = Stopwatch.GetElapsedTime(now, nextPreviewTick);
+        timer.Start();
     }
 
     internal async Task OpenAsync(CancellationToken token)
@@ -67,7 +92,8 @@ public sealed partial class OverlayWindow : Window
         scale = Root.XamlRoot.RasterizationScale;
         CheckDisplay();
         CancelButton.Focus(FocusState.Programmatic);
-        timer.Start();
+        if (measureCadence) CompositionTarget.Rendered += PreviewPresented;
+        StartPreviewTimer();
     }
 
     private void CheckDisplay()
@@ -140,7 +166,9 @@ public sealed partial class OverlayWindow : Window
 
     private async void PreviewTick(DispatcherQueueTimer sender, object args)
     {
-        if (reading || finishing || closed) return;
+        if (closed) return;
+        SchedulePreview();
+        if (reading || finishing) return;
         reading = true;
         var area = region;
         try
@@ -155,11 +183,19 @@ public sealed partial class OverlayWindow : Window
             var bitmap = await ImagePicker.DecodePreviewAsync(result.GetProperty("base64").GetString()!);
             if (closed || finishing || !area.Equals(region)) return;
             PreviewImage.Source = bitmap;
+            waitingForPresentation = measureCadence;
             hasPreview = true; ConfirmButton.IsEnabled = pointer == null;
             if (measureTiming) await ObservePresentedPreview();
         }
         catch (Exception ex) { if (!closed && !finishing) { showError(ex.Message); Cancel(); } }
         finally { reading = false; }
+    }
+
+    private void PreviewPresented(object? sender, object args)
+    {
+        if (!waitingForPresentation || closed) return;
+        waitingForPresentation = false;
+        Console.Error.WriteLine($"[preview-presented] {Stopwatch.GetTimestamp()} {Stopwatch.Frequency}");
     }
 
     private async Task ObservePresentedPreview()
@@ -211,6 +247,7 @@ public sealed partial class OverlayWindow : Window
     {
         if (closed) return;
         closed = true;
+        if (measureCadence) CompositionTarget.Rendered -= PreviewPresented;
         timer.Stop(); timer.Tick -= PreviewTick;
         pointer = null; Surface.ReleasePointerCaptures(); Close();
     }

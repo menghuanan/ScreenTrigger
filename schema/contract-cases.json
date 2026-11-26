@@ -935,6 +935,60 @@
       "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "timeout_script_id"}
     },
     {
+      "id": "type-group-blank-name-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust", "csharp"],
+      "typeName": "group",
+      "description": "非法分组字段返回 name。",
+      "value": {"id":"g","revision":1,"name":"   ","parent_group_id":null,"depth":0,"created_at":"2026-09-21T09:00:00Z","updated_at":"2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "name"}
+    },
+    {
+      "id": "type-group-depth-limit-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust", "csharp"],
+      "typeName": "group",
+      "description": "非法分组字段返回 depth。",
+      "value": {"id":"g","revision":1,"name":"组","parent_group_id":null,"depth":3,"created_at":"2026-09-21T09:00:00Z","updated_at":"2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "depth"}
+    },
+    {
+      "id": "type-group-empty-parent-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust", "csharp"],
+      "typeName": "group",
+      "description": "非法分组字段返回 parent_group_id。",
+      "value": {"id":"g","revision":1,"name":"组","parent_group_id":"","depth":0,"created_at":"2026-09-21T09:00:00Z","updated_at":"2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "parent_group_id"}
+    },
+    {
+      "id": "type-group-empty-id-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust", "csharp"],
+      "typeName": "group",
+      "description": "非法分组字段返回 id。",
+      "value": {"id":"","revision":1,"name":"组","parent_group_id":null,"depth":0,"created_at":"2026-09-21T09:00:00Z","updated_at":"2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "id"}
+    },
+    {
+      "id": "type-group-zero-revision-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust", "csharp"],
+      "typeName": "group",
+      "description": "非法分组字段返回 revision。",
+      "value": {"id":"g","revision":0,"name":"组","parent_group_id":null,"depth":0,"created_at":"2026-09-21T09:00:00Z","updated_at":"2026-09-21T09:00:00Z"},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "revision"}
+    },
+    {
+      "id": "type-target-empty-conditions-invalid",
+      "kind": "type_validation",
+      "applies_to": ["python", "rust", "csharp"],
+      "typeName": "target",
+      "description": "非法空条件树返回 conditions。",
+      "value": {"id":"t1","sample_no":1,"revision":1,"name":"目标","group_id":null,"image":{"path":"images/example.png","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","width":1,"height":1,"format":"png","storage_mode":"original"},"thumbnail_path":null,"anchor_condition_id":"c1","conditions":{"op":"all","children":[]},"created_at":"2026-09-21T09:00:00Z","updated_at":"2026-09-21T09:00:00Z","metadata":{}},
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions"}
+    },
+    {
       "id": "type-group-top-level-valid",
       "kind": "type_validation",
       "applies_to": ["python", "rust", "csharp"],

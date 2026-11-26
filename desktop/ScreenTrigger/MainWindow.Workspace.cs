@@ -16,6 +16,8 @@ public sealed partial class MainWindow
     private bool imageBusy, workspaceReady, captureAvailable;
     private string? workspaceSession;
     private ImageRef? image;
+    private ImageRef? importedSource;
+    private int imageVersion;
     private (int X, int Y) imageOrigin;
     private Control? returnFocus;
     private readonly Dictionary<string, UserControl> pages = [];
@@ -25,10 +27,49 @@ public sealed partial class MainWindow
     private readonly Dictionary<string, string> running = [];
     private readonly Dictionary<string, long> runSequences = [];
     private readonly Queue<string> terminalSequenceOrder = new();
+    private NavigationViewItem? visibleItem;
+    private bool selectingPage, resolvingDraft;
+    private int previewHz = 10;
+    private long displayConfigRevision = -1;
 
-    private void Navigate(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private async void Navigate(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (EnginePage == null || args.SelectedItem is not NavigationViewItem item) return;
+        if (EnginePage == null || selectingPage || args.SelectedItem is not NavigationViewItem item) return;
+        if (visibleItem != null && (resolvingDraft || closing || BusinessPage.Visibility == Visibility.Visible &&
+            BusinessPage.Content is IWorkspaceDraft draft && (draft.HasChanges || BusinessPage.Content is Control { IsEnabled: false })))
+            SelectMenuItem(visibleItem);
+        await ChangePage(item);
+    }
+
+    private void SelectMenuItem(NavigationViewItem item)
+    {
+        if (ReferenceEquals(Navigation.SelectedItem, item)) return;
+        selectingPage = true;
+        try { Navigation.SelectedItem = item; }
+        finally { selectingPage = false; }
+    }
+
+    private async Task<bool> ChangePage(NavigationViewItem item)
+    {
+        if (resolvingDraft || closing) return false;
+        if (visibleItem != item && BusinessPage.Visibility == Visibility.Visible && BusinessPage.Content is IWorkspaceDraft editor)
+        {
+            resolvingDraft = true;
+            try
+            {
+                await editor.WhenIdle;
+                if (editor.HasChanges && !await editor.ResolveChanges()) return false;
+            }
+            finally { resolvingDraft = false; }
+        }
+        DisplayPage(item);
+        return true;
+    }
+
+    private void DisplayPage(NavigationViewItem item)
+    {
+        visibleItem = item;
+        SelectMenuItem(item);
         string? tag = item.Tag as string;
         EnginePage.Visibility = tag == "engine" ? Visibility.Visible : Visibility.Collapsed;
         ImagePage.Visibility = tag == "images" ? Visibility.Visible : Visibility.Collapsed;
@@ -44,7 +85,7 @@ public sealed partial class MainWindow
             page = tag switch {
                 "targets" => new Targets.TargetsPage(host, () => image, OpenDraft),
                 "history" => new History.HistoryPage(host),
-                "settings" => new Settings.SettingsPage(host, ApplyTheme),
+                "settings" => new Settings.SettingsPage(host, ApplyDisplayConfig),
                 "scripts" => new Scripts.ScriptsPage(host),
                 "run" or "monitor" => new RunContext.RunContextPage(host, luaAvailable, tag == "monitor", workspaceOcr),
                 "recognition" => new Recognition.RecognitionPage(host, () => image, () => imageOrigin, () => pendingDraft),
@@ -61,8 +102,9 @@ public sealed partial class MainWindow
         string? old = draftImageId;
         pendingDraft = value; draftImageId = image?.ImageId;
         pages.Remove("recognition");
-        Navigation.SelectedItem = RecognitionNav;
-        if (old != null && old != draftImageId && host != null)
+        // Testing a draft explicitly opens its preview while retaining the editor.
+        DisplayPage(RecognitionNav);
+        if (old != null && old != draftImageId && old != importedSource?.ImageId && host != null)
         {
             try { await host.RequestAsync("release_image", new { image_id = old }); }
             catch (Exception ex) { ShowError(ex); }
@@ -81,6 +123,8 @@ public sealed partial class MainWindow
         if (workspaceSession != host?.Events.Session || !ready)
         {
             workspaceSession = ready ? host?.Events.Session : null;
+            displayConfigRevision = -1;
+            previewHz = 10;
             if (workspaceSession != null) _ = ReadDisplayConfig(workspaceSession);
             if (!ready && running.Count > 0)
                 Notice("引擎已退出，活动执行已中断。可重新启动引擎并查看历史。");
@@ -88,7 +132,8 @@ public sealed partial class MainWindow
             ActiveExecution.ItemsSource = null;
             RunBar.Visibility = Visibility.Collapsed;
             pages.Clear(); pendingDraft = null; draftImageId = null; BusinessPage.Content = null;
-            image = null;
+            imageVersion++;
+            image = importedSource = null;
             SelectedImage.Source = null;
             ImageStatus.Text = "";
             if (overlay != null) { overlay.CloseFromHost(); overlay = null; AppWindow.Show(); Activate(); }
@@ -98,9 +143,17 @@ public sealed partial class MainWindow
         UpdateImageButtons();
     }
 
-    private void ApplyTheme(string value) => Navigation.RequestedTheme = value switch {
-        "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default
-    };
+    private void ApplyDisplayConfig(JsonElement config)
+    {
+        long revision = config.GetProperty("revision").GetInt64();
+        if (revision < displayConfigRevision) return;
+        displayConfigRevision = revision;
+        Navigation.RequestedTheme = config.GetProperty("general").GetProperty("theme").GetString() switch {
+            "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default
+        };
+        previewHz = config.GetProperty("capture").GetProperty("preview_hz").GetInt32();
+        overlay?.SetPreviewFrequency(previewHz);
+    }
     private void Notice(string text)
     {
         ServiceNotice.Text = text;
@@ -112,7 +165,7 @@ public sealed partial class MainWindow
         {
             var data = await host!.RequestAsync("get_config", new { });
             if (host.Events.Session != session) return;
-            ApplyTheme(data.GetProperty("config").GetProperty("general").GetProperty("theme").GetString()!);
+            ApplyDisplayConfig(data.GetProperty("config"));
             if (data.TryGetProperty("recovery", out var restored))
                 Notice($"配置损坏，已自动恢复备份修订 {restored.GetProperty("revision")}。");
         }
@@ -123,6 +176,9 @@ public sealed partial class MainWindow
     {
         SelectButton.IsEnabled = workspaceReady && captureAvailable && !imageBusy && overlay == null;
         ImportButton.IsEnabled = workspaceReady && !imageBusy && overlay == null;
+        CropButton.IsEnabled = ImportButton.IsEnabled && importedSource != null && SelectedImage.Source != null;
+        OriginalButton.Visibility = importedSource != null && importedSource != image ? Visibility.Visible : Visibility.Collapsed;
+        OriginalButton.IsEnabled = ImportButton.IsEnabled;
     }
 
     private async Task UpdateRun(JsonElement payload)
@@ -177,7 +233,7 @@ public sealed partial class MainWindow
     private async void InspectPaused(object sender, RoutedEventArgs args)
     {
         if (ActiveExecution.SelectedItem is not CatalogItem item || item.Id == null) return;
-        Navigation.SelectedItem = ScriptsNav;
+        if (!await ChangePage(ScriptsNav)) return;
         if (BusinessPage.Content is Scripts.ScriptsPage editor)
             try { await editor.Inspect(item.Id); } catch (Exception ex) { RunStatus.Text = ex.Message; }
     }
@@ -209,7 +265,7 @@ public sealed partial class MainWindow
                 var bounds = new RectInt32(rect.GetProperty("x").GetInt32(), rect.GetProperty("y").GetInt32(),
                     rect.GetProperty("width").GetInt32(), rect.GetProperty("height").GetInt32());
                 overlay = new OverlayWindow(host, request.GetProperty("selection_id").GetString()!,
-                    display.GetProperty("id").GetString()!, bounds, message => ImageStatus.Text = message);
+                    display.GetProperty("id").GetString()!, bounds, previewHz, message => ImageStatus.Text = message);
                 try { await overlay.OpenAsync(token); }
                 catch { overlay?.CloseFromHost(); overlay = null; throw; }
                 UpdateImageButtons();
@@ -253,25 +309,64 @@ public sealed partial class MainWindow
             if (session != host.Events.Session) return;
             if (token == null) { ImageStatus.Text = "已取消导入。"; return; }
             var result = await host.RequestAsync("import_image", new { import_token = token });
-            await SetImageAsync(result.GetProperty("image"), session);
+            await SetImageAsync(WireContracts.Read<ImageRef>(result.GetProperty("image"), "imageRef"), session, imported: true);
         }
         catch (Exception ex) { ImageStatus.Text = ex.Message; }
         finally { imageBusy = false; UpdateImageButtons(); if (!closing) ImportButton.Focus(FocusState.Programmatic); }
     }
 
-    private async Task SetImageAsync(JsonElement value, string? session, int x = 0, int y = 0)
+    private async void CropImage(object sender, RoutedEventArgs args)
+    {
+        if (imageBusy || host == null || importedSource == null || image == null || SelectedImage.Source == null) return;
+        var session = host.Events.Session;
+        var source = image;
+        imageBusy = true; UpdateImageButtons();
+        try
+        {
+            var dialog = new CropDialog(Navigation.XamlRoot, source, SelectedImage.Source);
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary || session != host.Events.Session || source != image) return;
+            var result = await host.RequestAsync("crop_image", new { image_id = source.ImageId, x = dialog.X, y = dialog.Y,
+                width = dialog.WidthPixels, height = dialog.HeightPixels });
+            await SetImageAsync(WireContracts.Read<ImageRef>(result.GetProperty("image"), "imageRef"), session, keepOriginal: true);
+        }
+        catch (Exception ex) { ImageStatus.Text = ex.Message; }
+        finally { imageBusy = false; UpdateImageButtons(); if (!closing) CropButton.Focus(FocusState.Programmatic); }
+    }
+
+    private async void RestoreOriginal(object sender, RoutedEventArgs args)
+    {
+        if (imageBusy || host == null || importedSource == null) return;
+        imageBusy = true; UpdateImageButtons();
+        try { await SetImageAsync(importedSource, host.Events.Session, keepOriginal: true); }
+        catch (Exception ex) { ImageStatus.Text = ex.Message; }
+        finally { imageBusy = false; UpdateImageButtons(); if (!closing) CropButton.Focus(FocusState.Programmatic); }
+    }
+
+    private async Task SetImageAsync(ImageRef next, string? session, int x = 0, int y = 0, bool imported = false, bool keepOriginal = false)
     {
         if (host == null || host.Events.Session != session || closing) return;
-        var next = WireContracts.Read<ImageRef>(value, "imageRef");
-        var previous = image;
-        image = next;
-        imageOrigin = (x, y);
-        SelectedImage.Source = null;
-        ImageStatus.Text = $"{next.Width} × {next.Height} px · {next.Format.ToUpperInvariant()}";
-        if (previous != null && previous.ImageId != next.ImageId && previous.ImageId != draftImageId)
-            await host.RequestAsync("release_image", new { image_id = previous.ImageId });
-        var preview = await host.RequestAsync("get_image_preview", new { image_id = next.ImageId, max_edge = 600 });
-        var bitmap = await ImagePicker.DecodePreviewAsync(preview.GetProperty("base64").GetString()!);
-        if (!closing && image == next && host.Events.Session == session) SelectedImage.Source = bitmap;
+        int version = ++imageVersion;
+        async Task ReleaseUnused(ImageRef? item)
+        {
+            if (item != null && host.Events.Session == session && item != image && item != importedSource && item.ImageId != draftImageId)
+                await host.RequestAsync("release_image", new { image_id = item.ImageId });
+        }
+        try
+        {
+            var preview = await host.RequestAsync("get_image_preview", new { image_id = next.ImageId, max_edge = 600 });
+            var bitmap = await ImagePicker.DecodePreviewAsync(preview.GetProperty("base64").GetString()!);
+            if (closing || host.Events.Session != session || version != imageVersion) return;
+            var previous = image;
+            var previousOriginal = importedSource;
+            image = next;
+            importedSource = imported ? next : keepOriginal ? previousOriginal : null;
+            imageOrigin = (x, y);
+            SelectedImage.Source = bitmap;
+            ImageStatus.Text = $"{next.Width} × {next.Height} px · {next.Format.ToUpperInvariant()}";
+            UpdateImageButtons();
+            await ReleaseUnused(previous);
+            if (previousOriginal != previous) await ReleaseUnused(previousOriginal);
+        }
+        finally { await ReleaseUnused(next); }
     }
 }

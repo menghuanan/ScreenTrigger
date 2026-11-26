@@ -53,7 +53,12 @@ def models_dir_for(data_dir: str) -> str:
 
 def model_manifest_path(models_dir: str, model_id: str) -> str:
     """``models/<model_id>/manifest.json`` 的绝对路径。"""
-    return os.path.join(models_dir, model_id, MODEL_MANIFEST_NAME)
+    from ..storage.paths import DataRoot
+    from ..storage.errors import StorageError
+    try:
+        return DataRoot(models_dir).resolve(os.path.join(model_id, MODEL_MANIFEST_NAME))
+    except StorageError as exc:
+        raise RecognitionError("MODEL_UNAVAILABLE", exc.message) from exc
 
 
 def validate_provider(value: Any) -> ProviderManifest:
