@@ -87,6 +87,8 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
+import time
+from backend import startup_timing
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # --- 包导入引导（AUDIT-20261012-001）：sys.path 引导已在文件顶部完成
@@ -819,6 +821,7 @@ class SidecarApp:
         }
         self.transport.send(envelope)
         self.health.to_ready()
+        startup_timing.mark("system_ready")
         if self._startup_history_warning:
             self._startup_history_warning()
             self._startup_history_warning = None
@@ -1232,12 +1235,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     捕获服务（TASK-007）：GDI/BitBlt 后端；非 Windows 或缺 API 时构建失败，仅记
     stderr 并保持 capture 能力 unavailable（不阻断引擎启动）。
     """
+    entry_ns = time.perf_counter_ns()
     configure_stdio()
     args = SidecarArgs.parse(argv)
     from backend.storage.lock import engine_session
     from backend.storage.errors import StorageError
     try:
-        with engine_session(args.data_dir):
+        with engine_session(args.data_dir), startup_timing.session(args.data_dir, args.session_id):
+            startup_timing.mark("sidecar_entry", qpc_ns=entry_ns)
             return _run_engine(args)
     except StorageError as exc:
         sys.stderr.write(exc.message + "\n")

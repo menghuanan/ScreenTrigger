@@ -8,6 +8,7 @@ from collections import OrderedDict, deque
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from uuid import uuid4
+from .. import startup_timing
 
 from ..scripts import domain
 from ..storage.errors import StorageError
@@ -94,6 +95,13 @@ class Root:
                         error=copy.deepcopy(self.error), effective_hz=self.effective_hz, throttled=self.throttled)
 
     def log(self, level, event, message, **details):
+        if startup_timing.enabled() and event == "script_log":
+            script = self.stack[-1][0] if self.stack else self.script_id
+            if message == "ST-040/first":
+                startup_timing.mark("lua_first_statement", execution_id=self.id, script_id=script)
+            elif message.startswith("ST-040/ocr:"):
+                startup_timing.mark("lua_ocr_return", execution_id=self.id, script_id=script,
+                                    operation_id=getattr(self, "timing_ocr", None), actual_text=message[11:])
         with self.changed:
             entry = dict(timestamp=stamp(), execution_id=self.id, level=level, event=event,
                          message=message, details=details)
@@ -316,6 +324,10 @@ class Root:
                     terminal = "failed" if error else "completed"
                 self.error = error
                 self.result = result if terminal == "completed" else None
+                if startup_timing.enabled():
+                    scalar = self.result[:512] if isinstance(self.result, str) else self.result
+                    startup_timing.mark("script_finished", execution_id=self.id, script_id=self.script_id,
+                                        status=terminal, result=scalar if isinstance(scalar,(int,float,bool,str)) else None)
                 self.images.clear()
                 self.transition(terminal, reason)
                 self.controller.retire(self)
@@ -400,6 +412,8 @@ class ExecutionController:
                     raise StorageError("CAPABILITY_DENIED", "宿主未启用文字导出")
                 root.output_token = output_token
             self.roots[root.id] = root
+            if startup_timing.enabled():
+                startup_timing.mark("execute_accepted", execution_id=root.id, script_id=root.script_id)
             if client:
                 self.clients[client] = signature, root.id
             root.transition("starting")

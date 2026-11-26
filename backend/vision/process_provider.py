@@ -11,6 +11,7 @@ import os
 import threading
 import time
 from concurrent.futures import Future
+from backend import startup_timing
 from backend.worker_process import WorkerProcess
 
 from .cancel import CancelledError, NullCancelToken
@@ -85,6 +86,7 @@ class ProcessProvider:
         self._ready = False
         self.models_dir = None
         self.library_root = None
+        self.opencv_algorithms = {}
         self._fingerprints = {}
 
     def capabilities(self):
@@ -113,6 +115,8 @@ class ProcessProvider:
         finally:
             child.close()
         self._process = process
+        if startup_timing.enabled():
+            startup_timing.operation("ocr_worker_started", worker_pid=process.pid)
         self._pipe = parent
         self._startup_deadline = time.monotonic() + 60
         self._ready = False
@@ -148,7 +152,10 @@ class ProcessProvider:
             self._stop()
             raise
         self.library_root = disclosure.get("library_root")
+        self.opencv_algorithms = disclosure.get("opencv_algorithms", {})
         self._ready = True
+        if startup_timing.enabled():
+            startup_timing.operation("ocr_worker_ready", worker_pid=self._process.pid)
 
     def initialize(self, models_dir, cancel=None):
         self.models_dir = models_dir
@@ -181,6 +188,8 @@ class ProcessProvider:
             # A full pipe can block on a large frame if the child stops reading.
             # Keep cancellation independent of both sending and receiving.
             pipe = self._pipe
+            if startup_timing.enabled():
+                startup_timing.operation("ocr_inference", worker_pid=self._process.pid)
             reply = Future()
 
             def exchange():

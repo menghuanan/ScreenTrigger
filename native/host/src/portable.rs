@@ -18,13 +18,18 @@ struct Entry { path: String, bytes: u64, sha256: String }
 
 fn regular(path: &Path) -> Result<fs::Metadata, String> {
     let m = fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    reject_links(path, &m)?;
+    Ok(m)
+}
+
+fn reject_links(path: &Path, m: &fs::Metadata) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
         if m.file_attributes() & 0x400 != 0 { return Err(format!("不接受重解析路径 {}",path.display())); }
     }
     if m.file_type().is_symlink() { return Err(format!("不接受链接 {}",path.display())); }
-    Ok(m)
+    Ok(())
 }
 
 fn plain_parents(path: &Path, checked: &mut HashSet<PathBuf>) -> Result<(), String> {
@@ -35,7 +40,7 @@ fn plain_parents(path: &Path, checked: &mut HashSet<PathBuf>) -> Result<(), Stri
     Ok(())
 }
 
-fn check_files(root: &Path, entries: &[Entry]) -> Result<(), String> {
+fn check_files<'a>(root: &Path, entries: impl Iterator<Item = &'a Entry>) -> Result<(), String> {
     let mut checked = HashSet::new();
     let mut buffer = vec![0; 256 * 1024];
     for entry in entries {
@@ -46,9 +51,19 @@ fn check_files(root: &Path, entries: &[Entry]) -> Result<(), String> {
         }
         let path = root.join(relative);
         plain_parents(path.parent().unwrap(), &mut checked)?;
-        let info = regular(&path)?;
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
+        }
+        #[cfg(not(windows))]
+        regular(&path)?;
+        let mut file = options.open(&path).map_err(|e| format!("{}: {e}",path.display()))?;
+        let info = file.metadata().map_err(|e| format!("{}: {e}",path.display()))?;
+        reject_links(&path, &info)?;
         if !info.is_file() || info.len() != entry.bytes { return Err(format!("核心文件长度不符 {}",entry.path)); }
-        let mut file = File::open(&path).map_err(|e| format!("{}: {e}",entry.path))?;
         let mut hash = Sha256::new();
         loop {
             let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
@@ -70,8 +85,12 @@ fn verify(root: &Path, marker: &Marker) -> Result<(), String> {
         if !entries.iter().any(|e|e.path == required) { return Err(format!("核心清单缺少 {required}")); }
     }
     std::thread::scope(|scope| {
-        let size = entries.len().div_ceil(4);
-        let checks: Vec<_> = entries.chunks(size).map(|group| scope.spawn(move || check_files(root,group))).collect();
+        let workers = std::thread::available_parallelism().map_or(4, usize::from).clamp(4, 32)
+            .min(entries.len().div_ceil(32));
+        let checks: Vec<_> = (0..workers).map(|index| {
+            let group = entries.chunks(32).skip(index).step_by(workers).flatten();
+            scope.spawn(move || check_files(root, group))
+        }).collect();
         for job in checks { job.join().map_err(|_| "核心文件校验线程中止".to_string())??; }
         Ok(())
     })

@@ -17,6 +17,7 @@ public sealed record CapabilityRow(string Id, string Summary, string Reason)
 public sealed partial class MainWindow : Window
 {
     private HostClient? host;
+    private readonly Task connecting;
     private Window? diagnostics;
     private readonly DispatcherQueueTimer healthTimer;
     private bool changing, polling, closing, drained;
@@ -25,7 +26,9 @@ public sealed partial class MainWindow : Window
     private IDisposable? mainSubscription;
     private bool ocrAvailable, readingModels;
 
-    public MainWindow()
+    public MainWindow() : this(App.OpenHost()) { }
+
+    internal MainWindow(Task<HostClient> opening)
     {
         InitializeComponent();
         AppWindow.Resize(new SizeInt32(820, 640));
@@ -33,25 +36,24 @@ public sealed partial class MainWindow : Window
         healthTimer.Interval = TimeSpan.FromSeconds(1);
         healthTimer.Tick += (_, _) => RefreshHealth();
         AppWindow.Closing += OnClosing;
-        StartButton.Loaded += Connect;
+        connecting = ConnectAsync(opening);
     }
 
-    private void Connect(object sender, RoutedEventArgs args)
+    private async Task ConnectAsync(Task<HostClient> opening)
     {
-        StartButton.Loaded -= Connect;
         try
         {
-            // Only enqueue copied events from the native router thread.
-            host = new HostClient(action => DispatcherQueue.TryEnqueue(() => action()));
+            host = await opening;
+            if (closing) return;
             host.AttachWindow(HandleWindowAction);
             mainSubscription = host.Events.Subscribe(ReceiveEvent);
             host.RecoveryFailed += ShowError;
             host.RecoveryCompleted += RecoverExecutions;
             DiagnosticsButton.IsEnabled = true;
             healthTimer.Start();
-            StartEngine(this, args);
+            ChangeEngine("start");
         }
-        catch (Exception ex) { Health.Text = "宿主不可用"; ShowError(ex); }
+        catch (Exception ex) { if (!closing) { Health.Text = "宿主不可用"; ShowError(ex); } }
     }
 
     private async void ReceiveEvent(EngineEvent message)
@@ -300,7 +302,11 @@ public sealed partial class MainWindow : Window
         mainSubscription?.Dispose();
         diagnostics?.Close();
         StartButton.IsEnabled = StopButton.IsEnabled = DiagnosticsButton.IsEnabled = false;
-        try { if (host != null) await host.DisposeAsync(); }
+        try
+        {
+            await connecting;
+            if (host != null) await host.DisposeAsync();
+        }
         finally
         {
             drained = true;

@@ -16,7 +16,16 @@ def main():
     folder=Path(sys.argv[1])
     set_per_monitor_v2()
     x,y=100,150
-    img=Image.open(folder/"fixture.png").convert("RGB")
+    sequence=json.loads(Path(sys.argv[2]).read_bytes())["images"] if len(sys.argv)>2 else []
+    index=0
+    def source():
+        if not sequence: return Image.open(folder/"fixture.png").convert("RGB")
+        item=sequence[index]
+        picture=Image.open(item["path"]).convert("RGB")
+        if hashlib.sha256(picture.tobytes()).hexdigest()!=item["rgb_sha256"]:
+            raise ValueError("Fixture pixels differ from their frozen hash")
+        return picture
+    img=source()
     w,h=img.size
     dib=ImageWin.Dib(img)
     win=MiniWindow("ScreenTrigger · release image fixture",x,y,w,h,popup=True)
@@ -29,10 +38,16 @@ def main():
         return all(user32.GetAncestor(user32.WindowFromPoint(wintypes.POINT(a,b)),GA_ROOT)==win.hwnd
                    for a,b in [(x,y),(x+w-1,y+h-1),(x+w//2,y+h//2)])
     try:
-        end=time.monotonic()+85
-        ready=folder/"fixture-visible.json"
+        end=time.monotonic()+max(85,90*len(sequence))
+        ready=folder/("shown-0.json" if sequence else "fixture-visible.json")
         while time.monotonic()<end and not (folder/"fixture-stop").exists():
             win.pump(30)
+            if sequence and index+1<len(sequence) and (folder/f"request-{index+1}").exists():
+                index+=1
+                img=source()
+                assert img.size==(w,h)
+                dib=ImageWin.Dib(img)
+                ready=folder/f"shown-{index}.json"
             user32.SetWindowPos(win.hwnd,-1,x,y,w,h,0x10)
             dc=user32.GetDC(win.hwnd)
             try:

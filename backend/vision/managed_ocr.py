@@ -4,6 +4,7 @@ from contextvars import ContextVar
 from importlib.util import find_spec
 from pathlib import Path
 import threading
+from backend import startup_timing
 from backend.storage.lock import engine_session
 
 from .cancel import CancelFlag, CancelledError
@@ -143,7 +144,8 @@ class ManagedOCR:
             self._require(model)
             return {"model_sha256": self.catalog.weight_sha256(model), "model_revision": self.revision()}
 
-    def _initialize(self, slot):
+    def _initialize(self, slot, operation):
+        timing_binding = startup_timing.current_operation.set(operation)
         try:
             slot.worker.initialize(str(self.library.metadata), slot.cancel)
             state, error = "ready", None
@@ -153,6 +155,7 @@ class ManagedOCR:
             state = "damaged"
             error = exc if isinstance(exc, RecognitionError) else RecognitionError("ENGINE_UNAVAILABLE", str(exc))
         finally:
+            startup_timing.current_operation.reset(timing_binding)
             with self.condition:
                 slot.state, slot.error = state, error
                 slot.startup = None
@@ -172,7 +175,8 @@ class ManagedOCR:
                         raise slot.error
                     if slot.startup is None:
                         slot.state, slot.cancel = "loading", CancelFlag()
-                        slot.startup = threading.Thread(target=self._initialize, args=(slot,), daemon=True)
+                        slot.startup = threading.Thread(target=self._initialize,
+                            args=(slot, startup_timing.current_operation.get()), daemon=True)
                         slot.startup.start()
                     self.condition.wait(.02)
             return slot.worker.recognize(frame, params, cancel, roi)

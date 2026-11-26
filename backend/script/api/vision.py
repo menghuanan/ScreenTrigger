@@ -1,6 +1,9 @@
 """Screen, image and target operations on the current root's recognition area."""
 from contextlib import contextmanager
 from dataclasses import asdict
+import time
+from uuid import uuid4
+from ... import startup_timing
 
 from ...capture.geometry import rect_within
 from ...capture.ports import RawImage
@@ -81,12 +84,22 @@ class ScreenApi:
             self.root.released_images.popitem(last=False)
         return ()
 
-    def infer(self, command, image_id, **params):
+    def timing_for_ocr(self, model_id):
+        self.root.timing_ocr = str(uuid4())
+        return dict(operation_id=self.root.timing_ocr, job_id=None, model_id=model_id,
+                    execution_id=self.root.id, script_id=self.root.stack[-1][0] if self.root.stack else self.root.script_id)
+
+    def infer(self, command, image_id, *, timing=None, **params):
         if self.vision is None:
             raise StorageError("CAPABILITY_DENIED", "识别服务不可用")
         generation = self.root.pause_generation
-        result = self.vision.run_sync(command, dict(params, image_id=image_id),
-                                      self.root.gate, catalog=self.root.catalog)
+        options = {"catalog": self.root.catalog}
+        if command == "recognize_text" and startup_timing.enabled():
+            options["timing"] = timing or self.timing_for_ocr(params.get("model_id"))
+            startup_timing.mark("ocr_submitted", **options["timing"])
+        result = self.vision.run_sync(command, dict(params, image_id=image_id), self.root.gate, **options)
+        if "timing" in options:
+            startup_timing.mark("ocr_result", **options["timing"], blocks=len(result["blocks"]))
         if generation != self.root.pause_generation:
             raise Resample()
         return result
@@ -169,12 +182,16 @@ class ScreenApi:
             self.capture.release_image(ref.image_id)
 
     def ocr(self, image=None, region=None, model_id=None):
+        entered_ns = time.perf_counter_ns() if startup_timing.enabled() else None
         if model_id is None:
             model_id = self.root.settings.get("recognition", {}).get("ocr_model_id")
         if model_id is not None and (not isinstance(model_id, str) or not model_id):
             fail("model_id", "OCR 模型 ID 无效")
+        timing = self.timing_for_ocr(model_id) if entered_ns is not None else None
+        if timing:
+            startup_timing.mark("lua_ocr_request", qpc_ns=entered_ns, **timing)
         with self.ocr_image(image, region) as (image_id, space, x, y, revision):
-            blocks = self.infer("recognize_text", image_id, model_id=model_id)["blocks"]
+            blocks = self.infer("recognize_text", image_id, model_id=model_id, timing=timing)["blocks"]
             if getattr(self.root, "export_enabled", False):
                 binding = self.root.config.binding_id
                 if binding and revision is not None:

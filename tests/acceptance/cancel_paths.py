@@ -104,9 +104,9 @@ def exercise(output):
         eid=start('key_down("f6")\nlog("entering OCR")\nlocal b=ocr(nil,nil,"korean_PP-OCRv5_mobile_rec")\nlog("OCR finished")\ntype_text("late",0)')
         history = output / "data/history"
         app = Path(sys.executable).resolve().parent
-        marker = app / "ScreenTrigger.portable.json"
-        if marker.is_file():
-            layout = json.loads(marker.read_bytes())
+        portable_manifest = app / "ScreenTrigger.portable.json"
+        if portable_manifest.is_file():
+            layout = json.loads(portable_manifest.read_bytes())
             if (layout.get("format"), layout.get("mode"), layout.get("data")) == (1, "portable", "data"):
                 history = app / "data/history"
         def own_log(message):

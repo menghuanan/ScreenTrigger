@@ -25,6 +25,7 @@ from typing import Any, Callable, Dict, Optional, Set
 
 from ..types.region import ImageRef
 from .cache import RecognitionCache, cache_key
+from .. import startup_timing
 from .cancel import CancelFlag, CancelledError, JobBoundCancelToken
 from .emitter import NullRecognitionEmitter, RecognitionEmitter
 from .nms import IOU_THRESHOLD, MAX_CANDIDATES, cap_candidates, nms
@@ -267,11 +268,11 @@ class VisionService:
             with self._lock:
                 self._active.discard(job_id)
 
-    def run_sync(self, command, params, cancel, *, catalog=None):
+    def run_sync(self, command, params, cancel, *, catalog=None, timing=None):
         """Use the job execution path with a bounded wait on the script thread."""
         outcome = Future()
         # Include script inference in the same budget as interactive recognition jobs.
-        slot = object()
+        slot = timing["operation_id"] if timing else object()
         with self._lock:
             if len(self._active) >= self._max_inflight:
                 raise RecognitionError("BUSY", "识别在途任务已达上限", retryable=True)
@@ -281,6 +282,7 @@ class VisionService:
 
         def run(token):
             binding = _run_catalog.set(catalog)
+            timing_binding = startup_timing.current_operation.set(timing)
             model_binding = models.admitted.set(admission) if models is not None else None
             try:
                 value = self._execute(command, params, token)
@@ -290,6 +292,7 @@ class VisionService:
                 outcome.set_exception(exc)
             finally:
                 _run_catalog.reset(binding)
+                startup_timing.current_operation.reset(timing_binding)
                 if models is not None:
                     models.admitted.reset(model_binding)
                     models.unpin(admission)
@@ -371,6 +374,8 @@ class VisionService:
             condition_revision=None,
         )
         cached = self._cache.get(key)
+        if startup_timing.enabled():
+            startup_timing.operation("ocr_cache", hit=cached is not None)
         if cached is not None:
             return cached
         token.throw_if_cancelled()

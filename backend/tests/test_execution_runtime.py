@@ -1,8 +1,11 @@
 """Integration regressions for real Lua VMs, catalog generations and concurrent root control."""
 import tempfile
+import json
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import Mock
+from backend import startup_timing
 
 from backend.capture.ports import RawImage
 from backend.capture.service import CaptureService
@@ -87,6 +90,45 @@ class ExecutionRuntime(unittest.TestCase):
             if status:
                 self.assertEqual(state["status"], status, state)
             return state
+
+    def test_opted_in_first_statement_records_the_real_session_and_scalar_result(self):
+        folder = Path(self.boot.data_dir) / "diagnostics"
+        folder.mkdir()
+        log = folder / "startup-timing.jsonl"
+        with startup_timing.session(self.boot.data_dir, "runtime"):
+            self.assertFalse(startup_timing.enabled())
+        self.assertFalse(log.exists())
+        (folder / "startup-timing.enabled").touch()
+        script = self.save("log('ST-040/first'); return 40")
+        with startup_timing.session(self.boot.data_dir, "runtime"):
+            execution = self.controller.command("execute_script", dict(script_id=script, display_id="d"))["execution_id"]
+            self.assertEqual(self.await_state(execution, "completed")["result"], 40)
+        raw = log.read_bytes()
+        rows = [json.loads(line) for line in raw.splitlines()]
+        self.assertEqual([r["event"] for r in rows], ["execute_accepted", "lua_first_statement", "script_finished"])
+        self.assertEqual([r["qpc_ns"] for r in rows], sorted(r["qpc_ns"] for r in rows))
+        self.assertTrue(all((r["session_id"], r["script_id"], r["execution_id"]) == ("runtime", script, execution) for r in rows))
+        self.assertEqual((rows[-1]["status"], rows[-1]["result"]), ("completed", 40))
+        with startup_timing.session(self.boot.data_dir, "runtime"):
+            self.assertFalse(startup_timing.enabled())
+        self.assertEqual(log.read_bytes(), raw)
+
+    def test_ocr_timing_joins_lua_request_and_return_to_the_submitted_work(self):
+        folder = Path(self.boot.data_dir) / "diagnostics"
+        folder.mkdir()
+        (folder / "startup-timing.enabled").touch()
+        self.vision.run_sync.return_value = {"blocks": [{"text":"开始", "polygon":[{"x":0,"y":0}]}]}
+        script = self.save("local b=ocr(nil,nil,'test'); local t=b[1].text; log('ST-040/ocr:'..t); return t")
+        with startup_timing.session(self.boot.data_dir, "runtime"):
+            execution = self.controller.command("execute_script", dict(script_id=script, display_id="d"))["execution_id"]
+            self.assertEqual(self.await_state(execution, "completed")["result"], "开始")
+        rows = [json.loads(line) for line in (folder / "startup-timing.jsonl").read_bytes().splitlines()]
+        samples = [row for row in rows if row.get("operation_id")]
+        self.assertEqual([r["event"] for r in samples], ["lua_ocr_request", "ocr_submitted", "ocr_result", "lua_ocr_return"])
+        self.assertEqual(len({r["operation_id"] for r in samples}), 1)
+        self.assertTrue(all(r["execution_id"] == execution for r in samples))
+        self.assertEqual(samples[-1]["actual_text"], "开始")
+        self.assertEqual([r["qpc_ns"] for r in samples], sorted(r["qpc_ns"] for r in samples))
 
     def test_explicit_region_reaches_the_lease_with_only_its_own_anchor(self):
         region = dict(space="screen_physical", display_id="d", x=105, y=85, width=20, height=12)

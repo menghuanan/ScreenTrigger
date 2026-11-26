@@ -43,6 +43,27 @@ $py = '.\.venv\Scripts\python.exe'
 
 保有原签核材料的工作区可运行 `& $py tools/replay_rc16.py`，按源码哈希恢复 RC16，在副本内调用原审计器。终端打印本次复演目录，其中 `replay.json` 给出签核差异，`fixtures.json` 列出旧数据文件、Lua、配置及专窗探针的运行命令。
 
+## 便携包启动性能复验
+
+在参考机的普通用户桌面，从仓库根运行。以下命令选择新版账本绑定的 ZIP，每次建立独立的介质、快照和原卷目录。将显示器参数设为当前主显示器的设备名，示例采用参考机的 `\\.\DISPLAY1`。
+
+```powershell
+$py = '.\.venv\Scripts\python.exe'
+$trial = [guid]::NewGuid().ToString('N')
+$zip = (Get-Content -Raw -Encoding utf8 reports/automation-v2/check-state.json | ConvertFrom-Json).release_artifact.path
+$app = "dist/automation-work/startup040-$trial"
+$snap = "dist/automation-work/snapshots040-$trial"
+$raw = "reports/automation-v2/raw/TASK-040/$trial"
+& $py tests/acceptance/portable_media.py extract $zip $app
+& "$app/resources/python/python.exe" -I -B -X utf8 tests/acceptance/startup_snapshots.py $snap '\\.\DISPLAY1'
+& $py tests/acceptance/startup_measure.py $zip $app $snap "$raw/cold" --mode cold
+& $py tests/acceptance/startup_measure.py $zip $app $snap "$raw/warm" --mode warm
+& $py tools/run_acceptance.py audit --version automation-v2 --task TASK-040
+& $py tools/run_acceptance.py audit --version automation-v2 --test TEST-022
+```
+
+桌面探针在资源管理器中双击实际 EXE，再在正常运行面板执行预置脚本。冷测轮转纯 Lua、通用 OCR 和韩文 OCR，每组启动 20 个新进程。热测在同一进程重复执行，OCR 使用不同像素的冻结输入。保留每次操作的原始计时、进程树、模型与夹具身份、文字和退出状态。按每组第 19 个样本取 p95。复核原卷并提交回执后运行单卡和测试组审计。[启动指标与采样规则](../agent/自动化扩展-模型启动与离线发行.md)
+
 ## 一个改动的交付边界
 
 1. 写明已有行为、期望行为、受影响的标准和可观察的失败。在已有首版卡内修复时沿用 TASK/TEST 编号。新增功能在确定范围后再分配独立任务、测试和前置，并同步索引、目录生成器和回归。

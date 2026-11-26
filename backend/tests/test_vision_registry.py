@@ -56,6 +56,29 @@ class FactoryRegistrationTest(unittest.TestCase):
 
 
 class InitializeAllTest(unittest.TestCase):
+    def test_native_companions_start_only_when_their_operation_runs(self):
+        from backend.tests import vision_fixtures
+        pixels = vision_fixtures.MemoryPixelReader()
+        image = vision_fixtures.Canvas(32, 32, (20, 30, 40)).to_raw()
+        pixels.add("src", image)
+        factories = {k:v for k,v in BUILTIN_PROVIDER_FACTORIES.items() if k != "builtin.ocr"}
+        registry = ProviderRegistry(pixels, factories=factories, isolate_native=True)
+        self.addCleanup(registry.close_all)
+        registry.initialize_all(_models_dir())
+        if registry.capability_reason("template")[0] != "available":
+            self.assertEqual(registry.capability_reason("color")[0], "unavailable")
+            return
+        self.assertIsNotNone(registry.provider_for("template")._process)
+        for condition in ("feature_match", "contour", "color"):
+            self.assertEqual(registry.capability_reason(condition), ("available", None))
+            self.assertIsNone(registry.provider_for(condition)._process)
+        color = registry.provider_for("color")
+        color.recognize(vision_fixtures.make_frame(image), {"params": {
+            "color_space":"rgb", "color":{"r":40,"g":30,"b":20},
+            "tolerance":{"r":0,"g":0,"b":0}}}, NullCancelToken())
+        self.assertTrue(color._process.is_alive())
+        self.assertIsNone(registry.provider_for("feature_match")._process)
+
     def test_ready_provider_available(self):
         def factory(pixels):
             return FakeProvider(make_manifest("p", condition_types=("template",)), pixels)

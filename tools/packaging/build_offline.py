@@ -121,6 +121,9 @@ def prepare_engine(stage, args, pipelines=None):
                    env=dict(env, ST_OCR_MODELS_DIR=str(resources / "weights"),
                             PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK="True",
                             PADDLE_PDX_CACHE_HOME=str(build_data / "paddlex")))
+    if pipelines is not None:
+        from portable_modules import collect
+        collect(python)
 
 
 def main():

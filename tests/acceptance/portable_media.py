@@ -76,8 +76,15 @@ def attach(app):
         if new.exists():raise FileExistsError(new)
         shutil.copyfile(python/name,new)
     pth=app/"python313._pth"
+    # Keep the fixture's separate ABI launcher on the candidate interpreter layout.
+    entries = (python / "python313._pth").read_text("ascii").splitlines()
     with pth.open("x",encoding="utf8") as stream:
-        stream.write("resources/python/Lib\nresources/python/DLLs\nresources/python\nresources/python/Lib/site-packages\nresources\nimport site\n")
+        for entry in entries:
+            if entry == "import site":
+                stream.write(entry + "\n")
+            elif entry:
+                resolved = (python / entry).resolve()
+                stream.write(resolved.relative_to(app.resolve()).as_posix() + "\n")
 
 
 if __name__=="__main__":

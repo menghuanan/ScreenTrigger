@@ -62,6 +62,15 @@ class TemplateProvider(BaseAlgorithmProvider):
     def __init__(self, pixels: Any) -> None:
         super().__init__(_MANIFEST, pixels)
 
+    def disclosure(self):
+        # This isolated worker has already imported both OpenCV and NumPy. Check
+        # companion entry points once without constructing an ORB extractor.
+        cv = require_cv2()
+        return {"opencv_algorithms": {name: all(callable(getattr(cv, method, None)) for method in methods)
+                for name, methods in {"builtin.orb": ("ORB_create", "findHomography"),
+                                      "builtin.contour": ("Canny", "findContours"),
+                                      "builtin.color": ("cvtColor",)}.items()}}
+
     def recognize(self, frame: Any, params: Dict[str, Any], cancel: Any,
                   roi: Any = None) -> Any:
         cancel.throw_if_cancelled()

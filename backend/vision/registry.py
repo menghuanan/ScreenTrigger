@@ -178,9 +178,20 @@ class ProviderRegistry:
                 provider = ManagedOCR(self._pixel_reader, models_dir, library_root)
                 manifest = provider.capabilities()
             else:
+                verified = {}
                 if self._isolate_native:
+                    template = self.provider_for("template")
+                    if type(provider) in (OrbProvider, ContourProvider, ColorProvider) and isinstance(template, ProcessProvider):
+                        verified = template.opencv_algorithms
                     provider = ProcessProvider(self._pixel_reader, type(provider))
-                provider.initialize(models_dir)
+                if provider_id in verified:
+                    if not verified[provider_id]:
+                        raise RecognitionError("ENGINE_UNAVAILABLE", f"OpenCV 缺少 {provider_id} 所需接口")
+                    # The binary dependency was tested in the template worker.
+                    # Its own private process is created on the first real call.
+                    provider.models_dir = models_dir
+                else:
+                    provider.initialize(models_dir)
         except RecognitionError as exc:
             # 缺 cv2/numpy 等引擎缺失：记录 code（ENGINE_UNAVAILABLE），使 service
             # 在调用时抛 ENGINE_UNAVAILABLE 而非 CAPABILITY_DENIED（TASK-014 §6）。
