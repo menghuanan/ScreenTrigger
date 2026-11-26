@@ -70,6 +70,17 @@ def extract(archive,folder):
 
 def attach(app):
     # The application and its manifest remain byte-for-byte intact in this disposable root.
+    marker = json.loads((app / "ScreenTrigger.portable.json").read_bytes())
+    inventory = app / "portable-core.json"
+    if sha(inventory) != marker["core_sha256"]:
+        raise ValueError("Portable core inventory hash mismatch")
+    files = {item["path"]: item["sha256"] for item in json.loads(inventory.read_bytes())}
+    native = ["screen_trigger_lib.dll"]
+    if "recording-desktop-return.exe" in files:
+        native.append("recording-desktop-return.exe")
+    for name in native:
+        if not (app / name).is_file() or sha(app / name) != files[name]:
+            raise ValueError(f"Missing or damaged packaged native binary: {name}")
     python=app/"resources/python"
     for name,dest in (("python.exe","portable-abi-test.exe"),("python3.dll","python3.dll"),("python313.dll","python313.dll")):
         new=app/dest

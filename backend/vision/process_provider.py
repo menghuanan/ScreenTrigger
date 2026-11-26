@@ -12,7 +12,7 @@ import threading
 import time
 from concurrent.futures import Future
 from backend import startup_timing
-from backend.worker_process import WorkerProcess
+from backend.worker_process import OcrWorkerProcess, WorkerProcess
 
 from .cancel import CancelledError, NullCancelToken
 from .types import RecognitionError
@@ -104,9 +104,9 @@ class ProcessProvider:
     def _spawn(self):
         context = multiprocessing.get_context("spawn")
         parent, child = context.Pipe()
-        process = WorkerProcess(target=_serve, args=(child, self._factory, self.models_dir,
-                                                        self._options),
-                                  name=self._manifest.provider_id, daemon=True)
+        worker_type = OcrWorkerProcess if self._manifest.provider_id == "builtin.ocr" else WorkerProcess
+        process = worker_type(target=_serve, args=(child, self._factory, self.models_dir, self._options),
+                              name=self._manifest.provider_id, daemon=True)
         try:
             process.start()
         except BaseException:

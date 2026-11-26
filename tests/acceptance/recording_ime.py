@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tests/acceptance'))
 from recording import Packet, common, user, Host, wait
+from recording_layout import EditorLayout
 
 class ParticipatingEditor(common.MiniWindow):
     def __init__(self, title, trusted_pid):
@@ -42,15 +43,17 @@ class ParticipatingEditor(common.MiniWindow):
             return 0
         return super()._wndproc(hwnd,msg,w,l)
 
-def editor(channel,title,trusted_pid):
+def editor(channel,title,trusted_pid,participate=True):
     common.set_per_monitor_v2()
     user.GetWindowThreadProcessId.argtypes=[wt.HWND,ct.POINTER(wt.DWORD)]
     user.GetClassNameW.argtypes=[wt.HWND,wt.LPWSTR,ct.c_int]
     user.IsWindowVisible.argtypes=[wt.HWND]
     user.SendMessageW.argtypes=[wt.HWND,wt.UINT,ct.c_size_t,ct.c_ssize_t]
     user.SendMessageTimeoutW.argtypes=[wt.HWND,wt.UINT,ct.c_size_t,ct.c_ssize_t,wt.UINT,wt.UINT,ct.POINTER(ct.c_size_t)]
-    w=ParticipatingEditor(title,trusted_pid)
+    w=(ParticipatingEditor(title,trusted_pid) if participate
+       else common.MiniWindow(title,180,250,445,250,popup=True))
     edit=common.create_edit_child(w.hwnd,'',20,20,360,150)
+    layout=EditorLayout(user,edit)
     user.SetWindowPos(w.hwnd,-1,180,250,445,250,0x10)
     user.GetFocus.restype=wt.HWND
     imm=ct.WinDLL('imm32')
@@ -62,6 +65,7 @@ def editor(channel,title,trusted_pid):
     user.GetKeyboardLayout.argtypes=[wt.DWORD];user.GetKeyboardLayout.restype=ct.c_void_p
     original=None
     truth=[]
+    masked_a_edges=0
     channel.send((w.hwnd,edit))
     try:
         msg=common.MSG()
@@ -69,9 +73,13 @@ def editor(channel,title,trusted_pid):
             while user.PeekMessageW(ct.byref(msg),None,0,0,1):
                 if msg.hwnd==edit and msg.message in (0x100,0x101,0x104,0x105):
                     down=msg.message in (0x100,0x104);vk=msg.wParam; scan=(msg.lParam>>16)&255
-                    if user.GetFocus()==edit and user.GetForegroundWindow()==w.hwnd and w.trusted(w.receiver,w.token):
-                        if user.SendMessageW(edit,0xd2,0,0)==0:
-                            truth.append((vk,scan,down))
+                    focused=user.GetFocus()==edit and user.GetForegroundWindow()==w.hwnd
+                    masked=bool(user.SendMessageW(edit,0xd2,0,0))
+                    if focused and masked and vk==0x41 and scan==0x1e:
+                        masked_a_edges+=1
+                    if focused and not masked:
+                        truth.append((vk,scan,down))
+                        if participate and w.trusted(w.receiver,w.token):
                             buf=ct.create_string_buffer(w.token+struct.pack('<HHBBBB',vk,scan,(msg.lParam>>24)&1,int(down),0,1))
                             packet=Packet(0x53545232,24,ct.addressof(buf))
                             reply=ct.c_size_t()
@@ -83,6 +91,11 @@ def editor(channel,title,trusted_pid):
                 if cmd=='clear':truth.clear()
                 if cmd=='password':user.SendMessageW(edit,0xcc,ord('*'),0)
                 if cmd=='remove-mask':user.SendMessageW(edit,0xcc,0,0)
+                if cmd in ('english','chinese','layout','restore-layout'):
+                    if cmd=='layout':state=layout.state()
+                    elif cmd=='restore-layout':state=layout.restore()
+                    else:state=layout.select(9 if cmd=='english' else 4)
+                    channel.send(state);continue
                 if cmd in ('ime','direct'):
                     ctx=imm.ImmGetContext(edit)
                     native,sentence=wt.DWORD(),wt.DWORD()
@@ -96,7 +109,8 @@ def editor(channel,title,trusted_pid):
                     if ctx:imm.ImmGetConversionStatus(ctx,ct.byref(native),ct.byref(sentence))
                     if ctx:imm.ImmReleaseContext(edit,ctx)
                     channel.send(dict(opened=opened,conversion=native.value,sentence=sentence.value,layout=hex(user.GetKeyboardLayout(0))));continue
-                channel.send(dict(focus=user.GetFocus(),offered=w.token.hex() if w.token else None,truth=truth))
+                channel.send(dict(focus=user.GetFocus(),offered=w.token.hex() if participate and w.token else None,
+                                  truth=truth,masked=bool(user.SendMessageW(edit,0xd2,0,0)),masked_a_edges=masked_a_edges))
             time.sleep(.001)
     finally:
         if original:
@@ -104,7 +118,8 @@ def editor(channel,title,trusted_pid):
             if ctx:
                 if original[3]:imm.ImmSetConversionStatus(ctx,original[1],original[2])
                 imm.ImmSetOpenStatus(ctx,original[0]);imm.ImmReleaseContext(edit,ctx)
-        w.destroy()
+        try:layout.restore()
+        finally:w.destroy()
 
 def run(dll,folder,scope='window'):
     folder.mkdir();common.set_per_monitor_v2();host=None
@@ -143,10 +158,14 @@ def run(dll,folder,scope='window'):
             wait(lambda:ask('state')['offered'] not in (None,old),'app consents to this bounded session');ask('clear')
             return args
         args=start()
+        control=ask('chinese')
+        out['chinese_layout']=control
+        assert control['primary_language']==4,control
         fixed=[(0x41,0x1e,'a'),(0x32,0x03,'2'),(0xba,0x27,0x27)]
         expected_actions=[];truth=[]
         for mode in ('ime','direct'):
             control=ask(mode);opened=control['opened'];assert opened==(mode=='ime')
+            assert int(control['layout'],16)&0x3ff==4,control
             time.sleep(.18)
             ask('clear')
             for vk,scan,_ in fixed:

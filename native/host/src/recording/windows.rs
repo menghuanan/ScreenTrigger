@@ -76,6 +76,8 @@ extern "system" {
     fn UnhookWindowsHookEx(h: isize) -> i32;
     fn CallNextHookEx(h: isize, code: i32, w: usize, l: isize) -> isize;
     fn GetWindowThreadProcessId(h: isize, p: *mut u32) -> u32;
+    fn GetKeyboardLayout(thread: u32) -> isize;
+    fn SetWindowTextW(hwnd: isize, text: *const u16) -> i32;
     fn GetAncestor(h: isize, flags: u32) -> isize;
     fn GetWindowLongPtrW(h: isize, index: i32) -> isize;
     fn GetClassNameW(h: isize, name: *mut u16, max: i32) -> i32;
@@ -107,6 +109,7 @@ struct Context {
     nonce: Uuid,
     indicator: isize,
     offered: Option<isize>,
+    isolated: Option<Arc<super::isolated::IsolatedDesktop>>,
     geometry: Option<(crate::window::Identity, crate::types::region::Rect, u32)>,
 }
 impl Context {
@@ -128,7 +131,7 @@ fn focus() -> Option<(isize, isize)> {
     }
     let thread = unsafe { GetWindowThreadProcessId(foreground, std::ptr::null_mut()) };
     let focused = crate::window::system::thread_focus(thread)?;
-    (root(focused)==Some(foreground)).then_some((foreground,focused))
+    (root(focused) == Some(foreground)).then_some((foreground, focused))
 }
 fn in_rect(rect: MonitorRect, x: i64, y: i64) -> bool {
     x >= rect.x && y >= rect.y && x - rect.x < rect.width && y - rect.y < rect.height
@@ -137,6 +140,9 @@ unsafe extern "system" fn mouse(code: i32, w: usize, l: isize) -> isize {
     if code == 0 && l != 0 {
         CTX.with_borrow(|slot| {
             let Some(c) = slot else { return };
+            if c.isolated.as_ref().is_some_and(|d| !d.is_input_desktop()) {
+                return;
+            }
             if !c.geometry_valid() {
                 c.seq
                     .lock()
@@ -153,8 +159,16 @@ unsafe extern "system" fn mouse(code: i32, w: usize, l: isize) -> isize {
             let hit = crate::window::system::window_at(x, y).filter(|h| {
                 let mut pid = 0;
                 GetWindowThreadProcessId(*h, &mut pid);
-                *h != c.indicator && pid != std::process::id()
+                *h != c.indicator
+                    && pid != std::process::id()
+                    && c.isolated.as_ref().is_none_or(|d| d.owns_window(*h))
             });
+            let foreground = if c.geometry.is_some() {
+                let h = win32::foreground_window() as isize;
+                (h != 0).then_some(h)
+            } else {
+                None
+            };
             let mut seq = c.seq.lock().unwrap();
             let event = match w {
                 0x200 => Pointer::Move,
@@ -168,13 +182,14 @@ unsafe extern "system" fn mouse(code: i32, w: usize, l: isize) -> isize {
                 0x20b | 0x20e => Pointer::Unsupported,
                 _ => return,
             };
+            seq.pointer_focus(at, hit, foreground);
             seq.pointer(at, x, y, hit, event);
         });
     }
     CallNextHookEx(0, code, w, l)
 }
 
-fn named(vk: u16) -> Option<&'static str> {
+pub(super) fn named(vk: u16) -> Option<&'static str> {
     const KEYS: &[&str] = &[
         "a",
         "b",
@@ -315,6 +330,9 @@ unsafe extern "system" fn proc(h: isize, msg: u32, w: usize, l: isize) -> isize 
     if msg == 0x4a && l != 0 {
         return CTX.with_borrow(|slot| {
             let Some(c) = slot else { return 0 };
+            if c.isolated.is_some() {
+                return 0;
+            }
             if !c.geometry_valid() {
                 c.seq
                     .lock()
@@ -330,8 +348,7 @@ unsafe extern "system" fn proc(h: isize, msg: u32, w: usize, l: isize) -> isize 
             if w as isize != focused || c.offered != Some(top) || native_password(focused) {
                 return 0;
             }
-            let mut seq = c.seq.lock().unwrap();
-            if !seq.accepts_key(Some(top)) {
+            if !c.seq.lock().unwrap().accepts_key(Some(top)) {
                 return 0;
             }
             let data = &*(l as *const CopyData);
@@ -357,13 +374,13 @@ unsafe extern "system" fn proc(h: isize, msg: u32, w: usize, l: isize) -> isize 
                     extended: bytes[20] != 0,
                 }
             } else {
-                seq.unknown_key();
+                c.seq.lock().unwrap().unknown_key();
                 return 0;
             };
             if focus() != Some((top, focused)) {
                 return 0;
             }
-            seq.message_key(
+            c.seq.lock().unwrap().message_key(
                 c.start.elapsed().as_millis() as u64,
                 top,
                 focused,
@@ -391,6 +408,7 @@ impl Worker {
         bound: Option<isize>,
         start: Instant,
         nonce: Uuid,
+        isolated: Option<Arc<super::isolated::IsolatedDesktop>>,
     ) -> Result<Self, IpcError> {
         let done = Arc::new(AtomicBool::new(false));
         let keyboard_ready = Arc::new(AtomicBool::new(false));
@@ -399,12 +417,32 @@ impl Worker {
         let sampling = native_commands.clone();
         let flag = done.clone();
         let (tx, rx) = mpsc::sync_channel(1);
-        let geometry = bound.and_then(crate::window::system::recording_geometry);
-        if bound.is_some() && geometry.is_none() {
-            return Err(IpcError::window_unavailable("绑定窗口不可见"));
-        }
         let join = thread::spawn(move || unsafe {
+            super::isolated::trace_lifecycle("worker.begin");
+            let _desktop_guard = match isolated.as_ref().map(|d| d.enter_thread()).transpose() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    let _ = tx.send(Err(error));
+                    return;
+                }
+            };
+            let _private_claim = match isolated
+                .as_ref()
+                .map(|_| super::desktop::Claim::acquire(super::desktop::Role::Recording))
+                .transpose()
+            {
+                Ok(claim) => claim,
+                Err(error) => {
+                    let _ = tx.send(Err(error));
+                    return;
+                }
+            };
             SetThreadDpiAwarenessContext(-4);
+            let geometry = bound.and_then(crate::window::system::recording_geometry);
+            if bound.is_some() && geometry.is_none() {
+                let _ = tx.send(Err(IpcError::window_unavailable("绑定窗口不可见")));
+                return;
+            }
             let module = GetModuleHandleW(std::ptr::null());
             let class = wide(&format!("ScreenTrigger.Recording.{nonce}"));
             let wc = Class {
@@ -425,7 +463,7 @@ impl Worker {
             let indicator = CreateWindowExW(
                 0x08000000 | 0x80 | 8,
                 class.as_ptr(),
-                wide("ScreenTrigger · 点击停止录制").as_ptr(),
+                wide(if isolated.is_some() { "录制 · 等待目标焦点 · 点击停止" } else { "ScreenTrigger · 点击停止录制" }).as_ptr(),
                 0x80000000 | 0x10000000 | 0x00c00000,
                 (rect.x + rect.width - 240).max(rect.x) as i32,
                 rect.y as i32,
@@ -441,6 +479,7 @@ impl Worker {
                 return;
             }
             let mut hook = SetWindowsHookExW(14, Some(mouse), module, 0);
+            let mut private_keys = None;
             if hook != 0 {
                 let opt_in = wide("ScreenTrigger.RecordingInput.v1");
                 if bound.is_some() {
@@ -452,20 +491,70 @@ impl Worker {
                     nonce,
                     indicator,
                     offered: None,
+                    isolated: isolated.clone(),
                     geometry,
                 }));
-                let _ = tx.send(indicator);
+                private_keys = isolated.clone().map(super::isolated_keys::ControlKeys::new);
+                if let Some(desktop) = &isolated {
+                    let activation = if flag.load(Ordering::Acquire) {
+                        Err(IpcError::invalid_state("启动录制的请求已结束"))
+                    } else {
+                        desktop.activate()
+                    };
+                    if let Err(error) = activation {
+                        let _ = tx.send(Err(error));
+                        UnhookWindowsHookEx(hook);
+                        CTX.set(None);
+                        DestroyWindow(indicator);
+                        UnregisterClassW(class.as_ptr(), module);
+                        return;
+                    }
+                }
+                if tx.send(Ok(indicator)).is_err() {
+                    flag.store(true, Ordering::Release);
+                }
                 let mut previous = Instant::now();
                 let mut commands = super::commands::CommandKeys::default();
+                let mut shown_layout = None;
                 while !flag.load(Ordering::Acquire) {
+                    if isolated
+                        .as_ref()
+                        .is_some_and(|d| !d.alive() || !d.is_input_desktop())
+                    {
+                        let mut state = seq.lock().unwrap();
+                        if matches!(state.status, Status::Recording | Status::Paused) {
+                            state.source_failed("isolated_desktop_closed");
+                        }
+                        break;
+                    }
                     while let Some(message) = crate::winmessages::pop(0, 0) {
                         message.dispatch();
                     }
-                    let active_focus = focus();
+                    let active_focus = focus().filter(|(top, child)| {
+                        isolated
+                            .as_ref()
+                            .is_none_or(|d| d.owns_window(*top) && d.owns_window(*child))
+                    });
                     let current = active_focus.map(|(h, _)| h);
                     let pointer = win32::cursor_pos();
                     let elapsed = start.elapsed().as_millis() as u64;
+                    // USER32 can deliver a hook or window message while servicing a call.
+                    // The callbacks lock this sequence too. Perform OS queries first and
+                    // retain the lock only for pure sequence transitions.
+                    let geometry_valid = CTX.with_borrow(|ctx| ctx.as_ref().is_some_and(Context::geometry_valid));
+                    let known_message_control = seq.lock().unwrap().message_control().is_some();
+                    let message_control = if known_message_control {
+                        active_focus.map(|(_, child)| child).filter(|child| !native_password(*child))
+                    } else {
+                        None
+                    };
                     let mut state = seq.lock().unwrap();
+                    if matches!(state.status, Status::Finished | Status::Cancelled) {
+                        break;
+                    }
+                    if state.status == Status::Recording && !geometry_valid {
+                        state.pause(elapsed, "geometry_changed");
+                    }
                     if state.status == Status::Recording
                         && previous.elapsed() > Duration::from_millis(500)
                     {
@@ -477,43 +566,55 @@ impl Worker {
                         current,
                         pointer.is_some_and(|p| in_rect(rect, p.x, p.y)),
                     );
-                    if state.message_control().is_some() {
-                        state.observe_message_control(
-                            active_focus
-                                .map(|(_, child)| child)
-                                .filter(|child| !native_password(*child)),
-                        );
+                    if known_message_control {
+                        state.observe_message_control(message_control);
                     }
-                    let ended = matches!(state.status, Status::Finished | Status::Cancelled);
-                    if state.status == Status::Paused && hook != 0 {
+                    let status = state.status;
+                    let eligible = state.accepts_key(current);
+                    drop(state);
+                    if matches!(status, Status::Finished | Status::Cancelled) {
+                        break;
+                    }
+                    if status == Status::Paused && hook != 0 {
                         UnhookWindowsHookEx(hook);
                         hook = 0;
                     }
-                    if state.status == Status::Recording && hook == 0 {
+                    if status == Status::Recording && hook == 0 {
                         hook = SetWindowsHookExW(14, Some(mouse), module, 0);
                         if hook == 0 {
-                            state.source_failed("capture_unavailable");
+                            seq.lock().unwrap().source_failed("capture_unavailable");
+                            break;
                         }
                     }
-                    let eligible = state.accepts_key(current);
-                    let opted_in = current.is_some_and(|h| GetPropW(h, opt_in.as_ptr()) != 0);
-                    let ordinary = eligible
+                    let opted_in = isolated.is_none()
+                        && current.is_some_and(|h| GetPropW(h, opt_in.as_ptr()) != 0);
+                    let mut ordinary = eligible
                         && !opted_in
                         && current.is_some_and(|h| command_control(h, rect).is_some());
-                    if ordinary {
+                    if let Some(keys) = &mut private_keys {
+                        if ordinary {
+                            let top = current.unwrap();
+                            let desktop = isolated.as_ref().unwrap();
+                            ordinary = keys.sample(&seq, elapsed, top, || {
+                                if !desktop.is_input_desktop() || !desktop.owns_window(top) {
+                                    return None;
+                                }
+                                command_control(top, rect)
+                                    .filter(|child| desktop.owns_window(*child))
+                            });
+                        } else {
+                            keys.reset(&seq);
+                        }
+                    } else if ordinary {
                         let top = current.unwrap();
-                        commands.sample(&mut state, elapsed, top, || command_control(top, rect));
+                        commands.sample(&seq, elapsed, top, || command_control(top, rect));
                     } else {
-                        commands.reset(&mut state);
+                        commands.reset(&mut seq.lock().unwrap());
                     }
                     sampling.store(ordinary, Ordering::Release);
-                    drop(state);
-                    if ended {
-                        break;
-                    }
                     if eligible
+                        && opted_in
                         && focus().is_some_and(|(_, child)| !native_password(child))
-                        && current.is_some_and(|h| GetPropW(h, opt_in.as_ptr()) != 0)
                     {
                         let h = current.unwrap();
                         let send = CTX.with_borrow_mut(|slot| {
@@ -544,19 +645,53 @@ impl Worker {
                         negotiated.store(ordinary, Ordering::Release);
                         CTX.with_borrow_mut(|slot| slot.as_mut().unwrap().offered = None);
                     }
+                    if isolated.is_some() {
+                        let layout = active_focus.map(|(_, child)| {
+                            GetKeyboardLayout(GetWindowThreadProcessId(child, std::ptr::null_mut())) as u16
+                        });
+                        if shown_layout != Some((layout, ordinary)) {
+                            let language = match layout.map(|id| id & 0x03ff) {
+                                Some(9) => "英文布局".to_owned(),
+                                Some(4) => "中文布局".to_owned(),
+                                _ => layout.map_or_else(String::new, |id| format!("布局 {id:04X}")),
+                            };
+                            let status = if ordinary { "键盘已就绪" } else { "等待目标焦点" };
+                            SetWindowTextW(indicator, wide(&format!("{status} {language} · 点击停止")).as_ptr());
+                            shown_layout = Some((layout, ordinary));
+                        }
+                    }
                     thread::sleep(Duration::from_millis(4));
                 }
                 if hook != 0 {
+                    super::isolated::trace_lifecycle("worker.unhook.begin");
                     UnhookWindowsHookEx(hook);
+                    super::isolated::trace_lifecycle("worker.unhook.end");
                 }
                 CTX.set(None);
             }
+            if let Some(keys) = &mut private_keys {
+                keys.stop();
+            }
+            super::isolated::trace_lifecycle("worker.destroy-window.begin");
             DestroyWindow(indicator);
             UnregisterClassW(class.as_ptr(), module);
+            super::isolated::trace_lifecycle("worker.destroy-window.end");
+            if let Some(desktop) = &isolated {
+                let _ = desktop.restore();
+            }
+            drop(private_keys);
+            super::isolated::trace_lifecycle("worker.end");
         });
-        let receiver = rx
-            .recv_timeout(Duration::from_secs(2))
-            .map_err(|_| IpcError::new("CAPABILITY_DENIED", "录制指示窗或鼠标采集不可用", false))?;
+        let receiver = match rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(Ok(hwnd)) => hwnd,
+            reply => {
+                done.store(true, Ordering::Release);
+                let _ = join.join();
+                return Err(reply.ok().and_then(Result::err).unwrap_or_else(|| {
+                    IpcError::new("CAPABILITY_DENIED", "录制指示窗或鼠标采集不可用", false)
+                }));
+            }
+        };
         Ok(Self {
             receiver,
             keyboard_ready,
@@ -568,6 +703,9 @@ impl Worker {
     pub fn stop(&self) {
         self.done.store(true, Ordering::Release);
     }
+    pub(super) fn finished(&self) -> bool {
+        self.join.as_ref().is_none_or(|thread| thread.is_finished())
+    }
 }
 impl Drop for Worker {
     fn drop(&mut self) {
@@ -575,5 +713,54 @@ impl Drop for Worker {
         if let Some(j) = self.join.take() {
             let _ = j.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn reader_shutdown_can_complete_a_synchronous_gui_notification() {
+        // A message-only control on this test thread. No desktop switch or input is used.
+        let hwnd = unsafe {
+            CreateWindowExW(0, wide("STATIC").as_ptr(), wide("").as_ptr(), 0,
+                0, 0, 0, 0, -3, 0, GetModuleHandleW(std::ptr::null()), 0)
+        };
+        assert_ne!(hwnd, 0);
+        let (reply, result) = mpsc::channel();
+        let reader = thread::spawn(move || {
+            let mut value = 0;
+            let handled = unsafe { SendMessageTimeoutW(hwnd, 0, 0, 0, 3, 1000, &mut value) };
+            reply.send(handled != 0).unwrap();
+        });
+        crate::winmessages::join_servicing_sent_messages(reader);
+        unsafe { DestroyWindow(hwnd); }
+        assert!(result.recv().unwrap());
+    }
+
+    #[test]
+    fn a_terminal_worker_can_retire_while_its_desktop_thread_is_still_cleaning_up() {
+        let (release, wait) = mpsc::channel();
+        let (exited, reap) = mpsc::channel();
+        let done = Arc::new(AtomicBool::new(false));
+        let worker = Worker {
+            receiver: 0,
+            keyboard_ready: Arc::new(AtomicBool::new(false)),
+            native_commands: Arc::new(AtomicBool::new(false)),
+            done: done.clone(),
+            join: Some(thread::spawn(move || {
+                let _ = wait.recv();
+                let _ = exited.send(());
+            })),
+        };
+        worker.stop();
+        let mut retired = vec![super::super::RetiredWorker { worker, desktop: None }];
+        retired.retain(|old| !old.finished());
+        assert_eq!(retired.len(), 1);
+        release.send(()).unwrap();
+        drop(retired); // Closing the registry waits for the retained thread to return.
+        reap.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(done.load(Ordering::Acquire));
     }
 }

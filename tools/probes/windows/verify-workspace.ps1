@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory)][string]$Executable, [Parameter(Mandatory)][string]$OutputDirectory, [switch]$Extended, [switch]$ReleaseCases, [switch]$DraftCases, [switch]$ModelCases, [switch]$TextOutputCases, [switch]$PointCases)
+﻿param([Parameter(Mandatory)][string]$Executable, [Parameter(Mandatory)][string]$OutputDirectory, [switch]$Extended, [switch]$ReleaseCases, [switch]$DraftCases, [switch]$ModelCases, [switch]$TextOutputCases, [switch]$PointCases, [string]$IsolatedRecordingFixture)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $folder = New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop
@@ -48,7 +48,8 @@ function Save-Tree($tag) {
     })
     $rows | ConvertTo-Json | Out-File -Encoding utf8 (Join-Path $folder.FullName "$tag.json")
 }
-if ($Extended -or $DraftCases -or $TextOutputCases) { . (Join-Path $PSScriptRoot 'workspace-image-cases.ps1') }
+if ($Extended -or $DraftCases -or $TextOutputCases -or $IsolatedRecordingFixture) { . (Join-Path $PSScriptRoot 'workspace-image-cases.ps1') }
+if ($IsolatedRecordingFixture) { . (Join-Path $PSScriptRoot '../../../tests/acceptance/recording_ui.ps1') }
 if ($TextOutputCases) { . (Join-Path $PSScriptRoot '../../../tests/acceptance/text-output-ui.ps1') }
 if ($DraftCases) {
     $env:ST_MEASURE_PREVIEW_CADENCE = '1'
@@ -66,6 +67,12 @@ try {
         $hwnd = Wait-Until { $app.Refresh(); if ($app.MainWindowHandle -ne [IntPtr]::Zero) { $app.MainWindowHandle } } 'WinUI window'
         $main = $ae::FromHandle($hwnd)
         Element StopEngine | Out-Null
+        if ($IsolatedRecordingFixture) {
+            Test-IsolatedRecording (Resolve-Path -LiteralPath $IsolatedRecordingFixture).Path
+            $main.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
+            if (!$app.WaitForExit(15000)) { throw 'Recording workspace did not close cleanly' }
+            break
+        }
         if ($PointCases) {
             Select-Element (Element NavScripts)
             Set-Value DraftPointX '300'

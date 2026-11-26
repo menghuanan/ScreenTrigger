@@ -56,17 +56,13 @@ impl CommandKeys {
     /// `control` verifies the actual foreground, focused control and password state twice.
     pub fn sample(
         &mut self,
-        state: &mut Sequence,
+        sequence: &std::sync::Mutex<Sequence>,
         now: u64,
         top: isize,
         control: impl Fn() -> Option<isize>,
     ) {
-        if !state.accepts_key(Some(top)) {
-            self.reset(state);
-            return;
-        }
         let Some(hwnd) = control() else {
-            self.reset(state);
+            self.reset(&mut sequence.lock().unwrap());
             return;
         };
         let mut mask = 0u32;
@@ -76,11 +72,16 @@ impl CommandKeys {
             }
         }
         if control() != Some(hwnd) {
-            self.reset(state);
+            self.reset(&mut sequence.lock().unwrap());
+            return;
+        }
+        let mut state = sequence.lock().unwrap();
+        if !state.accepts_key(Some(top)) {
+            self.reset(&mut state);
             return;
         }
         if self.focus != Some(hwnd) {
-            self.reset(state);
+            self.reset(&mut state);
             self.focus = Some(hwnd);
             self.down = mask;
             self.previous = now;

@@ -15,11 +15,6 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <HostProject>$(MSBuildThisFileDirectory)..\..\native\host\Cargo.toml</HostProject>
-    <HostOutput>$(MSBuildThisFileDirectory)..\..\dist\native-host</HostOutput>
-    <HostProfile Condition="'$(Configuration)' == 'Release'">release</HostProfile>
-    <HostProfile Condition="'$(HostProfile)' == ''">debug</HostProfile>
-    <CargoProfileArg Condition="'$(HostProfile)' == 'release'">--release</CargoProfileArg>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="../../schema/types.schema.json" LogicalName="ScreenTrigger.types.json" />
@@ -29,10 +24,6 @@
     <Compile Include="../../tools/probes/windows/SelectionProbe/SelectionGeometry.cs" Link="Selection/SelectionGeometry.cs" />
     <Compile Include="../../tools/probes/windows/SelectionProbe/ProbeDesktop.cs" Link="Selection/WindowGeometry.cs" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" PrivateAssets="all" />
-    <Content Include="$(HostOutput)\$(HostProfile)\screen_trigger_lib.dll"
-             Link="screen_trigger_lib.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
-  <Target Name="BuildNativeHost" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
-    <Exec Command="cargo build --locked $(CargoProfileArg) --manifest-path &quot;$(HostProject)&quot; --target-dir &quot;$(HostOutput)&quot;" />
-  </Target>
+  <Import Project="..\NativeHost.targets" />
 </Project>

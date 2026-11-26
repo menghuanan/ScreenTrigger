@@ -9,16 +9,36 @@ import os
 from pathlib import Path
 import sys
 import time
+import unicodedata
 
 from PIL import Image, ImageDraw, ImageFont, ImageGrab, ImageWin
 
 ROOT = Path(__file__).resolve().parents[2]
+if not sys.flags.isolated:
+    sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools/probes/windows"))
+from backend.vision.textmatch import levenshtein
 from common import MiniWindow, gdi32, set_per_monitor_v2, user32
 from verify_p1_runtime import Host, Window, wait
 
 X, Y, WIDTH, HEIGHT = 100, 150, 720, 140
 GENERAL = "PP-OCRv6_medium_rec"
+
+
+def single_line_snapshot(blocks):
+    """Expected UTF-8 bytes for this fixture's single horizontal line."""
+    words = sorted((b for b in blocks if b["text"]), key=lambda b: (
+        min(p["x"] for p in b["polygon"]), min(p["y"] for p in b["polygon"])))
+    line = ""
+    for block in words:
+        word = block["text"]
+        if line and not line[-1].isspace() and not word[0].isspace():
+            line += " "
+        line += word
+    line = line.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "\r\n")
+    if line and not line.endswith("\r\n"):
+        line += "\r\n"
+    return line.encode("utf-8")
 
 
 def fixture(pipe, directory):
@@ -61,7 +81,7 @@ def run(dll, directory):
     directory.mkdir(parents=True, exist_ok=False)
     samples = json.loads((ROOT / "tests/acceptance/fixtures/ocr.json").read_bytes())
     started = time.time()
-    results = {"argv": sys.argv, "model_dir": os.environ.get("ST_OCR_MODELS_DIR"),
+    results = {"status": "FAIL", "argv": sys.argv, "model_dir": os.environ.get("ST_OCR_MODELS_DIR"),
                "dll_sha256": hashlib.sha256(dll.read_bytes()).hexdigest(), "observations": []}
     pipe, other = multiprocessing.Pipe()
     child = multiprocessing.Process(target=fixture, args=(other, directory))
@@ -101,6 +121,10 @@ def run(dll, directory):
         results["observations"].append(data)
         (directory / "observations.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    def exports(execution):
+        return [e["payload"] for e in host.events if e.get("name") == "text_exported"
+                and e["payload"]["execution_id"] == execution]
+
     try:
         assert pipe.poll(8)
         hwnd = pipe.recv()
@@ -118,6 +142,7 @@ def run(dll, directory):
         assert pick(None, "append") is None
         exported = directory / "four-languages.txt"
         combined = b""
+        empty_samples = []
         for lang in ("zh", "en", "ja", "ko"):
             group = samples[lang]
             sample = group["samples"][0]
@@ -129,9 +154,25 @@ def run(dll, directory):
             execution = host.request("execute_script", script_id=host.save(src), **scope, output_token=token)["execution_id"]
             state = finished(execution)
             actual = exported.read_bytes() if exported.exists() else b""
-            combined += (text + "\r\n").encode()
-            inspect(dict(lang=lang, pixels=pixels, state=state, expected_hex=combined.hex(), actual_hex=actual.hex()))
-            assert actual == combined, (lang, actual, combined)
+            blocks = state["result"]
+            snapshot = single_line_snapshot(blocks)
+            combined += snapshot
+            reference = unicodedata.normalize("NFC", text)
+            recognized = "".join(b["text"] for b in blocks)
+            errors = levenshtein(reference, unicodedata.normalize("NFC", recognized))
+            writes = wait(lambda: exports(execution), "script export event", 5) if snapshot else exports(execution)
+            inspect(dict(lang=lang, pixels=pixels, state=state,
+                         ocr=dict(reference=text, recognized=recognized, errors=errors,
+                                  characters=len(reference), cer=errors / len(reference)),
+                         export=dict(expected_hex=combined.hex(), actual_hex=actual.hex(),
+                                     bytes_match=actual == combined, events=writes)))
+            assert actual == combined and exported.exists() == bool(combined), (lang, actual, combined)
+            if snapshot:
+                assert len(writes) == 1 and writes[0]["bytes_written"] == len(snapshot), writes
+                assert writes[0]["block_confidences"] == [b["confidence"] for b in blocks if b["text"]], writes
+            else:
+                assert not writes, writes
+                empty_samples.append(lang)
         config = host.request("get_config")["config"]
         host.request("update_config", expected_revision=config["revision"], patch={"recognition":{"ocr_model_id":GENERAL}})
         paint("A", "A")
@@ -153,20 +194,23 @@ def run(dll, directory):
                     state = host.state(execution)
                     if state["status"] == "failed":
                         raise AssertionError(state)
-                    items = [e["payload"] for e in host.events if e.get("name") == "text_exported"
-                             and e["payload"]["execution_id"] == execution]
+                    items = exports(execution)
                     return items if len(items) >= i else None
                 writes = wait(events, f"{mode} export event {i}", 12)
                 expected = (expected if mode == "append" else b"") + (letter+"\r\n").encode()
                 actual = path.read_bytes()
                 inspect(dict(mode=mode, index=i, execution=execution, writes=writes,
                              expected_hex=expected.hex(), actual_hex=actual.hex()))
+                assert len(writes) == i and len({e["action_id"] for e in writes}) == i, writes
+                assert writes[-1]["bytes_written"] == len((letter + "\r\n").encode())
+                assert writes[-1]["block_confidences"]
                 assert actual == expected
                 if i < 4:
                     paint("AABA"[i], "AABA"[i])
             host.request("stop_script", execution_id=execution)
             time.sleep(2.25)
-            assert path.read_bytes() == expected
+            assert path.read_bytes() == expected and len(exports(execution)) == 4
+        assert not empty_samples, ("OCR returned no text for these nonempty samples", empty_samples)
         results["status"] = "PASS"
     finally:
         try:

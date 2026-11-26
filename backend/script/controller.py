@@ -229,7 +229,8 @@ class Root:
                 self.gate.checkpoint()
                 reply = self.controller.text_output("commit", self.id, **fields)
             self.controller.emit("text_exported", dict(execution_id=self.id, action_id=action,
-                                                      bytes_written=reply["bytes_written"]))
+                                                      bytes_written=reply["bytes_written"],
+                                                      block_confidences=[b["confidence"] for b in blocks if b["text"]]))
 
     def run_script(self):
         next_tick = self.active_time()

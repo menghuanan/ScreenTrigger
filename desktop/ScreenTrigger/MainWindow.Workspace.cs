@@ -87,7 +87,8 @@ public sealed partial class MainWindow
                 "history" => new History.HistoryPage(host),
                 "settings" => new Settings.SettingsPage(host, ApplyDisplayConfig, WindowNative.GetWindowHandle(this)),
                 "scripts" => new Scripts.ScriptsPage(host),
-                "run" or "monitor" => new RunContext.RunContextPage(host, luaAvailable, tag == "monitor", workspaceOcr),
+                "run" or "monitor" => new RunContext.RunContextPage(host, luaAvailable, tag == "monitor", workspaceOcr,
+                    WindowNative.GetWindowHandle(this)),
                 "recognition" => new Recognition.RecognitionPage(host, () => image, () => imageOrigin, () => pendingDraft),
                 _ => null
             };

@@ -392,8 +392,21 @@ impl Sequence {
             );
         }
     }
+    pub fn pointer_focus(&mut self, now: u64, hit: Option<isize>, foreground: Option<isize>) {
+        if self.bound.is_some() && (!self.awaiting_bound || (self.bound == hit && self.bound == foreground)) {
+            self.focus(now, foreground, true);
+        }
+    }
     pub fn pointer(&mut self, now: u64, x: i64, y: i64, hit: Option<isize>, event: Pointer) {
-        if self.status != Status::Recording || self.awaiting_bound {
+        if self.status != Status::Recording {
+            return;
+        }
+        if self.awaiting_bound
+            && (hit != self.bound || !matches!(event, Pointer::Down(_) | Pointer::Move))
+        {
+            // A click can activate this window. Buffer its in-window down/moves,
+            // but never complete it unless the same bound target gained foreground.
+            self.button = None;
             return;
         }
         let anchor = self
@@ -516,6 +529,25 @@ mod tests {
     fn click(s: &mut Sequence, t: u64, owner: isize) {
         s.pointer(t, -50, 85, Some(owner), Pointer::Down("left"));
         s.pointer(t + 1, -50, 85, Some(owner), Pointer::Up("left"));
+    }
+    #[test]
+    fn first_click_requires_the_bound_recipient_and_verified_foreground() {
+        for (down_hit, down_focus, up_hit, up_focus, expected) in [
+            (1, 1, 1, 1, 1), // both packets precede the polling loop
+            (1, 2, 1, 1, 1), // down activates the chosen target
+            (1, 2, 1, 2, 0), // activation never happened
+            (1, 1, 1, 2, 0), // the original recipient lost focus before release
+            (2, 2, 1, 1, 0), // foreign down
+            (1, 2, 2, 1, 0), // foreign release
+        ] {
+            let mut s = seq(ScopeKind::Window);
+            s.await_bound();
+            s.pointer_focus(1001, Some(down_hit), Some(down_focus));
+            s.pointer(1001,-50,85,Some(down_hit),Pointer::Down("left"));
+            s.pointer_focus(1002, Some(up_hit), Some(up_focus));
+            s.pointer(1002,-50,85,Some(up_hit),Pointer::Up("left"));
+            assert_eq!(s.completed.len(), expected);
+        }
     }
     #[test]
     fn ime_and_named_release_share_the_focused_physical_key() {

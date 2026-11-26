@@ -147,7 +147,8 @@ def main():
     frameworks = config["runtimeOptions"].get("includedFrameworks", [])
     if not any(f["name"] == "Microsoft.NETCore.App" and f["version"] == RUNTIME for f in frameworks):
         p.error("publish the Offline profile with .NET " + RUNTIME)
-    for name in ("ScreenTrigger.exe", "screen_trigger_lib.dll", "coreclr.dll", "Microsoft.UI.Xaml.dll"):
+    for name in ("ScreenTrigger.exe", "screen_trigger_lib.dll", "recording-desktop-return.exe",
+                 "coreclr.dll", "Microsoft.UI.Xaml.dll"):
         if not (args.ui / name).is_file():
             p.error("missing published file: " + name)
     out = args.out.resolve()

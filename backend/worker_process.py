@@ -28,7 +28,7 @@ if sys.platform == "win32":
                     env = dict(os.environ, __PYVENV_LAUNCHER__=sys.executable)
                 # stdout belongs to the sidecar protocol. Native diagnostics stay on stderr.
                 self.child = subprocess.Popen(args, executable=executable, env=env,
-                    creationflags=subprocess.DETACHED_PROCESS, stdin=subprocess.DEVNULL,
+                    creationflags=process_obj.creation_flags, stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL, stderr=sys.stderr or subprocess.DEVNULL)
                 self.pid = self.child.pid
                 self.sentinel = self._handle = int(self.child._handle)
@@ -51,5 +51,11 @@ if sys.platform == "win32":
 
     class WorkerProcess(SpawnProcess):
         _Popen = staticmethod(HeadlessSpawn)
+        creation_flags = subprocess.DETACHED_PROCESS
+
+    class OcrWorkerProcess(WorkerProcess):
+        # Paddle's console utilities inherit this windowless console during lazy initialization.
+        creation_flags = subprocess.CREATE_NO_WINDOW
 else:
     WorkerProcess = multiprocessing.get_context("spawn").Process
+    OcrWorkerProcess = WorkerProcess

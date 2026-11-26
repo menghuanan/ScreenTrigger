@@ -11,6 +11,6 @@
     <Compile Include="../ScreenTrigger/Host/*.cs" Link="Host/%(Filename)%(Extension)" />
     <EmbeddedResource Include="../../schema/types.schema.json" LogicalName="ScreenTrigger.types.json" />
     <EmbeddedResource Include="../../schema/config.schema.json" LogicalName="ScreenTrigger.config.json" />
-    <Content Include="../../dist/native-host/debug/screen_trigger_lib.dll" Link="screen_trigger_lib.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Import Project="..\NativeHost.targets" />
 </Project>

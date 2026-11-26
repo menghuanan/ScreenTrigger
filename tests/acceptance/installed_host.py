@@ -22,8 +22,12 @@ def main():
         parser.error("Use a new directory outside the installation")
     manifest = json.loads((source / "package.json").read_bytes())
     shutil.copytree(source, target)
-    for name in ("ScreenTrigger.exe", "screen_trigger_lib.dll", "resources/python/python.exe"):
-        expected = next(item["sha256"] for item in manifest["files"] if item["path"] == name)
+    files = {item["path"]: item["sha256"] for item in manifest["files"]}
+    required = ["ScreenTrigger.exe", "screen_trigger_lib.dll", "resources/python/python.exe"]
+    if "recording-desktop-return.exe" in files:
+        required.append("recording-desktop-return.exe")
+    for name in required:
+        expected = files[name]
         if digest(target / name) != expected:
             raise ValueError(f"Unexpected packaged binary {name}")
     python = target / "resources/python"

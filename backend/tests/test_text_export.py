@@ -33,7 +33,7 @@ class ScriptDelivery(unittest.TestCase):
     await_state = runtime.ExecutionRuntime.await_state
 
     def test_cached_duplicate_blank_and_unacknowledged_commit(self):
-        blocks = [block('A', 0, 0), block('A', 0, 0)]
+        blocks = [block('A', 20, 0, .2), block('', 10, 0), block('A', 0, 0, .9)]
         self.vision.run_sync.side_effect = [{'blocks': blocks}, {'blocks': blocks}, {'blocks': []}]
         self.capture.capture = Mock(wraps=self.capture.capture)
         dispatch = self.controller.text_output = Mock(side_effect=[{}, StorageError('INTERNAL_ERROR', 'timeout',
@@ -49,7 +49,9 @@ class ScriptDelivery(unittest.TestCase):
         self.assertNotEqual(first.kwargs['action_id'], second.kwargs['action_id'])
         self.assertEqual(first.kwargs['text'], second.kwargs['text'])
         self.assertEqual(first.kwargs['text'].encode(), b'A A\r\n')
-        self.assertEqual(len([e for e in self.events if e[0] == 'text_exported']), 2)
+        writes = [payload for name, payload in self.events if name == 'text_exported']
+        self.assertEqual(writes, [dict(execution_id=root, action_id=c.kwargs['action_id'],
+                                       bytes_written=5, block_confidences=[.2, .9]) for c in (first, second)])
 
     def test_write_error_terminates_root_without_replaying(self):
         self.vision.run_sync.return_value = {'blocks': [block('B', 0, 0)]}

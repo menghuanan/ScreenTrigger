@@ -27,7 +27,7 @@
     <TextBox x:Name="Arguments" Header="脚本参数（JSON 对象）" Text="{}" />
     <StackPanel x:Name="RecordingControls" Spacing="6">
         <TextBlock Text="录制当前范围" FontWeight="SemiBold" />
-        <TextBlock Text="鼠标使用当前范围。键盘要求已获焦的目标窗口提供录制消息。" TextWrapping="Wrap" />
+        <TextBlock Text="在当前桌面录制鼠标。已接入录制协议的焦点控件还可录普通键；其他受支持控件可录功能键和快捷键。" TextWrapping="Wrap" />
         <StackPanel Orientation="Horizontal" Spacing="6">
             <Button x:Name="StartRecording" AutomationProperties.AutomationId="StartRecording" Click="RecordClick" Content="开始录制" />
             <Button x:Name="PauseRecording" AutomationProperties.AutomationId="PauseRecording" Click="RecordClick" Content="暂停" IsEnabled="False" />
@@ -35,7 +35,28 @@
             <Button x:Name="FinishRecording" AutomationProperties.AutomationId="FinishRecording" Click="RecordClick" Content="结束录制" IsEnabled="False" />
             <Button x:Name="CancelRecording" AutomationProperties.AutomationId="CancelRecording" Click="RecordClick" Content="取消录制" IsEnabled="False" />
         </StackPanel>
+        <StackPanel Spacing="6">
+            <ComboBox x:Name="IsolatedScope" Header="隔离桌面录制范围" SelectedIndex="0"
+                      SelectionChanged="ChangeIsolatedScope" AutomationProperties.AutomationId="IsolatedRecordingScope">
+                <ComboBoxItem Content="新启动应用的主窗口" Tag="window" />
+                <ComboBoxItem Content="框选区域" Tag="region" />
+                <ComboBoxItem Content="单台显示器" Tag="display" />
+            </ComboBox>
+            <ComboBox x:Name="IsolatedDisplay" Header="录制显示器" Visibility="Collapsed"
+                      AutomationProperties.AutomationId="IsolatedRecordingDisplay" />
+            <Button x:Name="PickIsolatedRegion" Content="框选录制区域" Visibility="Collapsed" Click="SelectRegion"
+                    AutomationProperties.AutomationId="PickIsolatedRecordingRegion" />
+            <TextBlock x:Name="IsolatedRegionLabel" Visibility="Collapsed" TextWrapping="Wrap" />
+            <Button x:Name="StartIsolated" Content="选择应用并在隔离桌面录制" Click="RecordClick"
+                    AutomationProperties.AutomationId="StartIsolatedRecording" />
+            <TextBlock Text="请选择本机的图形界面应用（.exe）。应用会在隔离桌面启动。录英文按键前请确认目标应用已切换至英文输入法。停录时会关闭本次启动的应用，请先保存工作，再点击隔离桌面上的停止按钮，返回此页查看草稿。" TextWrapping="Wrap" />
+        </StackPanel>
         <TextBlock x:Name="RecordingStatus" AutomationProperties.AutomationId="RecordingStatus" TextWrapping="Wrap" />
+        <Expander x:Name="RecordingDraft" Header="查看已录动作" Visibility="Collapsed" Expanding="ReadRecordingDraft"
+                  AutomationProperties.AutomationId="RecordingDraft" HorizontalAlignment="Stretch">
+            <TextBox x:Name="RecordingActions" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="220"
+                     AutomationProperties.Name="已录动作 JSON" AutomationProperties.AutomationId="RecordingActions" />
+        </Expander>
     </StackPanel>
     <monitor:MonitorOptions x:Name="Policy" Visibility="Collapsed" />
     <StackPanel Spacing="6">
@@ -51,7 +72,9 @@
         <TextBlock x:Name="WriteStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.AutomationId="TextWriteStatus" AutomationProperties.LiveSetting="Polite" />
     </StackPanel>
     <Expander x:Name="Scope" Header="区域与频率" HorizontalAlignment="Stretch"><StackPanel Spacing="8">
-        <TextBox x:Name="Region" Header="识别区域（Region JSON，留空使用整个显示器或客户区）" />
+        <TextBox x:Name="Region" Header="识别区域（Region JSON，留空使用整个显示器或客户区）"
+                 AutomationProperties.AutomationId="Region"
+                 PlaceholderText='绑定窗口可填客户区矩形，例如 {"x":0,"y":0,"width":320,"height":180}' />
         <Button x:Name="PickRegion" Content="在显示器上框选区域" Click="SelectRegion" />
         <CheckBox x:Name="AllowExit" Content="允许输入越出识别区域" />
         <NumberBox x:Name="Frequency" Header="识别频率（Hz）" Minimum="0.1" Maximum="30" Value="1" />

@@ -50,7 +50,7 @@ request/response 的 id 必填且同会话唯一；成功含 data、失败含 er
 
 ## 全双工与宿主调用
 
-桌面 ABI `pick_text_output {session_id,mode}` 打开受信选择器，取消返回空令牌；选定后返回 `{output_token,name}`。启动命令可携带该令牌。新增内部 host_request `text_output` 的操作为 bind（execution_id、output_token）、commit（execution_id、action_id、text）、close（execution_id）。路径仅由系统选择器交给宿主，内部调用不接收路径。commit 返回写入字节数；同一逻辑动作重试保持同一 ID。应用通过 `text_exported {execution_id,action_id,bytes_written}` 观察结果。
+桌面 ABI `pick_text_output {session_id,mode}` 打开受信选择器，取消返回空令牌；选定后返回 `{output_token,name}`。启动命令可携带该令牌。新增内部 host_request `text_output` 的操作为 bind（execution_id、output_token）、commit（execution_id、action_id、text）、close（execution_id）。路径仅由系统选择器交给宿主，内部调用不接收路径。commit 返回写入字节数；同一逻辑动作重试保持同一 ID。成功提交后发送一次 `text_exported {execution_id,action_id,bytes_written,block_confidences}`。分数数组按本次 OCR 返回的 TextBlock 源序列出所有原文非空块的 confidence，包含低置信度和重复块的各自分数。空快照和写入失败均无成功事件。
 
 Lua 请求输入时 Python 发 `type=host_request,id=py-<uuid>,command=input_action,params={execution_id,lease_id,action_id,geometry_revision,action}`，Rust 回同 ID 的 `host_response`（相同 success/data/error 规则）。其他允许的 host 命令：window_snapshot、acquire_input_lease、release_input_lease，以及只读 query_pointer。query_pointer 的 params 为 {}，返回物理屏幕整数 {x,y}，允许负数；未装配返回 CAPABILITY_DENIED，系统读取失败返回 WINDOW_UNAVAILABLE。它不属于对外命令目录。单独 reader 持续读两端流，不允许“发请求后直接 readline 等一条”抢走其他响应。
 
@@ -253,9 +253,13 @@ P2 扩展两个历史命令，公开目录共 64 条。get_execution_logs 可读
 
 `start_recording {context}` 使用运行设置的 `display_id`、`binding_id` 和可选 `region`。同一桌面同时仅允许一个录制或输入执行；同一请求 ID 的重发沿用一般请求去重。`pause_recording`、`resume_recording`、`get_recording_state`、`finish_recording`、`cancel_recording` 均仅接受当前会话的 `{recording_id}`。状态含 `status`、`action_count`、`interrupted`、`keyboard_source`。`finish_recording` 返回冻结的内存 `actions`。取消清除草稿，结束后拒绝新事件。
 
+调用方可在开始请求里传入新的 UUID 字段 `recording_id`。省略时由宿主生成。WinUI 在启动回执超时后按本次 ID 查询状态，避免再次启动应用。即使首次读到的状态已经是 `finished`，调用方仍通过 `finish_recording` 取得与该 ID 对应的动作。
+
 Windows 鼠标来源是可见录制时段内的鼠标事件。键盘来源 `focused_window_messages` 需要目标窗口主动提供自身收到的键消息。当前普通第三方窗口的完整键序支持尚未验收。窗口原生接入在顶层 HWND 设置非零属性 `ScreenTrigger.RecordingInput.v1`。实际焦点及鼠标归属确认后，宿主向该 HWND 发送 `WM_COPYDATA`，`dwData=0x53545231`，16 字节为本次随机令牌，`wParam` 为可见停止窗口。目标只对自己的非密码焦点控件转发实际键按下和释放。回复使用 `WM_COPYDATA`，`wParam` 为实际焦点 HWND，`dwData=0x53545232`，数据为原令牌、两个小端 `u16`（VK、扫描码）及四个 `u8`（扩展位、按下位、受保护控件标志、版本 1）。受保护控件拒绝采集。协议不接受文本、剪贴板、候选词、其他窗口消息或磁盘时间线。
 
 用户显式开始录制，并通过范围内点击建立归属后，标准 Edit、RichEdit、按钮和列表等具有已知输入语义的前台控件还可报告 `keyboard_source=foreground_command_keys`、`keyboard_available=true`。此来源只提供导航键、功能键、修饰键和已列明的输入法命令键。每次采样前后均复核实际焦点及范围，原生编辑框同时复核密码样式和运行时遮盖字符。快捷键多边沿次序无法确定或采样间隔过大时，中止本次组合。短于采样间隔的脉冲无法重建。普通窗口的字母数字完整键序仍须目标主动接入。未取得来源时客户端显示“当前焦点尚无键盘录制来源”。
+使用普通应用时，显式传入 `start_recording {context, isolated_app:{executable,scope}}`。用户选择本地 GUI 可执行文件。宿主在新桌面启动该程序，`window` 取新进程的客户区，`region` 和 `display` 分别使用当前显示器上的屏幕选区和整台显示器。状态中的 `isolated_app.desktop_name` 和 `pid` 标识本次目标，`keyboard_source=isolated_control_keys` 表示隔离来源。宿主在该桌面成为输入桌面、目标前台标准控件取得焦点并通过密码检查后采样。两次采样之间完全结束的短按可能漏录，无法确定次序的组合会标记中止。结束或取消后 `keyboard_available` 为 false，并返回原桌面。
+
 ## 已绑定窗口的后台输入
 
 `get_window_input_capabilities({binding_id})` 返回绑定、`input.{click,drag,scroll,key,hotkey}` 和 `reason`。各项为 `available`、`unknown` 或 `unavailable`。目标可用 Windows 注册消息 `ScreenTrigger.BackgroundInput.Capabilities.v1` 声明其已实现的消息处理能力。查询的两个参数为零，返回值为 0x53540000 加上五项低位掩码（依次为 1、2、4、8、16）。无声明的普通窗口展示待验证；目标最小化、隐藏、拒绝访问或无响应时展示原因。

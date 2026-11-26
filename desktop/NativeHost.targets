@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <HostProject>$(MSBuildThisFileDirectory)..\native\host\Cargo.toml</HostProject>
+    <HostOutput>$(MSBuildThisFileDirectory)..\dist\native-host</HostOutput>
+    <HostProfile Condition="'$(Configuration)' == 'Release'">release</HostProfile>
+    <HostProfile Condition="'$(HostProfile)' == ''">debug</HostProfile>
+    <CargoProfileArg Condition="'$(HostProfile)' == 'release'">--release</CargoProfileArg>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="$(HostOutput)\$(HostProfile)\screen_trigger_lib.dll;$(HostOutput)\$(HostProfile)\recording-desktop-return.exe"
+             Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="BuildNativeHost" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="cargo build --locked $(CargoProfileArg) --manifest-path &quot;$(HostProject)&quot; --target-dir &quot;$(HostOutput)&quot;" />
+  </Target>
+</Project>
