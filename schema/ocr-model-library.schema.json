@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["revision", "pipelines"],
+  "additionalProperties": false,
+  "properties": {
+    "revision": {"type": "integer", "minimum": 0},
+    "pipelines": {"type": "array", "items": {
+      "type": "object",
+      "required": ["model_id", "languages", "components", "bytes", "state", "error"],
+      "properties": {
+        "model_id": {"type": "string", "minLength": 1},
+        "languages": {"type": "array", "items": {"type": "string"}},
+        "components": {"type": "array", "items": {"type": "string"}},
+        "bytes": {"type": "integer", "minimum": 0},
+        "state": {"enum": ["missing", "installed", "loading", "ready", "damaged"]},
+        "error": {"type": ["object", "null"]}
+      }
+    }}
+  }
+}

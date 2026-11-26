@@ -38,6 +38,7 @@ EXPECTED_CAPABILITIES = [
     {"id": "ocr", "state": "unavailable", "reason": "骨架未接入识别，模型未由引擎加载"},
     {"id": "lua_script", "state": "unavailable", "reason": "Lua 运行时未由骨架接入"},
     {"id": "template_match", "state": "unavailable", "reason": "骨架未实现"},
+    {"id": "feature_match", "state": "unavailable", "reason": "ORB 未就绪"},
     {"id": "contour_match", "state": "unavailable", "reason": "骨架未实现"},
     {"id": "color_match", "state": "unavailable", "reason": "骨架未实现"},
     {"id": "input", "state": "unavailable", "reason": "M05 输入闸门未实现"},
@@ -108,7 +109,7 @@ class SystemReadyTest(unittest.TestCase):
         self.assertEqual(ready["timestamp"], "2026-10-09T12:00:05.000Z")
         self.assertEqual(set(ready["payload"].keys()), {"capabilities", "versions"})
         self.assertEqual(ready["payload"]["capabilities"], EXPECTED_CAPABILITIES)
-        self.assertEqual(len(ready["payload"]["capabilities"]), 7)
+        self.assertEqual(len({cap["id"] for cap in ready["payload"]["capabilities"]}), len(EXPECTED_CAPABILITIES))
         for cap in ready["payload"]["capabilities"]:
             self.assertEqual(cap["state"], "unavailable")
             self.assertTrue(cap["reason"])

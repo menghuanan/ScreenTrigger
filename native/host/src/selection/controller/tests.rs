@@ -512,6 +512,14 @@ fn display_removed_before_confirm_ends_session() {
         "display_removed"
     );
     assert!(!controller.has_active_session());
+    *displays.lock().unwrap() = single_display();
+    let pick = controller.start_pick(None, None).unwrap()["pick_id"].as_str().unwrap().to_owned();
+    displays.lock().unwrap()[0].dpi_scale = 1.5;
+    let err = controller.confirm_pick(&pick, crate::types::region::Point { x: 300, y: 400 }).unwrap_err();
+    assert_eq!(err.code, "DISPLAY_NOT_FOUND");
+    assert_eq!(events.lock().unwrap().last().unwrap().0, "point_pick_cancelled");
+    assert!(controller.cancel_pick(&pick, "cancelled").is_err());
+    assert!(*visible.lock().unwrap());
 }
 
 /// 可动态清空显示器的环境（拔除场景）。
@@ -630,4 +638,40 @@ fn rig_transient_then_permanent_returns_capture_failed() {
     assert_eq!(err.code, "CAPTURE_FAILED");
     assert_eq!(*r.sleeper_ms.lock().unwrap(), 200);
     assert_eq!(r.names(), vec!["selection_started", "selection_cancelled"]);
+}
+#[test]
+fn point_pick_single_pixel_negative_origin_and_stale_commands() {
+    use crate::types::region::Point;
+    let mut h = harness(vec![display("left", -300, 40, 201, 101, true)], false);
+    let id = h.controller.start_pick(Some("left"), None).unwrap()["pick_id"].as_str().unwrap().to_owned();
+    assert_eq!(h.controller.start(None).unwrap_err().code, "BUSY");
+    assert_eq!(h.controller.stop(&id).unwrap_err().code, "INVALID_STATE");
+    assert!(h.controller.cancel_pick("another-pick", "escape").is_err());
+    let result = h.controller.confirm_pick(&id, Point {x: -100, y: 140}).unwrap();
+    assert_eq!(result["point"], serde_json::json!({"x":-100, "y":140}));
+    assert_eq!(result["space"], "screen_physical");
+    assert_eq!(result["display_id"], "left");
+    assert!(result.get("client_point").is_none());
+    assert!(h.controller.confirm_pick(&id, Point {x: 0,y:0}).is_err());
+    assert_eq!(h.event_names(), ["point_pick_started", "point_pick_completed"]);
+    assert!(*h.visible.lock().unwrap());
+    assert!(h.index_of("restore_main_window") < h.index_of("event:point_pick_completed"));
+}
+
+#[test]
+fn point_pick_termination_and_bounds_are_single_use() {
+    use crate::types::region::Point;
+    let mut h = harness(single_display(), false);
+    for reason in ["escape", "closed", "focus_lost", "pointer_lost", "display_changed", "session_ended"] {
+        let id = h.controller.start_pick(None, None).unwrap()["pick_id"].as_str().unwrap().to_owned();
+        if reason == "session_ended" { h.controller.end_session(); }
+        else { h.controller.cancel_pick(&id, reason).unwrap(); }
+        assert_eq!(h.last_payload("point_pick_cancelled")["reason"], reason);
+        assert!(h.controller.cancel_pick(&id, reason).is_err());
+        assert!(*h.visible.lock().unwrap());
+    }
+    let id = h.controller.start_pick(None, None).unwrap()["pick_id"].as_str().unwrap().to_owned();
+    assert_eq!(h.controller.confirm_pick(&id, Point {x: 1920,y:0}).unwrap_err().code, "INVALID_PARAMS");
+    assert_eq!(h.event_names().iter().filter(|n| *n=="point_pick_cancelled").count(), 7);
+    assert!(!h.controller.has_active_session());
 }

@@ -25,12 +25,13 @@ const SESSION_ID_PREFIX: &str = "session-";
 /// host_request 命令白名单（docs/03 宿主命令目录逐字；§3.1 hostbridge.rs：
 /// 白名单内骨架期回 CAPABILITY_DENIED 的 host_response，白名单外回
 /// UNKNOWN_COMMAND——host_request 不进入 UI 命令路由）。
-pub const HOST_REQUEST_COMMANDS: [&str; 5] = [
+pub const HOST_REQUEST_COMMANDS: [&str; 6] = [
     "input_action",
     "window_snapshot",
     "query_pointer",
     "acquire_input_lease",
     "release_input_lease",
+    "text_output",
 ];
 
 /// 校验 host_request 的 command 是否在白名单内。

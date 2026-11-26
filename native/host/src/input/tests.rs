@@ -26,34 +26,14 @@ use crate::types::region::{Region, RegionSpace};
 // 替身
 // ---------------------------------------------------------------------------
 
-/// 记录型输入端口；可选在“第 N 次移动”时关闭闸门（模拟停止在长动作中途到达）。
+/// 记录已实际提交的输入事件。
 struct FakeInputPort {
     events: Arc<Mutex<Vec<String>>>,
-    moves: Arc<Mutex<usize>>,
-    close_on_move: Option<usize>,
-    gate: Option<Arc<GateTable>>,
-    execution_id: String,
 }
 
 impl FakeInputPort {
     fn new(events: Arc<Mutex<Vec<String>>>) -> Self {
-        FakeInputPort {
-            events,
-            moves: Arc::new(Mutex::new(0)),
-            close_on_move: None,
-            gate: None,
-            execution_id: String::new(),
-        }
-    }
-
-    fn with_close(events: Arc<Mutex<Vec<String>>>, on_move: usize, gate: Arc<GateTable>, exec: &str) -> Self {
-        FakeInputPort {
-            events,
-            moves: Arc::new(Mutex::new(0)),
-            close_on_move: Some(on_move),
-            gate: Some(gate),
-            execution_id: exec.to_string(),
-        }
+        Self { events }
     }
 
     fn record(&self, entry: String) {
@@ -64,14 +44,6 @@ impl FakeInputPort {
 impl InputPort for FakeInputPort {
     fn move_to(&self, x: i64, y: i64) -> Result<(), PortError> {
         self.record(format!("move:{x},{y}"));
-        let mut moves = self.moves.lock().unwrap();
-        *moves += 1;
-        if let (Some(threshold), Some(gate)) = (self.close_on_move, &self.gate) {
-            if *moves >= threshold {
-                let (gate, id) = (Arc::clone(gate), self.execution_id.clone());
-                std::thread::spawn(move || gate.close(&id, "stop_mid_action"));
-            }
-        }
         Ok(())
     }
 
@@ -129,6 +101,11 @@ struct FakeRegion {
 }
 
 impl RegionResolutionPort for FakeRegion {
+    fn anchor_scope(&self, scope: super::anchor::Scope, ctx: &InputContext) -> Result<super::anchor::ScopeSnapshot, IpcError> {
+        assert_eq!(scope, super::anchor::Scope::Region);
+        let r = ctx.region.as_ref().unwrap();
+        super::anchor::ScopeSnapshot::new(MonitorRect { x:r.x, y:r.y, width:r.width, height:r.height }, self.monitors.clone())
+    }
     fn check_point(&self, x: i64, y: i64, ctx: &InputContext) -> Result<(), IpcError> {
         super::geometry_guard::evaluate_point(x, y, ctx, &self.monitors)
     }
@@ -180,7 +157,7 @@ fn region_small() -> Region {
 }
 
 fn ctx(region: Option<Region>, allow_exit: bool) -> InputContext {
-    InputContext { region, binding_id: None, display_id: None, allow_exit }
+    InputContext { region, binding_id: None, display_id: None, allow_exit, ..Default::default() }
 }
 
 /// 构造流水线 + 闸门/租约/账本（共享事件记录）。
@@ -226,6 +203,19 @@ fn gate_closed_rejects_new_dispatch_with_zero_sends() {
     }
     assert_eq!(gate.rejected_after_close(), 5, "关闸后被拒尝试计数");
     assert!(events.lock().unwrap().is_empty(), "关闸后不得派发任何 OS 输入（计数恒 0）");
+}
+
+#[test]
+fn anchored_click_refuses_the_whole_partial_gap_even_when_point_and_path_are_on_screen() {
+    let monitors = vec![MonitorRect { x:0, y:0, width:100, height:100 },
+                        MonitorRect { x:101, y:0, width:100, height:100 }];
+    let region = Region { width:200, height:100, ..region_full() };
+    let (mut pipeline, gate, leases, ledger, events) = setup(monitors, ctx(Some(region), true));
+    let action = action::parse_action(&json!({"kind":"click_anchor","anchor":{"version":1,
+        "scope":"region","strategy":"offset","reference_width":200,"reference_height":100,"x":30,"y":30}})).unwrap();
+    let error = pipeline.run(&gate,&leases,&ledger,"exec-1",&lease_id(&leases),"inside",0,&action).unwrap_err();
+    assert_eq!(error.code, "REGION_LIMIT_VIOLATION");
+    assert!(events.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -344,10 +334,23 @@ fn mismatched_lease_id_rejected() {
 fn move_slicing_aborts_when_gate_closes_midway() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let gate = Arc::new(GateTable::new());
-    let input = FakeInputPort::with_close(Arc::clone(&events), 1, Arc::clone(&gate), "exec-1");
+    // The port submits under the gate lock. Close during the next pointer check,
+    // after the first submission has returned and before the next can begin.
+    struct Pointer(FakePointer, Arc<Mutex<Vec<String>>>, Arc<GateTable>);
+    impl PointerPort for Pointer {
+        fn virtual_screen(&self) -> VirtualScreen { self.0.virtual_screen() }
+        fn foreground_window(&self) -> WindowIdentity { self.0.foreground_window() }
+        fn cursor_pos(&self) -> Result<super::model::Point, IpcError> {
+            if !self.1.lock().unwrap().is_empty() {
+                self.2.close("exec-1", "stop_mid_action");
+            }
+            self.0.cursor_pos()
+        }
+    }
+    let input = FakeInputPort::new(Arc::clone(&events));
     let mut pipeline = DispatchPipeline::new(
         Box::new(input),
-        Box::new(FakePointer { virtual_screen: VirtualScreen { x: 0, y: 0, cx: 1920, cy: 1080 }, cursor: super::model::Point { x: 0, y: 0 } }),
+        Box::new(Pointer(FakePointer { virtual_screen: VirtualScreen { x: 0, y: 0, cx: 1920, cy: 1080 }, cursor: super::model::Point { x: 0, y: 0 } }, Arc::clone(&events), Arc::clone(&gate))),
         Box::new(FakeRegion { monitors: single_monitor() }),
         Box::new(FakeClock),
     );
@@ -625,4 +628,62 @@ fn repeated_down_and_foreign_up_never_submit_an_extra_os_event() {
     pipeline.run(&gate,&leases,&ledger,"exec-2",&second,"foreign",0,&key("up")).unwrap();
     pipeline.run(&gate,&leases,&ledger,"exec-1",&first,"release",0,&key("up")).unwrap();
     assert_eq!(*events.lock().unwrap(), vec!["key:shift:true","key:shift:false"]);
+}
+
+#[test]
+fn policy_checks_entire_curve_and_sampled_offset_before_dispatch() {
+    let limits = Region { x: 0, y: 0, width: 100, height: 100, ..region_full() };
+    let (mut pipe, gate, leases, ledger, events) = setup(single_monitor(), ctx(Some(limits), false));
+    for (n, policy) in [
+        json!({"curve":{"c1":[0,200],"c2":[0,200]},"version":1}),
+        json!({"offset":{"x":[50,50],"y":[0,0]},"version":1}),
+    ].into_iter().enumerate() {
+        let action = action::parse_action(&json!({"kind":"click","x":50,"y":40,"policy":policy})).unwrap();
+        let err = pipe.run(&gate,&leases,&ledger,"exec-1",&lease_id(&leases),&format!("bad-{n}"),0,&action).unwrap_err();
+        assert_eq!(err.code,"REGION_LIMIT_VIOLATION");
+        assert!(events.lock().unwrap().is_empty());
+    }
+    let drag = action::parse_action(&json!({"kind":"drag","from":{"x":20,"y":10},"to":{"x":50,"y":10},
+        "policy":{"version":1,"curve":{"c1":[0,300],"c2":[0,300]}}})).unwrap();
+    assert!(pipe.run(&gate,&leases,&ledger,"exec-1",&lease_id(&leases),"drag",0,&drag).is_err());
+    assert!(events.lock().unwrap().is_empty());
+}
+
+#[test]
+fn policy_sampling_is_stable_bounded_and_duplicate_click_is_replayed() {
+    let raw = json!({"version":1,"offset":{"x":[-3,2],"y":[0,4]},"delay_ms":[0,5]});
+    let policy = super::policy::ActionPolicy::parse(&raw).unwrap();
+    let mut offsets = std::collections::HashSet::new();
+    for id in 0..500 {
+        let id = format!("id-{id}");
+        let a = policy.sample(&id);
+        let b = policy.sample(&id);
+        assert_eq!((a.offset, a.delay), (b.offset, b.delay));
+        assert!((-3..=2).contains(&a.offset[0]) && (0..=4).contains(&a.offset[1]) && a.delay <= 5);
+        offsets.insert(a.offset);
+    }
+    assert_eq!(offsets.len(),30);
+    let (mut pipe, gate, leases, ledger, events) = setup(single_monitor(),ctx(Some(region_full()),false));
+    let action = action::parse_action(&json!({"kind":"click","x":200,"y":300,"policy":raw})).unwrap();
+    for _ in 0..2 { pipe.run(&gate,&leases,&ledger,"exec-1",&lease_id(&leases),"fixed-seed",0,&action).unwrap(); }
+    let offset = policy.sample("fixed-seed").offset;
+    assert_eq!(*events.lock().unwrap(),vec![format!("move:{},{}",200+offset[0],300+offset[1]),"button:left:true".into(),"button:left:false".into()]);
+    for (kind, opt) in [("key", json!({"version":1,"curve":{"c1":[0,0],"c2":[0,0]}})),
+                       ("move", json!({"version":1,"offset":{"x":[0,0],"y":[0,0]}}))] {
+        let err = action::parse_action(&json!({"kind":kind,"x":1,"y":2,"key":"F8","state":"tap","policy":opt})).unwrap_err();
+        assert_eq!(err.code,"INVALID_PARAMS");
+    }
+}
+
+#[test]
+fn policy_fixed_clock_waits_exactly_the_sampled_interval_and_cancels_between_slices() {
+    use std::cell::Cell;
+    let elapsed = Cell::new(0);
+    let policy = super::policy::ActionPolicy::parse(&json!({"version":1,"delay_ms":[123,123]})).unwrap().sample("clock");
+    policy.wait(|| Ok::<(), ()>(()), |ms| { assert!(ms <= 10); elapsed.set(elapsed.get()+ms); }).unwrap();
+    assert_eq!(elapsed.get(),123);
+    elapsed.set(0);
+    let result = policy.wait(|| if elapsed.get() >= 40 { Err("cancelled") } else { Ok(()) },
+                             |ms| elapsed.set(elapsed.get()+ms));
+    assert_eq!((result,elapsed.get()),(Err("cancelled"),40));
 }

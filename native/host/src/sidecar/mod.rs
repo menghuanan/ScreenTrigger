@@ -613,6 +613,7 @@ impl Supervisor {
         }
         // 步骤 1：先关闸门（结构性的第一步，§2.5 步骤 2）
         self.gate.close_gate("engine_stopping");
+        crate::recording::clear();
         crate::window::end_session();
 
         // 步骤 1.5（TASK-005 接线）：Router Shutdown → 在途 ipc 请求全部以
@@ -844,7 +845,13 @@ impl SupervisorHandle {
             })
         });
         // Close the input path and release owned keys before exposing a breakpoint to any window.
+        let output_session = session_id.clone();
         let emit: crate::ipc::eventbus::EmitFn = Arc::new(move |name, value| {
+            if name == "script_state_changed" && value["payload"]["status"] == "stopping" {
+                if let Some(id) = value["payload"]["execution_id"].as_str() {
+                    crate::text_output::revoke(&output_session, id);
+                }
+            }
             if name == "script_state_changed" && value["payload"]["status"] == "debug_paused" {
                 if let (Some(gate), Some(id)) = (crate::input::shared_gate(), value["payload"]["execution_id"].as_str()) {
                     gate.pause(id);
@@ -862,6 +869,7 @@ impl SupervisorHandle {
         let mut bridge = HostBridge::new(Arc::new(Mutex::new(Box::new(SupervisorFrameSink {
             inner: Arc::clone(&self.inner),
         }) as Box<dyn FrameSink>)));
+        bridge.attach_text_output(crate::text_output::begin(&session_id, resolve_data_dir()));
         // TASK-017：把输入宿主命令的真 handler 注册进 HostBridge（M05 接入点）。
         // 未装配 InputManager（如无窗口/测试）→ 不注册 → 命令回 CAPABILITY_DENIED（诚实降级）。
         if let Some(manager) = crate::input::shared_manager() {
@@ -888,6 +896,7 @@ impl SupervisorHandle {
         // TASK-008：注入 Rust 本地宿主能力 handler（框选三命令；未装配则默认
         // CapabilityDenied 诚实降级）。
         let router = router.with_host_commands(Box::new(crate::window::DesktopCommands {
+            session: session_id.clone(),
             selection: crate::selection::shared_manager().map(crate::selection::SharedSelectionManager),
             windows: crate::window::shared(), gate: crate::input::shared_gate(),
         }));
@@ -1040,6 +1049,18 @@ impl SupervisorHandle {
                 .env_remove("PYTHONPATH")
                 .env_remove("PYTHONHOME")
                 .env_remove("__PYVENV_LAUNCHER__");
+            if PORTABLE.load(std::sync::atomic::Ordering::Acquire) {
+                let data = resolve_data_dir();
+                let cache = data.join("cache");
+                for name in ["TEMP","TMP","TMPDIR"] { cmd.env(name,cache.join("temp")); }
+                for name in ["HOME","USERPROFILE","XDG_CACHE_HOME","LOCALAPPDATA","APPDATA"] {
+                    cmd.env(name,cache.join("profile"));
+                }
+                cmd.env("PADDLE_HOME",cache.join("paddle"))
+                    .env("FLAGS_cache_dir",cache.join("paddle"))
+                    .env("PADDLE_PDX_CACHE_HOME",cache.join("paddlex"))
+                    .env_remove("ST_MODELS_DIR");
+            }
         }
         cmd.args(&args)
             .current_dir(sidecar_working_dir())
@@ -1399,6 +1420,12 @@ fn frame_bridge_loop(inner: Arc<Mutex<Supervisor>>, generation: u64, rx: Receive
 /// release 态应用数据目录注入点（桌面入口初始化时调用；dev 态不注入，
 /// 走 LOCALAPPDATA 默认分支）。OnceLock 传递，避免 Supervisor/resolve 依赖窗口框架。
 static APP_LOCAL_DATA_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+static PORTABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(not(debug_assertions))]
+pub fn enable_portable() {
+    PORTABLE.store(true, std::sync::atomic::Ordering::Release);
+}
 
 /// 注入 release 数据根（幂等：仅首次生效；测试路径不调用）。
 pub fn set_app_local_data_dir(dir: PathBuf) {
@@ -1433,6 +1460,9 @@ pub fn resolve_data_dir_from(
 
 /// 运行时数据根解析（OnceLock/env/编译分支组装；`resolve_data_dir_from` 纯逻辑）。
 pub fn resolve_data_dir() -> PathBuf {
+    if PORTABLE.load(std::sync::atomic::Ordering::Acquire) {
+        return APP_LOCAL_DATA_DIR.get().expect("portable root established by the desktop host").clone();
+    }
     resolve_data_dir_from(
         std::env::var("SIDECAR_DATA_DIR").ok().as_deref(),
         APP_LOCAL_DATA_DIR.get().map(|p| p.as_path()),

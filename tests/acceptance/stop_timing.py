@@ -34,6 +34,27 @@ def exercise(directory):
             assert parent.poll(3)
             return parent.recv()
         window("focus")
+        if user.GetForegroundWindow() != hwnd:
+            pid = wt.DWORD()
+            user.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
+            user.GetParent.argtypes = [wt.HWND]
+            user.GetParent.restype = wt.HWND
+            assert user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid)) and pid.value == process.pid
+            assert user.GetParent(edit) == hwnd
+            x, y = common.client_screen_origin_helper(edit)
+            user.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
+                                          ctypes.c_int, ctypes.c_int, wt.UINT]
+            flags = 0x0013  # SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+            assert user.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0, flags)
+            try:
+                point = wt.POINT(x + 20, y + 20)
+                assert user.SetCursorPos(point.x, point.y) and user.WindowFromPoint(point) == edit
+                assert not user.GetAsyncKeyState(1) & 0x8000
+                user.mouse_event(2, 0, 0, 0, 0)
+                user.mouse_event(4, 0, 0, 0, 0)
+            finally:
+                user.SetWindowPos(hwnd, ctypes.c_void_p(-2), 0, 0, 0, 0, flags)
+            window("focus")
         wait(lambda: user.GetForegroundWindow() == hwnd, "dedicated edit foreground")
         host = Host(Path(sys.executable).parent / "screen_trigger_lib.dll", directory)
         host.session = host.call("start")["session_id"]

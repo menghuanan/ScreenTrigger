@@ -27,6 +27,8 @@ enum Call {
     PickImage {
         session_id: String,
     },
+    PickTextOutput { session_id: String, mode: crate::text_output::Mode },
+    DiscardTextOutput { session_id: String, output_token: String },
     SelectExecution {
         session_id: String,
         execution_id: Option<String>,
@@ -95,6 +97,16 @@ impl DesktopHost {
                 run.session_router(Some(&session_id))?;
                 Ok(picked)
             }
+            Call::PickTextOutput { session_id, mode } => {
+                run.session_router(Some(&session_id))?;
+                let picked = crate::desktop_windows::pick_text_output(&session_id, mode)?;
+                run.session_router(Some(&session_id))?;
+                Ok(picked)
+            }
+            Call::DiscardTextOutput { session_id, output_token } => {
+                run.session_router(Some(&session_id))?;
+                crate::text_output::discard(&session_id, &output_token)
+            }
             Call::SelectionRegion {
                 session_id,
                 selection_id,
@@ -150,6 +162,8 @@ impl DesktopHost {
 }
 
 fn stop_input() {
+    crate::recording::clear();
+    crate::text_output::end();
     if let Some(g) = crate::input::shared_gate() {
         g.close_all("desktop_exit");
         crate::input::release_closed();
@@ -184,6 +198,20 @@ pub extern "C" fn st_host_abi_version() -> u32 {
     ABI_VERSION
 }
 
+#[cfg(not(debug_assertions))]
+static OPEN_ERROR: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+#[no_mangle]
+pub extern "C" fn st_host_open_error(event: Option<Receiver>) {
+    #[cfg(not(debug_assertions))]
+    if let Some(send) = event {
+        let error = OPEN_ERROR.lock().unwrap_or_else(|e|e.into_inner());
+        if let Ok(bytes) = serde_json::to_vec(&*error) { send(bytes.as_ptr(),bytes.len()); }
+    }
+    #[cfg(debug_assertions)]
+    let _ = event;
+}
+
 #[no_mangle]
 pub extern "C" fn st_host_open(version: u32, event: Option<Receiver>) -> *mut DesktopHost {
     if version != ABI_VERSION || event.is_none() || OPEN.swap(true, Ordering::AcqRel) {
@@ -191,15 +219,18 @@ pub extern "C" fn st_host_open(version: u32, event: Option<Receiver>) -> *mut De
     }
     #[cfg(not(debug_assertions))]
     {
-        let data_dir = std::env::current_exe().ok()
-            .and_then(|exe| std::fs::read_to_string(exe.parent()?.join("data-root.txt")).ok())
-            .map(|s| std::path::PathBuf::from(s.trim()))
-            .filter(|p| p.is_absolute());
-        if let Some(dir) = data_dir {
-            crate::sidecar::set_app_local_data_dir(dir);
-        } else {
-            OPEN.store(false, Ordering::Release);
-            return std::ptr::null_mut();
+        let root = std::env::current_exe().map_err(|e| e.to_string())
+            .and_then(|exe| crate::portable::data_root(exe.parent().ok_or("无法定位应用目录")?));
+        match root {
+            Ok((dir,portable)) => {
+                crate::sidecar::set_app_local_data_dir(dir);
+                if portable { crate::sidecar::enable_portable(); }
+            }
+            Err(message) => {
+                *OPEN_ERROR.lock().unwrap_or_else(|e|e.into_inner()) = message;
+                OPEN.store(false, Ordering::Release);
+                return std::ptr::null_mut();
+            }
         }
     }
     let supervisor = SupervisorHandle::new();

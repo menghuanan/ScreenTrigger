@@ -85,7 +85,7 @@ public sealed partial class MainWindow
             page = tag switch {
                 "targets" => new Targets.TargetsPage(host, () => image, OpenDraft),
                 "history" => new History.HistoryPage(host),
-                "settings" => new Settings.SettingsPage(host, ApplyDisplayConfig),
+                "settings" => new Settings.SettingsPage(host, ApplyDisplayConfig, WindowNative.GetWindowHandle(this)),
                 "scripts" => new Scripts.ScriptsPage(host),
                 "run" or "monitor" => new RunContext.RunContextPage(host, luaAvailable, tag == "monitor", workspaceOcr),
                 "recognition" => new Recognition.RecognitionPage(host, () => image, () => imageOrigin, () => pendingDraft),
@@ -265,7 +265,8 @@ public sealed partial class MainWindow
                 var bounds = new RectInt32(rect.GetProperty("x").GetInt32(), rect.GetProperty("y").GetInt32(),
                     rect.GetProperty("width").GetInt32(), rect.GetProperty("height").GetInt32());
                 overlay = new OverlayWindow(host, request.GetProperty("selection_id").GetString()!,
-                    display.GetProperty("id").GetString()!, bounds, previewHz, message => ImageStatus.Text = message);
+                    display.GetProperty("id").GetString()!, bounds, previewHz, message => ImageStatus.Text = message,
+                    request.TryGetProperty("mode", out var mode) && mode.GetString() == "point");
                 try { await overlay.OpenAsync(token); }
                 catch { overlay?.CloseFromHost(); overlay = null; throw; }
                 UpdateImageButtons();
@@ -283,6 +284,8 @@ public sealed partial class MainWindow
             case "pick_image":
                 try { return await ImagePicker.PickAsync(hwnd, token); }
                 finally { if (!closing) { Activate(); ImportButton.Focus(FocusState.Programmatic); } }
+            case "pick_text_output":
+                return TextOutputPicker.Pick(hwnd, request.GetProperty("mode").GetString()!, token);
             default: throw new ArgumentException("未知窗口操作。");
         }
     }

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import re
+from .action_policy import validate_policy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from .capabilities import (
@@ -166,7 +167,18 @@ def _validate_color_params(params: Dict[str, Any]) -> None:
                      0.0, 100.0)
 
 
+def _validate_feature_params(params: Dict[str, Any]) -> None:
+    check_keys(params, ("min_inliers", "min_inlier_ratio", "max_reprojection_error"), "conditions.params")
+    if "min_inliers" in params:
+        int_field(params, "min_inliers", "conditions.params.min_inliers", 4, 1500)
+    if "min_inlier_ratio" in params:
+        number_field(params, "min_inlier_ratio", "conditions.params.min_inlier_ratio", 0, 1)
+    if "max_reprojection_error" in params:
+        number_field(params, "max_reprojection_error", "conditions.params.max_reprojection_error", 0.1, 20)
+
+
 _PARAM_VALIDATORS = {
+    "feature_match": _validate_feature_params,
     "template": _validate_template_params,
     "contour": _validate_contour_params,
     "ocr": _validate_ocr_params,
@@ -201,7 +213,7 @@ def _validate_condition_node(node: Any, branch_depth: int, leaf_ids: List[str],
     check_keys(data, ("id", "type", "params", "roi"), "conditions")
     leaf_id = str_field(data, "id", "conditions.id")
     leaf_type = enum_field(data, "type", "conditions.type",
-                           ("template", "contour", "ocr", "color"))
+                           tuple(_PARAM_VALIDATORS))
     params = require_object(data.get("params"), "conditions.params")
     _PARAM_VALIDATORS[leaf_type](params)
     if "roi" in data:
@@ -374,6 +386,7 @@ class Script:
     parameters: Tuple[ScriptParameter, ...]
     created_at: str
     updated_at: str
+    action_policy: Optional[dict] = None
 
 
 def _validate_script_parameter(item: Any) -> ScriptParameter:
@@ -400,7 +413,7 @@ def validate_script(value: Any) -> Script:
     check_keys(
         data,
         ("id", "revision", "name", "source_path", "source_sha256", "parameters",
-         "created_at", "updated_at"),
+         "created_at", "updated_at", "action_policy"),
         "script",
     )
     raw_name = data.get("name")
@@ -424,6 +437,7 @@ def validate_script(value: Any) -> Script:
         source_path=source_path,
         source_sha256=hex64_field(data, "source_sha256", "source_sha256"),
         parameters=tuple(_validate_script_parameter(item) for item in parameters),
+        action_policy=validate_policy(data["action_policy"]) if "action_policy" in data else None,
         created_at=validate_rfc3339_utc(data.get("created_at"), "created_at"),
         updated_at=validate_rfc3339_utc(data.get("updated_at"), "updated_at"),
     )

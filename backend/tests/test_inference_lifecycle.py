@@ -28,7 +28,9 @@ class BlockingProvider(BaseProvider):
     def recognize(self, frame, params, cancel, roi=None):
         self.pixels.read(frame.image_ref.image_id)
         if params.get("hang"):
-            self.entered.write_text(str(os.getpid()), encoding="ascii")
+            pending = self.entered.with_suffix(".tmp")
+            pending.write_text(str(os.getpid()), encoding="ascii")
+            pending.replace(self.entered)
             threading.Event().wait()
         return self._provider_result()
 

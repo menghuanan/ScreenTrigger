@@ -133,6 +133,15 @@ class JobManager:
             job_id, self.STATUS_RUNNING, frozenset({self.STATUS_PENDING})
         )
 
+    def begin_commit(self, job_id: str) -> bool:
+        """Fence cancellation before an irreversible atomic pointer replacement."""
+        with self._lock:
+            state = self._jobs.get(job_id)
+            if state is None or state["status"] != self.STATUS_RUNNING:
+                return False
+            state["cancellable_while_running"] = False
+            return True
+
     def complete(self, job_id: str, result: Any) -> bool:
         """pending/running → completed（终态，不可再迁移）。"""
         return self._transition(

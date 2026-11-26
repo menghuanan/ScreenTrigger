@@ -194,6 +194,7 @@ fn validate_condition_node(
             .get("params")
             .ok_or_else(|| TypeError::invalid_params("conditions.params"))?;
         match ctype {
+            "feature_match" => validate_feature_params(params)?,
             "template" => validate_template_params(params)?,
             "contour" => validate_contour_params(params)?,
             "ocr" => validate_ocr_params(params)?,
@@ -212,6 +213,22 @@ fn validate_condition_node(
 
 fn param_num(params: &Value, key: &str) -> Option<f64> {
     params.get(key).and_then(as_f64)
+}
+
+fn validate_feature_params(params: &Value) -> Result<(), TypeError> {
+    let object = params.as_object().ok_or_else(|| TypeError::invalid_params("conditions.params"))?;
+    for (key, value) in object {
+        let valid = match key.as_str() {
+            "min_inliers" => as_i64(value).is_some_and(|n| (4..=1500).contains(&n)),
+            "min_inlier_ratio" => as_f64(value).is_some_and(|n| (0.0..=1.0).contains(&n)),
+            "max_reprojection_error" => as_f64(value).is_some_and(|n| (0.1..=20.0).contains(&n)),
+            _ => false,
+        };
+        if !valid {
+            return Err(TypeError::invalid_params(format!("conditions.params.{key}")));
+        }
+    }
+    Ok(())
 }
 
 /// template params：threshold 0..1 必填；allow_scale/scale_range/step 可选。
@@ -468,6 +485,9 @@ pub fn validate_group_fields(v: &Value) -> Result<(), TypeError> {
 
 /// Script 校验（source_path 形态 + 组件判断；parameters required/default 约束）。
 pub fn validate_script(v: &Value) -> Result<(), TypeError> {
+    if let Some(policy) = v.get("action_policy") {
+        crate::input::policy::ActionPolicy::parse(policy).map_err(TypeError::invalid_params)?;
+    }
     let obj = v
         .as_object()
         .ok_or_else(|| TypeError::invalid_params("script"))?;

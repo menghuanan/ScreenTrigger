@@ -39,13 +39,16 @@ from .ports import (
 )
 from .providers import ColorProvider, ContourProvider, OCREngineProvider, TemplateProvider
 from .providers.ocr_models import resolve_models_dir
+from .providers.orb import OrbProvider
 from .process_provider import ProcessProvider
+from .managed_ocr import ManagedOCR
 from .types import RecognitionError
 
 #: 条件类型 → 能力 id 映射（对齐 ``types.capabilities.CAPABILITY_IDS``）。
 CAPABILITY_CONDITION_TYPES: Dict[str, str] = {
     "ocr": "ocr",
     "template_match": "template",
+    "feature_match": "feature_match",
     "contour_match": "contour",
     "color_match": "color",
 }
@@ -67,6 +70,7 @@ def register_builtin_provider(provider_id: str, factory: ProviderFactory) -> Non
 # 每个只声明**唯一**条件类型（Q10）→ 装配期无冲突；缺 cv2/numpy 时
 # ``initialize`` 抛 ``ENGINE_UNAVAILABLE`` → 能力诚实置 unavailable+reason。
 register_builtin_provider("builtin.template", lambda pixels: TemplateProvider(pixels))
+register_builtin_provider("builtin.orb", OrbProvider)
 register_builtin_provider("builtin.contour", lambda pixels: ContourProvider(pixels))
 register_builtin_provider("builtin.color", lambda pixels: ColorProvider(pixels))
 
@@ -168,14 +172,15 @@ class ProviderRegistry:
             self._log("vision provider %s api_version 不受支持：%s" % (provider_id, exc.message))
             return
         try:
-            if self._isolate_native:
-                options = {}
-                if isinstance(provider, OCREngineProvider):
-                    if models_error is not None:
-                        raise RecognitionError("MODEL_UNAVAILABLE", str(models_error))
-                    options["library_root"] = library_root
-                provider = ProcessProvider(self._pixel_reader, type(provider), **options)
-            provider.initialize(models_dir)
+            if self._isolate_native and isinstance(provider, OCREngineProvider):
+                if models_error is not None:
+                    raise RecognitionError("MODEL_UNAVAILABLE", str(models_error))
+                provider = ManagedOCR(self._pixel_reader, models_dir, library_root)
+                manifest = provider.capabilities()
+            else:
+                if self._isolate_native:
+                    provider = ProcessProvider(self._pixel_reader, type(provider))
+                provider.initialize(models_dir)
         except RecognitionError as exc:
             # 缺 cv2/numpy 等引擎缺失：记录 code（ENGINE_UNAVAILABLE），使 service
             # 在调用时抛 ENGINE_UNAVAILABLE 而非 CAPABILITY_DENIED（TASK-014 §6）。
@@ -189,7 +194,7 @@ class ProviderRegistry:
             return
         # 缺模型 → 该 provider 置不可用（07 §2；不抛致命错）
         models: List[ModelManifest] = []
-        for model_id in manifest.model_ids:
+        for model_id in (() if isinstance(provider, ManagedOCR) else manifest.model_ids):
             try:
                 models.append(load_model_manifest(model_manifest_path(models_dir, model_id)))
             except RecognitionError as exc:
@@ -251,6 +256,8 @@ class ProviderRegistry:
         """能力态 ``(state, reason)``：就绪 → ``("available", None)``；否则 ``("unavailable", reason)``。"""
         provider_id = self._condition_owner.get(condition_type)
         if provider_id is not None:
+            if condition_type == "ocr" and self.managed_ocr is not None:
+                return self.managed_ocr.capability_reason()
             return ("available", None)
         for _pid, (manifest, reason) in self._unavailable.items():
             if manifest is not None and condition_type in manifest.supported_condition_types:
@@ -274,7 +281,13 @@ class ProviderRegistry:
 
     def installed_model_manifests(self) -> Tuple[ModelManifest, ...]:
         """供 ``hello.model_manifests``（基座为空元组）。"""
-        return tuple(self._model_manifests)
+        extra = self.managed_ocr.installed_manifests() if self.managed_ocr is not None else ()
+        return (*self._model_manifests, *extra)
+
+    @property
+    def managed_ocr(self):
+        provider = self.provider_for("ocr")
+        return provider if isinstance(provider, ManagedOCR) else None
 
     def close_all(self) -> None:
         """逐个 ``close()``（幂等；失败仅记诊断）。"""

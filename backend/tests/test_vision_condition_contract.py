@@ -54,7 +54,7 @@ from backend.vision.providers.base import make_candidate, make_text_block  # noq
 _CASES_PATH = os.path.join(_REPO_ROOT, "schema", "contract-cases.json")
 
 #: 02 叶类型枚举（四类，逐字）。
-_EXPECTED_LEAF_TYPES = ("template", "contour", "ocr", "color")
+_EXPECTED_LEAF_TYPES = ("template", "contour", "ocr", "color", "feature_match")
 
 #: ``RecognitionResult`` wire 键集（02 §8.1）。
 _RESULT_KEYS = {

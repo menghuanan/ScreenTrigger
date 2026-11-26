@@ -165,6 +165,7 @@ def make_service(
     clock=None,
     sleeper=None,
     frame_id_factory=None,
+    background=None,
 ) -> CaptureService:
     """组装用替身端口的 CaptureService。"""
     if displays is None:
@@ -178,6 +179,7 @@ def make_service(
         clock=clock if clock is not None else FakeClock(),
         sleeper=sleeper if sleeper is not None else RecordingSleeper(),
         frame_id_factory=frame_id_factory if frame_id_factory is not None else (lambda: next(ids)),
+        background=background,
     )
 
 

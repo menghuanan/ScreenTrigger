@@ -41,6 +41,14 @@ internal static class WireContracts
         }
         if ((type is "run_config" or "monitor_config") && value.ValueKind == JsonValueKind.Object)
         {
+            if (value.TryGetProperty("window_mode", out var mode))
+            {
+                string? selected = mode.ValueKind == JsonValueKind.String ? mode.GetString() : null;
+                bool bound = value.TryGetProperty("binding_id", out var target) &&
+                    target.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(target.GetString());
+                if (selected is not ("foreground" or "background") || (selected == "background" && !bound))
+                    throw new ContractException("window_mode");
+            }
             if (value.TryGetProperty("binding_id", out var binding) && binding.ValueKind == JsonValueKind.String &&
                 value.TryGetProperty("display_id", out var display) && display.ValueKind == JsonValueKind.String)
                 throw new ContractException("binding_id");
@@ -51,6 +59,12 @@ internal static class WireContracts
         try { WireSchema.Types.Validate(value, definition, path); }
         catch (ContractException ex) when (type == "target" && ex.Field.Contains(".children"))
         { throw new ContractException(ex.Field.Replace(".children", ""), ex.Code); }
+        if (type == "anchoredPoint")
+        {
+            int x = value.GetProperty("x").GetInt32(), y = value.GetProperty("y").GetInt32();
+            if (x < 0 || y < 0 || x >= value.GetProperty("reference_width").GetInt32() || y >= value.GetProperty("reference_height").GetInt32())
+                throw new ContractException("anchor", "REGION_LIMIT_VIOLATION");
+        }
         if (type is "target" or "script" or "group" && string.IsNullOrWhiteSpace(value.GetProperty("name").GetString()))
             throw new ContractException("name");
         if (type == "target")
@@ -67,6 +81,20 @@ internal static class WireContracts
         if (type == "script")
         {
             RelativePath(value.GetProperty("source_path").GetString()!, "source_path");
+            if (value.TryGetProperty("action_policy", out var policy))
+            {
+                static void CheckRange(JsonElement pair, string field)
+                {
+                    if (pair.ValueKind == JsonValueKind.Array && pair[0].GetInt32() > pair[1].GetInt32())
+                        throw new ContractException("action_policy." + field);
+                }
+                if (policy.TryGetProperty("delay_ms", out var delay)) CheckRange(delay, "delay_ms");
+                if (policy.TryGetProperty("offset", out var offset) && offset.ValueKind == JsonValueKind.Object)
+                {
+                    CheckRange(offset.GetProperty("x"), "offset.x");
+                    CheckRange(offset.GetProperty("y"), "offset.y");
+                }
+            }
             foreach (var p in value.GetProperty("parameters").EnumerateArray())
                 if (p.GetProperty("required").GetBoolean() && p.GetProperty("default").ValueKind != JsonValueKind.Null)
                     throw new ContractException("parameters");

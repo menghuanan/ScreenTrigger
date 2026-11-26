@@ -362,23 +362,10 @@ pub fn configure(
 #[cfg(windows)]
 mod os {
     use super::Chord;
-    #[repr(C)]
-    #[derive(Default)]
-    struct Msg {
-        window: isize,
-        message: u32,
-        wparam: usize,
-        lparam: isize,
-        time: u32,
-        x: i32,
-        y: i32,
-        private: u32,
-    }
     #[link(name = "user32")]
     extern "system" {
         fn RegisterHotKey(hwnd: isize, id: i32, modifiers: u32, vk: u32) -> i32;
         fn UnregisterHotKey(hwnd: isize, id: i32) -> i32;
-        fn PeekMessageW(msg: *mut Msg, hwnd: isize, min: u32, max: u32, remove: u32) -> i32;
     }
     pub fn register(id: i32, key: Chord) -> bool {
         unsafe { RegisterHotKey(0, id, key.0 | 0x4000, key.1.into()) != 0 }
@@ -389,8 +376,7 @@ mod os {
         }
     }
     pub fn pop() -> Option<i32> {
-        let mut msg = Msg::default();
-        (unsafe { PeekMessageW(&mut msg, 0, 0x312, 0x312, 1) } != 0).then_some(msg.wparam as i32)
+        crate::winmessages::pop(0x312,0x312).map(|message|message.wparam as i32)
     }
 }
 #[cfg(not(windows))]

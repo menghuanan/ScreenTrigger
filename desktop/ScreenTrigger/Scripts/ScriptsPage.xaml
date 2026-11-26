@@ -11,11 +11,21 @@
       <Button Content="新建脚本" Click="Action" Tag="new" />
     </StackPanel>
     <TextBox Header="脚本名称" x:Name="ScriptName" AutomationProperties.AutomationId="ScriptName" />
+    <StackPanel Orientation="Horizontal" Spacing="8">
+      <ComboBox x:Name="PointDisplay" Header="取点显示器" MinWidth="145" AutomationProperties.AutomationId="PointDisplay" />
+      <TextBox x:Name="PointX" Header="屏幕物理 X" Text="0" Width="110" AutomationProperties.AutomationId="DraftPointX"/>
+      <TextBox x:Name="PointY" Header="屏幕物理 Y" Text="0" Width="110" AutomationProperties.AutomationId="DraftPointY"/>
+      <Button x:Name="PickPoint" Content="取点" VerticalAlignment="Bottom" Click="StartPoint" AutomationProperties.AutomationId="StartPointPick"/>
+      <Button Content="插入 click_at" VerticalAlignment="Bottom" Click="InsertPoint" AutomationProperties.AutomationId="InsertPoint"/>
+    </StackPanel>
     <TextBox Header="Lua 5.4 源码" x:Name="Source" AcceptsReturn="True" FontFamily="Consolas" MinHeight="150"
              AutomationProperties.AutomationId="ScriptSource" TextWrapping="NoWrap" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
     <Expander Header="参数声明" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
       <TextBox x:Name="Parameters" Header="参数列表（JSON）" Text="[]" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" />
     </Expander>
+      <Expander Header="动作策略" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+        <TextBox x:Name="Policy" Header="策略 JSON（留空关闭）" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap"/>
+      </Expander>
     <StackPanel Orientation="Horizontal" Spacing="8">
       <Button Content="检查语法" Click="Action" Tag="validate" AutomationProperties.AutomationId="ValidateScript" />
       <Button Content="保存脚本" Click="Action" Tag="save" AutomationProperties.AutomationId="SaveScript" />

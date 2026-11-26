@@ -48,6 +48,7 @@ HOST_COMMAND_WHITELIST: Tuple[str, ...] = (
     "query_pointer",
     "acquire_input_lease",
     "release_input_lease",
+    "text_output",
 )
 
 

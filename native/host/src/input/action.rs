@@ -23,6 +23,16 @@ use super::model::{
 
 /// 解析并整笔校验一个 03 `InputAction` 对象。
 pub fn parse_action(value: &Value) -> Result<InputAction, IpcError> {
+    if let Some(raw) = value.get("policy") {
+        let field_error = |field: String| IpcError::invalid_params(&field)
+            .with_details(serde_json::json!({"field":field}));
+        let policy = super::policy::ActionPolicy::parse(raw).map_err(field_error)?;
+        let mut inner = value.clone();
+        inner.as_object_mut().unwrap().remove("policy");
+        let action = parse_action(&inner)?;
+        policy.validate_kind(action.kind_str()).map_err(field_error)?;
+        return Ok(InputAction::WithPolicy { action: Box::new(action), policy });
+    }
     let obj = value
         .as_object()
         .ok_or_else(|| IpcError::invalid_params("action 必须为对象"))?;
@@ -37,9 +47,7 @@ pub fn parse_action(value: &Value) -> Result<InputAction, IpcError> {
             let duration_ms = opt_duration_ms(obj, "duration_ms", "action.duration_ms", 0)?;
             Ok(InputAction::Move { x, y, duration_ms })
         }
-        "click" => {
-            let x = req_i64(obj, "x", "action.x")?;
-            let y = req_i64(obj, "y", "action.y")?;
+        "click" | "click_anchor" => {
             let button = match obj.get("button") {
                 None | Some(Value::Null) => MouseButton::Left,
                 Some(Value::String(s)) => MouseButton::parse(s)
@@ -60,7 +68,17 @@ pub fn parse_action(value: &Value) -> Result<InputAction, IpcError> {
                     n as u32
                 }
             };
-            Ok(InputAction::Click { x, y, button, clicks })
+            if kind == "click_anchor" {
+                if obj.keys().any(|k| !matches!(k.as_str(), "kind" | "anchor" | "button" | "clicks")) {
+                    return Err(IpcError::invalid_params("click_anchor 含未知字段"));
+                }
+                let anchor = super::anchor::AnchoredPoint::parse(&value["anchor"])?;
+                Ok(InputAction::ClickAnchor { anchor, button, clicks })
+            } else {
+                let x = req_i64(obj, "x", "action.x")?;
+                let y = req_i64(obj, "y", "action.y")?;
+                Ok(InputAction::Click { x, y, button, clicks })
+            }
         }
         "drag" => {
             let from = req_point(obj, "from", "action.from")?;
@@ -144,10 +162,11 @@ pub fn parse_action(value: &Value) -> Result<InputAction, IpcError> {
 /// （03：非坐标动作使用当前指针/前台并同样做区域/身份检查）。
 pub fn validation_points(action: &InputAction) -> Vec<Point> {
     match action {
+        InputAction::WithPolicy { action, .. } => validation_points(action),
         InputAction::Move { x, y, .. } => vec![Point { x: *x, y: *y }],
         InputAction::Click { x, y, .. } => vec![Point { x: *x, y: *y }],
         InputAction::Drag { from, to, .. } => drag_path(from, to),
-        InputAction::Scroll { .. }
+        InputAction::ClickAnchor { .. } | InputAction::Scroll { .. }
         | InputAction::Key { .. }
         | InputAction::Text { .. }
         | InputAction::Hotkey { .. } => Vec::new(),

@@ -87,6 +87,11 @@ fn validate_display_binding(doc: &serde_json::Map<String, Value>) -> Result<(), 
     let binding = doc.get("binding_id").unwrap_or(&Value::Null);
     let display_set = non_empty_str(display).is_some();
     let binding_set = non_empty_str(binding).is_some();
+    if let Some(mode) = doc.get("window_mode") {
+        if mode.as_str() != Some("foreground") && !(mode.as_str() == Some("background") && binding_set) {
+            return Err(TypeError::invalid_params("window_mode"));
+        }
+    }
     if display_set && binding_set {
         return Err(TypeError::invalid_params("binding_id"));
     }

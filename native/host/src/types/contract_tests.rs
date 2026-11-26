@@ -99,7 +99,9 @@ fn type_validation_cases_match_python_source() {
     // TASK-012：新增 3 条 script 结构共享用例（type-script-name-101-invalid、
     // type-script-parameters-not-array-invalid、type-script-minimal-valid）→ 41→44
     // AUDIT-20261012-004：五种分组字段错误和一条空条件树共享原用例。
-    assert_eq!(ran, 50, "Rust 共享类型契约用例数不符");
+    // ORB adds a persisted anchor and a rejected geometric threshold.
+    // 后台运行及监控的九条增量向量与旧运行配置一起核对取值和错误字段。
+    assert_eq!(ran, 67, "Rust 共享类型契约用例数不符");
 }
 
 #[test]

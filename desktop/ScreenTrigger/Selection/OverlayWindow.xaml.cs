@@ -34,24 +34,38 @@ public sealed partial class OverlayWindow : Window
     private readonly bool measureTiming = Environment.GetEnvironmentVariable("ST_MEASURE_TIMING") == "1";
     private readonly bool measureCadence = Environment.GetEnvironmentVariable("ST_MEASURE_PREVIEW_CADENCE") == "1";
     private bool waitingForPresentation;
+    private readonly bool pointMode;
+    private RectInt32[]? pointTopology;
+    private PointInt32 pressedPixel;
+    private PointPickInput? pointInput;
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out PointInt32 point);
     internal string Id { get; }
 
-    internal OverlayWindow(HostClient host, string id, string display, RectInt32 bounds, int previewHz, Action<string> showError)
+    internal OverlayWindow(HostClient host, string id, string display, RectInt32 bounds, int previewHz, Action<string> showError, bool pointMode = false)
     {
         this.host = host; Id = id; this.display = display; this.bounds = bounds; this.showError = showError;
         session = host.Events.Session ?? throw new InvalidOperationException("引擎会话已结束。");
         InitializeComponent();
+        this.pointMode = pointMode;
+        if (pointMode)
+        {
+            Title = "ScreenTrigger · 取点";
+            RegionTools.Visibility = Visibility.Collapsed;
+            PointLabel.Visibility = Visibility.Visible;
+            PointReadout.Text = "单击取点 · Esc 取消";
+        }
         hwnd = WindowNative.GetWindowHandle(this);
         timer = DispatcherQueue.CreateTimer();
         timer.IsRepeating = false;
         SetPreviewFrequency(previewHz);
         timer.Tick += PreviewTick;
         Root.Loaded += (_, _) => loaded.TrySetResult();
-        AppWindow.Closing += (_, args) => { if (!closed) { args.Cancel = true; Cancel(); } };
+        AppWindow.Closing += (_, args) => { if (!closed) { args.Cancel = true; Cancel("closed"); } };
         Activated += (_, e) =>
         {
             if (e.WindowActivationState != WindowActivationState.Deactivated) active = true;
-            else if (active && !closed) Cancel();
+            else if (active && !closed) Cancel("focus_lost");
         };
     }
 
@@ -90,8 +104,19 @@ public sealed partial class OverlayWindow : Window
         await loaded.Task.WaitAsync(token);
         ProbeDesktop.FitClient(hwnd, bounds);
         scale = Root.XamlRoot.RasterizationScale;
+        if (pointMode)
+        {
+            pointTopology = DisplayBounds();
+            if (GetCursorPos(out var current))
+                ShowPoint(current);
+        }
         CheckDisplay();
-        CancelButton.Focus(FocusState.Programmatic);
+        if (pointMode)
+            pointInput = new PointPickInput(hwnd,
+                p => { if (!closed && !finishing) ShowPoint(p); },
+                p => { pressedPixel = p; DispatcherQueue.TryEnqueue(ConfirmPoint); },
+                () => DispatcherQueue.TryEnqueue(() => Cancel("pointer_lost")));
+        if (!pointMode) CancelButton.Focus(FocusState.Programmatic);
         if (measureCadence) CompositionTarget.Rendered += PreviewPresented;
         StartPreviewTimer();
     }
@@ -101,8 +126,20 @@ public sealed partial class OverlayWindow : Window
         var origin = ProbeDesktop.ClientOrigin(hwnd);
         if (host.Events.Session != session || Root.XamlRoot.RasterizationScale != scale ||
             origin.X != bounds.X || origin.Y != bounds.Y ||
-            !SelectionGeometry.Displays().Any(area => bounds.Equals(area.OuterBounds)))
+            !SelectionGeometry.Displays().Any(area => bounds.Equals(area.OuterBounds)) ||
+            (pointTopology != null && !pointTopology.SequenceEqual(DisplayBounds())))
             throw new IOException("显示器、缩放或引擎会话已改变，请重新框选。");
+    }
+
+    private static RectInt32[] DisplayBounds() => SelectionGeometry.Displays()
+        .OrderBy(a => a.DisplayId.Value).Select(a => a.OuterBounds).ToArray();
+
+    private void ShowPoint(PointInt32 pixel)
+    {
+        var local = new Contracts.PixelPoint(pixel.X, pixel.Y).ToOverlayDip(scale, bounds.X, bounds.Y);
+        PointReadout.Text = $"X {pixel.X}　Y {pixel.Y}　·　Esc 取消";
+        Canvas.SetLeft(PointLabel, Math.Clamp(local.X + 15, 0, Math.Max(0, Surface.ActualWidth - PointLabel.ActualWidth)));
+        Canvas.SetTop(PointLabel, Math.Clamp(local.Y + 18, 0, Math.Max(0, Surface.ActualHeight - PointLabel.ActualHeight)));
     }
 
     internal async Task PrepareCaptureAsync(CancellationToken token)
@@ -128,6 +165,7 @@ public sealed partial class OverlayWindow : Window
 
     private void DragStarted(object sender, PointerRoutedEventArgs e)
     {
+        if (pointMode) return;
         var point = e.GetCurrentPoint(Surface);
         if (scale <= 0 || pointer != null || finishing || !point.Properties.IsLeftButtonPressed ||
             !Surface.CapturePointer(e.Pointer)) return;
@@ -139,17 +177,29 @@ public sealed partial class OverlayWindow : Window
     }
 
     private void DragMoved(object sender, PointerRoutedEventArgs e)
-    { if (pointer == e.Pointer.PointerId) Drag(e.GetCurrentPoint(Surface).Position); }
+    {
+        if (!pointMode && pointer == e.Pointer.PointerId) Drag(e.GetCurrentPoint(Surface).Position);
+    }
     private void DragEnded(object sender, PointerRoutedEventArgs e)
     {
         if (pointer != e.Pointer.PointerId) return;
-        Drag(e.GetCurrentPoint(Surface).Position);
+        if (!pointMode) Drag(e.GetCurrentPoint(Surface).Position);
         pointer = null;
         Surface.ReleasePointerCapture(e.Pointer);
         e.Handled = true;
     }
     private void DragLost(object sender, PointerRoutedEventArgs e)
-    { if (pointer == e.Pointer.PointerId) Cancel(); }
+    { if (pointer == e.Pointer.PointerId) Cancel("pointer_lost"); }
+
+    private async void ConfirmPoint()
+    {
+        if (closed || finishing) return;
+        try { CheckDisplay(); }
+        catch { Cancel("display_changed"); return; }
+        finishing = true;
+        try { await host.RequestAsync("confirm_point_pick", new { pick_id = Id, point = new { x = pressedPixel.X, y = pressedPixel.Y } }); }
+        catch (Exception ex) { showError(ex.Message); if (!closed) { finishing = false; Cancel(); } }
+    }
 
     private void Drag(Point end)
     {
@@ -174,6 +224,7 @@ public sealed partial class OverlayWindow : Window
         try
         {
             CheckDisplay();
+            if (pointMode) return;
             if (!SelectionGeometry.CanConfirm(area)) return;
             var data = await host.CallAsync(new { op = "selection_region", session_id = session, selection_id = Id,
                 a = new[] { (double)area.X, area.Y }, b = new[] { (double)(area.X + area.Width), area.Y + area.Height },
@@ -187,7 +238,7 @@ public sealed partial class OverlayWindow : Window
             hasPreview = true; ConfirmButton.IsEnabled = pointer == null;
             if (measureTiming) await ObservePresentedPreview();
         }
-        catch (Exception ex) { if (!closed && !finishing) { showError(ex.Message); Cancel(); } }
+        catch (Exception ex) { if (!closed && !finishing) { showError(ex.Message); Cancel("display_changed"); } }
         finally { reading = false; }
     }
 
@@ -233,13 +284,17 @@ public sealed partial class OverlayWindow : Window
     }
 
     private void EscapePressed(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs e)
-    { e.Handled = true; Cancel(); }
+    { e.Handled = true; Cancel("escape"); }
     private void CancelSelection(object sender, RoutedEventArgs e) => Cancel();
-    private async void Cancel()
+    private async void Cancel(string reason = "cancelled")
     {
         if (closed || finishing) return;
         finishing = true;
-        try { await host.RequestAsync("stop_selection_mode", new { selection_id = Id }); }
+        try
+        {
+            if (pointMode) await host.RequestAsync("cancel_point_pick", new { pick_id = Id, reason });
+            else await host.RequestAsync("stop_selection_mode", new { selection_id = Id });
+        }
         catch (Exception ex) { showError(ex.Message); if (!closed) { finishing = false; } }
     }
 
@@ -247,6 +302,7 @@ public sealed partial class OverlayWindow : Window
     {
         if (closed) return;
         closed = true;
+        pointInput?.Dispose(); pointInput = null;
         if (measureCadence) CompositionTarget.Rendered -= PreviewPresented;
         timer.Stop(); timer.Tick -= PreviewTick;
         pointer = null; Surface.ReleasePointerCaptures(); Close();

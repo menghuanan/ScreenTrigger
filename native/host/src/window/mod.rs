@@ -114,7 +114,7 @@ pub fn watch(
         let Some(gate) = crate::input::shared_gate() else {
             continue;
         };
-        let roots = gate.active(change["binding_id"].as_str());
+        let roots = gate.window_roots(change["binding_id"].as_str(), state == "foreground_lost");
         for root in &roots {
             if state == "closed" {
                 gate.close(root, "window_closed");
@@ -123,6 +123,8 @@ pub fn watch(
             }
         }
         if !roots.is_empty() {
+            // The gate closes immediately, even when the Lua body is waiting and sends no further input.
+            crate::input::release_closed();
             if let Some(host) = crate::ipc::hostcall::shared().filter(|h| h.session_id() == session)
             {
                 let _ = host.call("binding_state_changed", change);
@@ -228,6 +230,15 @@ impl Catalog {
                 .ok_or_else(|| IpcError::invalid_params("缺少 window_id"))
         };
         match command {
+            "get_window_input_capabilities" => {
+                if params.as_object().map_or(0,|p|p.len()) != 1 {
+                    return Err(IpcError::invalid_params("binding_id"));
+                }
+                let binding = params.get("binding_id").and_then(Value::as_str)
+                    .ok_or_else(|| IpcError::invalid_params("binding_id"))?;
+                let target = self.bound(binding)?;
+                Ok(crate::input::background::capabilities(binding,&target))
+            }
             "list_windows" => {
                 let windows = system::enumerate();
                 let bound = self.binding.as_ref().map(|(_, id)| id.clone());
@@ -286,15 +297,18 @@ impl HostHandler for SnapshotHandler {
 }
 
 pub struct DesktopCommands {
+    pub session: String,
     pub windows: Option<Windows>,
     pub gate: Option<Arc<crate::input::gate::GateTable>>,
     pub selection: Option<crate::selection::SharedSelectionManager>,
 }
 impl crate::ipc::HostCommandHandler for DesktopCommands {
     fn dispatch(&mut self, cmd: &str, params: &Value) -> Result<Value, IpcError> {
+        if crate::recording::COMMANDS.contains(&cmd){return crate::recording::command(&self.session,cmd,params);}
         if matches!(
             cmd,
             "start_selection_mode" | "confirm_selection" | "stop_selection_mode"
+                | "start_point_pick" | "confirm_point_pick" | "cancel_point_pick"
         ) {
             return self
                 .selection
@@ -305,7 +319,7 @@ impl crate::ipc::HostCommandHandler for DesktopCommands {
         let active = self
             .gate
             .as_ref()
-            .is_some_and(|g| !g.active(None).is_empty());
+            .is_some_and(|g| !g.active(None).is_empty()) || crate::recording::active();
         self.windows
             .as_ref()
             .ok_or_else(|| IpcError::capability_denied(cmd))?

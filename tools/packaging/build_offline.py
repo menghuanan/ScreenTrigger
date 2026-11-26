@@ -26,7 +26,7 @@ def copy(source, destination):
     shutil.copyfile(source, destination)
 
 
-def prepare_engine(stage, args):
+def prepare_engine(stage, args, pipelines=None):
     resources = stage / "resources"
     python = resources / "python"
     if digest(args.cpython) != PYTHON_SHA256:
@@ -61,7 +61,12 @@ def prepare_engine(stage, args):
     for name in ("models.catalog.json", "release-cp313-win-x64.txt", "native-dev-toolchain.json"):
         copy(ROOT / "manifest" / name, resources / "manifest" / name)
     catalog = json.loads((ROOT / "manifest/models.catalog.json").read_text("utf-8"))
-    required = {pair[key] for pair in catalog["engines"] for key in ("detection_model", "recognition_model")}
+    engines = catalog["engines"]
+    if pipelines is not None:
+        engines = [p for p in engines if p["recognition_model"] in pipelines]
+        if {p["recognition_model"] for p in engines} != set(pipelines):
+            raise ValueError("Unknown portable OCR pipeline")
+    required = {pair[key] for pair in engines for key in ("detection_model", "recognition_model")}
     for model in catalog["models"]:
         if model["model_id"] in required:
             for item in model["files"]:
@@ -99,11 +104,19 @@ def prepare_engine(stage, args):
             if file.is_file() and file.name.lower().startswith(("license", "licence", "copying", "notice")):
                 copy(file, resources / "licenses/rust" / prefix / file.name)
     copy(ROOT / "tools/packaging/inspect_root.py", resources / "inspect_root.py")
-    copy(ROOT / "tools/packaging/Uninstall.ps1", stage / "Uninstall.ps1")
-    copy(ROOT / "tools/packaging/SetupPaths.ps1", stage / "SetupPaths.ps1")
+    if pipelines is None:
+        copy(ROOT / "tools/packaging/Uninstall.ps1", stage / "Uninstall.ps1")
+        copy(ROOT / "tools/packaging/SetupPaths.ps1", stage / "SetupPaths.ps1")
+    else:
+        copy(ROOT / "tools/packaging/portable_data.py", resources / "portable_data.py")
+        copy(ROOT / "tools/packaging/便携版使用说明.txt", stage / "便携版使用说明.txt")
+        factory = {"format": 1, "engines": engines,
+                   "models": [m for m in catalog["models"] if m["model_id"] in required]}
+        (resources / "manifest/factory-models.json").write_text(json.dumps(factory, ensure_ascii=False), encoding="utf8")
     build_data = stage.parent / "startup-data"
     subprocess.run([str(python / "python.exe"), "-I", "-B", "-X", "utf8",
-                    str(ROOT / "tools/packaging/compile_startup.py"), str(resources), str(build_data)],
+                    str(ROOT / "tools/packaging/compile_startup.py"), str(resources), str(build_data),
+                    *(["--portable"] if pipelines is not None else [])],
                    check=True, cwd=stage, stdin=subprocess.DEVNULL,
                    env=dict(env, ST_OCR_MODELS_DIR=str(resources / "weights"),
                             PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK="True",
@@ -120,7 +133,11 @@ def main():
     p.add_argument("--cargo", type=Path, default=TOOLCHAIN / "cargo")
     p.add_argument("--crt", required=True, type=Path, help="x64/Microsoft.VC145.CRT from MSVC 14.52.37025 Redist")
     p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--portable", action="store_true", help="Produce an automation-v2 extract-and-run kit")
+    p.add_argument("--pipeline", action="append", help="Factory recognition model ID, repeatable; default is all")
     args = p.parse_args()
+    if args.pipeline and not args.portable:
+        p.error("--pipeline applies to portable builds")
     if sys.version_info[:3] != (3, 13, 14) or sys.maxsize < 2**32:
         p.error("a CPython 3.13.14 x64 build environment is required")
     config = json.loads((args.ui / "ScreenTrigger.runtimeconfig.json").read_text("utf-8"))
@@ -134,10 +151,20 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.exists():
         p.error("use a new output filename to preserve the previous candidate")
+    if args.portable:
+        if out.parent != ROOT / "dist/automation-v2" or not out.name.startswith("ScreenTrigger-automation-v2-") or out.suffix != ".zip":
+            p.error("portable builds require dist/automation-v2/ScreenTrigger-automation-v2-<candidate>.zip")
+        sys.path.insert(0, str(ROOT / "tools"))
+        from run_acceptance import baseline
+        source_hash = baseline(ROOT)["sha256"]
+        trusted = json.loads((ROOT / "manifest/models.catalog.json").read_bytes())
+        selected = args.pipeline if args.pipeline is not None else trusted["recognition_models"]
+        if len(set(selected)) != len(selected) or set(selected) - set(trusted["recognition_models"]):
+            p.error("unknown or duplicate factory selection")
     with tempfile.TemporaryDirectory(dir=out.parent, prefix="build-") as tmp:
         stage = Path(tmp) / "app"
         shutil.copytree(args.ui, stage, ignore=shutil.ignore_patterns("*.pdb"))
-        prepare_engine(stage, args)
+        prepare_engine(stage, args, selected if args.portable else None)
         files = sorted(path for path in stage.rglob("*") if path.is_file())
         entries = [{"path": path.relative_to(stage).as_posix(), "bytes": path.stat().st_size,
                     "sha256": digest(path)} for path in files]
@@ -146,10 +173,21 @@ def main():
         raw = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         artifact = Path(tmp) / "kit.zip"
         with zipfile.ZipFile(artifact, "x", zipfile.ZIP_DEFLATED, compresslevel=2) as archive:
-            archive.writestr("package.json", raw)
-            archive.write(ROOT / "tools/packaging/Install.ps1", "Install.ps1")
+            if args.portable:
+                core = [e for e in entries if not e["path"].startswith("resources/weights/")]
+                inventory = json.dumps(core, separators=(",", ":")).encode()
+                marker = dict(format=1, version="automation-v2", mode="portable", data="data",
+                              source_sha256=source_hash, core_sha256=hashlib.sha256(inventory).hexdigest(),
+                              factory=selected)
+                archive.writestr("ScreenTrigger.portable.json", json.dumps(marker))
+                archive.writestr("portable-core.json", inventory)
+            else:
+                archive.writestr("package.json", raw)
+                archive.write(ROOT / "tools/packaging/Install.ps1", "Install.ps1")
             for path, entry in zip(files, entries):
-                archive.write(path, "app/" + entry["path"])
+                archive.write(path, entry["path"] if args.portable else "app/" + entry["path"])
+        if args.portable and baseline(ROOT)["sha256"] != source_hash:
+            raise ValueError("Portable build source changed before sealing the archive")
         os.rename(artifact, out)
     print(json.dumps({"path": str(out), "sha256": digest(out), "bytes": out.stat().st_size,
                       "installed_bytes": sum(x["bytes"] for x in entries), "files": len(entries)}))

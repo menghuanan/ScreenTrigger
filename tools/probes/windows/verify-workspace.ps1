@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory)][string]$Executable, [Parameter(Mandatory)][string]$OutputDirectory, [switch]$Extended, [switch]$ReleaseCases, [switch]$DraftCases)
+﻿param([Parameter(Mandatory)][string]$Executable, [Parameter(Mandatory)][string]$OutputDirectory, [switch]$Extended, [switch]$ReleaseCases, [switch]$DraftCases, [switch]$ModelCases, [switch]$TextOutputCases, [switch]$PointCases)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $folder = New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop
@@ -48,7 +48,8 @@ function Save-Tree($tag) {
     })
     $rows | ConvertTo-Json | Out-File -Encoding utf8 (Join-Path $folder.FullName "$tag.json")
 }
-if ($Extended -or $DraftCases) { . (Join-Path $PSScriptRoot 'workspace-image-cases.ps1') }
+if ($Extended -or $DraftCases -or $TextOutputCases) { . (Join-Path $PSScriptRoot 'workspace-image-cases.ps1') }
+if ($TextOutputCases) { . (Join-Path $PSScriptRoot '../../../tests/acceptance/text-output-ui.ps1') }
 if ($DraftCases) {
     $env:ST_MEASURE_PREVIEW_CADENCE = '1'
     . (Join-Path $PSScriptRoot '../../../tests/acceptance/desktop_drafts.ps1')
@@ -65,6 +66,61 @@ try {
         $hwnd = Wait-Until { $app.Refresh(); if ($app.MainWindowHandle -ne [IntPtr]::Zero) { $app.MainWindowHandle } } 'WinUI window'
         $main = $ae::FromHandle($hwnd)
         Element StopEngine | Out-Null
+        if ($PointCases) {
+            Select-Element (Element NavScripts)
+            Set-Value DraftPointX '300'
+            Set-Value DraftPointY '400'
+            Invoke-Element InsertPoint
+            $manual = (Element ScriptSource).GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
+            if ($manual -ne 'click_at(300, 400)') { throw 'Manual integer coordinates not inserted' }
+            $observations.manual = $manual
+            Set-Value ScriptSource ''
+            Set-Value DraftPointX '19'
+            Set-Value DraftPointY '-4'
+            & .venv/Scripts/python.exe -X utf8 tests/acceptance/point_window.py $app.Id $hwnd.ToInt64() $folder.FullName
+            if ($LASTEXITCODE -ne 0) { throw 'Point picker verification failed' }
+            Save-Tree 'point-draft'
+            Set-Value ScriptSource ''
+            Select-Element (Element NavImages)
+            & .venv/Scripts/python.exe -X utf8 tools/probes/windows/verify_product_selection.py $app.Id $hwnd.ToInt64() $folder.FullName
+            if ($LASTEXITCODE -ne 0) { throw 'Existing rectangular selection regression failed' }
+            $main.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
+            if (!$app.WaitForExit(15000)) { throw 'Point picker test did not close cleanly' }
+            break
+        }
+        if ($TextOutputCases) {
+            Test-TextOutput
+            $main.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
+            if (!$app.WaitForExit(15000)) { throw 'Text export test did not close cleanly' }
+            break
+        }
+        if ($ModelCases) {
+            Select-Element (Element NavSettings)
+            $expander = Element OcrModelLibrary
+            $expander.GetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+            $model = 'PP-OCRv6_medium_rec'
+            $expectedState = if ($iteration -eq 1) {'已安装'} else {'未安装'}
+            $observations["models$iteration"] = Wait-Until {
+                $entry = Find-Element ModelInfo
+                if ($entry.Current.Name -match "$model\s+$expectedState") { $entry.Current.Name }
+            } 'model states'
+            if ($iteration -eq 1) {
+                $button = Element RemoveOcrModel
+                $button.SetFocus()
+                $observations.keyboard = Wait-Until { $button.Current.HasKeyboardFocus } 'focus remove button'
+                Invoke-Element RemoveOcrModel
+                $cancel = Wait-Until { Find-Element '取消' -Name } 'cancel model preview'
+                $cancel.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+                Invoke-Element RemoveOcrModel
+                $accept = Wait-Until { Find-Element '确认' -Name } 'confirm model preview'
+                $accept.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+                Wait-Until { (Find-Element ModelInfo).Current.Name -match "$model\s+未安装" } 'model removed' | Out-Null
+            }
+            Save-Tree "models-$iteration"
+            $main.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
+            if (!$app.WaitForExit(15000)) { throw 'Model test did not exit' }
+            continue
+        }
         if ($DraftCases) {
             Test-DesktopDrafts $iteration
             if (!$app.WaitForExit(15000) -or $app.ExitCode -ne 0) { throw 'Draft test did not close cleanly' }

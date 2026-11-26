@@ -52,3 +52,13 @@ foreach ($phase in 'P0','P1','P2','P3','release') {
 以 `result.json` 的 errors、issues 和 retired_receipts 为起点，按 run_id 和 SHA-256 对照原路径、备份及历史运行目录。2026-11-26 用户授权将清单中缺少 19 个源码版本的 43 份回执登记作废。原件已追回的按哈希验证；作废回执仍保留原件、原用例、关联回归和各次尝试。审计检查原用例及关联回归在当前候选上的新回执。其他缺件仍需逐份追回或另行裁定。
 
 问题修复须重跑原用例及受影响用例，提交当前基线的原始输出和审查意见。规则、账本字段、文档快照以及变更后的失效处理见[检查与闭环](../agent/检查与闭环.md)。
+## 自动化扩展便携包
+
+使用仓库 CPython 3.13.14 x64 和现有离线工具链运行以下命令。输出名须为新候选。构建器先按工作区基线逐文件复制并校验源码，再从该副本发布 WinUI、Rust 宿主和 Python 引擎。默认选取目录内的两套 OCR 管线，ORB 使用包内 OpenCV。需要检查某个出厂选择时可重复传入 `--pipeline` 和可信的识别模型 ID。
+
+```powershell
+$crt = 'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Redist\MSVC\14.52.37025\x64\Microsoft.VC145.CRT'
+& .\.venv\Scripts\python.exe tools/packaging/build_portable.py --crt $crt --out dist/automation-v2/ScreenTrigger-automation-v2-rc01.zip
+```
+
+完整解压后运行根目录的 `ScreenTrigger.exe`。首次启动检查核心清单，将数据保存在同目录的 `data`。退出后整体移动或复制。旧安装数据和便携版升级的选择、核验及恢复步骤见随包的[便携版使用说明](../../tools/packaging/便携版使用说明.txt)。

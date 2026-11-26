@@ -53,6 +53,15 @@ def is_contained(child: str, parent: str) -> bool:
     return child_parts[: len(parent_parts)] == parent_parts
 
 
+def is_remote_volume(path) -> bool:
+    """Check the drive type before opening a file on a mapped Windows drive."""
+    if os.name != "nt":
+        return False
+    import ctypes
+    drive, _ = os.path.splitdrive(path)
+    return bool(drive and ctypes.windll.kernel32.GetDriveTypeW(drive + "\\") == 4)
+
+
 def _reject_lexical(relative: str) -> List[str]:
     """词法层：拒绝绝对路径/盘符/``..``/空组件，返回规范化后的组件列表。"""
     if not isinstance(relative, str) or not relative:

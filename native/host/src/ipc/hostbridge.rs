@@ -59,6 +59,7 @@ pub struct HostBridge {
     sink: ArcMutexSink,
     registry: HostRegistry,
     input_worker: Option<std::sync::mpsc::SyncSender<ProtocolEnvelope>>,
+    output_worker: Option<std::sync::mpsc::SyncSender<ProtocolEnvelope>>,
 }
 
 /// 共享 sink 句柄（跨线程互斥；FrameSink::send_frame 为 &mut self）。
@@ -70,7 +71,18 @@ impl HostBridge {
             sink,
             registry: HostRegistry::new(),
             input_worker: None,
+            output_worker: None,
         }
+    }
+
+    pub fn attach_text_output(&mut self, service: std::sync::Arc<crate::text_output::Service>) {
+        let (tx, rx) = std::sync::mpsc::sync_channel(32);
+        let mut worker = HostBridge::new(self.sink.clone());
+        worker.register_handler("text_output", Box::new(crate::text_output::Handler(service)));
+        self.output_worker = Some(tx);
+        std::thread::spawn(move || {
+            while let Ok(request) = rx.recv() { worker.respond(&request); }
+        });
     }
 
     /// Keep long input actions off the router so stop and event delivery stay responsive.
@@ -137,6 +149,15 @@ impl HostBridge {
             return;
         }
 
+        if command == "text_output" {
+            if let Some(worker) = &self.output_worker {
+                if worker.try_send(request.clone()).is_err() {
+                    self.send_reply(host_response_envelope(&request.session_id, id, false, None,
+                        Some(json!(crate::ipc::IpcError::busy()))));
+                }
+                return;
+            }
+        }
         if let Some(worker) = &self.input_worker {
             if matches!(
                 command,

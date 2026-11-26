@@ -11,6 +11,11 @@
         <Button Content="解除绑定" Click="Unbind" />
     </StackPanel>
     <TextBlock x:Name="BindingLabel" AutomationProperties.AutomationId="WindowBinding" TextWrapping="Wrap" />
+    <StackPanel Orientation="Horizontal" Spacing="8">
+        <CheckBox x:Name="BackgroundMode" Content="在后台读取和操作绑定窗口" IsEnabled="False" AutomationProperties.AutomationId="WindowBackgroundMode" />
+        <Button x:Name="CheckCapture" Content="测试后台取像" IsEnabled="False" Click="TestBackgroundCapture" />
+        <Button x:Name="CheckInput" Content="查询后台动作支持" IsEnabled="False" Click="CheckBackgroundInput" AutomationProperties.AutomationId="WindowInputCapabilities" />
+    </StackPanel>
     <ComboBox x:Name="Displays" Header="未绑定时使用的显示器" HorizontalAlignment="Stretch" />
     <ComboBox x:Name="Scripts" Header="运行脚本" HorizontalAlignment="Stretch" AutomationProperties.AutomationId="RunScriptPicker" />
     <ComboBox x:Name="Mode" Header="运行模式" SelectedIndex="0" SelectionChanged="ChangeMode">
@@ -20,7 +25,31 @@
     <NumberBox x:Name="Count" Header="迭代次数" Minimum="1" Value="1" Visibility="Collapsed" />
     <ComboBox x:Name="Targets" Header="停止目标" HorizontalAlignment="Stretch" Visibility="Collapsed" />
     <TextBox x:Name="Arguments" Header="脚本参数（JSON 对象）" Text="{}" />
+    <StackPanel x:Name="RecordingControls" Spacing="6">
+        <TextBlock Text="录制当前范围" FontWeight="SemiBold" />
+        <TextBlock Text="鼠标使用当前范围。键盘要求已获焦的目标窗口提供录制消息。" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button x:Name="StartRecording" AutomationProperties.AutomationId="StartRecording" Click="RecordClick" Content="开始录制" />
+            <Button x:Name="PauseRecording" AutomationProperties.AutomationId="PauseRecording" Click="RecordClick" Content="暂停" IsEnabled="False" />
+            <Button x:Name="ResumeRecording" AutomationProperties.AutomationId="ResumeRecording" Click="RecordClick" Content="恢复" IsEnabled="False" />
+            <Button x:Name="FinishRecording" AutomationProperties.AutomationId="FinishRecording" Click="RecordClick" Content="结束录制" IsEnabled="False" />
+            <Button x:Name="CancelRecording" AutomationProperties.AutomationId="CancelRecording" Click="RecordClick" Content="取消录制" IsEnabled="False" />
+        </StackPanel>
+        <TextBlock x:Name="RecordingStatus" AutomationProperties.AutomationId="RecordingStatus" TextWrapping="Wrap" />
+    </StackPanel>
     <monitor:MonitorOptions x:Name="Policy" Visibility="Collapsed" />
+    <StackPanel Spacing="6">
+        <ComboBox x:Name="OutputMode" Header="OCR 文字导出" SelectedIndex="0"
+                  SelectionChanged="ChangeOutputMode" AutomationProperties.AutomationId="OutputMode">
+            <ComboBoxItem Content="追加到文件" Tag="append" /><ComboBoxItem Content="覆盖文件" Tag="overwrite" />
+        </ComboBox>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button x:Name="PickOutput" Content="选择 TXT 文件" Click="PickTextOutput" AutomationProperties.AutomationId="PickTextOutput" />
+            <Button x:Name="ClearOutput" Content="取消导出" Click="ClearTextOutput" IsEnabled="False" AutomationProperties.AutomationId="ClearTextOutput" />
+        </StackPanel>
+        <TextBlock x:Name="OutputStatus" Text="未选择输出文件" TextWrapping="Wrap" AutomationProperties.AutomationId="TextOutputStatus" AutomationProperties.LiveSetting="Polite" />
+        <TextBlock x:Name="WriteStatus" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.AutomationId="TextWriteStatus" AutomationProperties.LiveSetting="Polite" />
+    </StackPanel>
     <Expander x:Name="Scope" Header="区域与频率" HorizontalAlignment="Stretch"><StackPanel Spacing="8">
         <TextBox x:Name="Region" Header="识别区域（Region JSON，留空使用整个显示器或客户区）" />
         <Button x:Name="PickRegion" Content="在显示器上框选区域" Click="SelectRegion" />
@@ -41,6 +70,6 @@
             <Button Content="保存快捷键" Click="SaveKeys" /><Button Content="撤销编辑" Click="ReloadKeys" />
         </StackPanel>
     </StackPanel></Expander>
-    <TextBlock x:Name="Feedback" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+    <TextBlock x:Name="Feedback" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="RunFeedback" />
  </StackPanel></ScrollViewer>
 </UserControl>

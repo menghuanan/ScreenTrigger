@@ -44,6 +44,8 @@ from .condition_serializer import (
     validate_draft,
 )
 from .nms import IOU_THRESHOLD, MAX_CANDIDATES, cap_candidates, nms
+from .cancel import CancelledError
+from .worker import DeadlineCancelToken
 from .textmatch import (
     DEFAULT_FUZZY_THRESHOLD,
     DEFAULT_MIN_CONFIDENCE,
@@ -174,7 +176,7 @@ class ConditionTreeEvaluator:
 
     def _template_image_id(self, snapshot: Any, spec: ConditionSpec, resources: ExitStack) -> Optional[str]:
         """解析模板 ``ImageAsset`` → 会话 ``ImageRef.image_id``（draft 直接取 ``image_id``）。"""
-        needs_template = any(leaf.type in ("template", "contour") for leaf in spec.leaves)
+        needs_template = any(leaf.type in ("template", "contour", "feature_match") for leaf in spec.leaves)
         if isinstance(snapshot, Mapping):
             image_id = snapshot.get("image_id")
             return image_id if isinstance(image_id, str) and image_id else None
@@ -307,17 +309,23 @@ class ConditionTreeEvaluator:
                          cancel: Any, roi: Any) -> Any:
         provider = self._registry.require_provider(leaf.type)
         params = dict(leaf.params or {})
-        if leaf.type in ("template", "contour"):
+        if leaf.type in ("template", "contour", "feature_match"):
             if not isinstance(template_image_id, str) or not template_image_id:
                 raise RecognitionError(
                     "DATA_CORRUPT", "目标模板图像缺失或不可用", field="image.path"
                 )
             params["template_image_id"] = template_image_id
         manifest = self._registry.manifest_for(provider)
-        if manifest is not None and not manifest.thread_safe:
-            with self._registry.serial_lock(provider):
-                return provider.recognize(frame, params, cancel, roi=roi)
-        return provider.recognize(frame, params, cancel, roi=roi)
+        deadline = cancel if leaf.type == "ocr" else DeadlineCancelToken(cancel)
+        try:
+            if manifest is not None and not manifest.thread_safe:
+                with self._registry.serial_lock(provider):
+                    return provider.recognize(frame, params, deadline, roi=roi)
+            return provider.recognize(frame, params, deadline, roi=roi)
+        except CancelledError:
+            if deadline is not cancel and deadline.timed_out():
+                raise RecognitionError("RECOGNITION_TIMEOUT", "条件推理超过 5 秒", retryable=True)
+            raise
 
     # -- Match 构造 ----------------------------------------------------------
 

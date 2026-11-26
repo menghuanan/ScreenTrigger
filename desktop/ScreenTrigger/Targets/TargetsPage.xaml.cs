@@ -133,6 +133,14 @@ public sealed partial class TargetsPage : UserControl, IWorkspaceDraft
             case "previous": offset = Math.Max(0, offset - 50); await List(); break;
             case "next": offset += 50; await List(); break;
             case "new": if (await CanReplaceDraft()) Edit(null); break;
+            case "new-orb":
+                if (await CanReplaceDraft())
+                {
+                    Edit(null);
+                    Conditions.Text = """{"op":"all","children":[{"id":"c1","type":"feature_match","params":{}}]}""";
+                    TargetName.Focus(FocusState.Programmatic);
+                }
+                break;
             case "open":
                 if (Targets.SelectedItem is CatalogItem current && await CanReplaceDraft())
                     Edit((await commands.Call("get_target", new { target_id = current.Id })).GetProperty("target"));

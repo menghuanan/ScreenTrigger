@@ -17,11 +17,11 @@ use std::collections::HashSet;
 use serde_json::{Value, json};
 
 use crate::ipc::IpcError;
-use crate::types::region::{Rect, Region, RegionSpace};
+use crate::types::region::{DisplayInfo, Point, Rect, Region, RegionSpace};
 
 use super::display::{find_display, select_default_display};
 use super::geometry::{
-    GeometryError, contains_rect, local_dip_rect_to_physical, meets_minimum,
+    GeometryError, contains_point, contains_rect, local_dip_rect_to_physical, meets_minimum,
 };
 use super::model::{
     CAPTURE_RETRY_DELAY_MS, ClockPort, DesktopCapturePort, EventSink, HostEnvironmentPort,
@@ -39,6 +39,12 @@ struct Active {
     temp_images: Vec<String>,
     /// 是否暂停过脚本（记录，不自动恢复——F01）。
     paused_script: bool,
+    pick: Option<PointPick>,
+}
+
+struct PointPick {
+    topology: Vec<DisplayInfo>,
+    binding: Option<String>,
 }
 
 /// 框选控制器（状态机 + 端口）。
@@ -80,17 +86,24 @@ impl SelectionController {
         self.active.is_some()
     }
 
-    /// 当前会话 id（诊断/测试）。
-    pub fn active_selection_id(&self) -> Option<&str> {
-        self.active.as_ref().map(|a| a.session.selection_id.as_str())
-    }
-
     // ------------------------------------------------------------------
     // 命令：start_selection_mode
     // ------------------------------------------------------------------
 
     /// 开始框选。`display_id=None` → 默认显示器（F01 顺序）。
     pub fn start(&mut self, display_id: Option<&str>) -> Result<Value, IpcError> {
+        self.begin(display_id, false, None)
+    }
+
+    pub fn start_pick(&mut self, display_id: Option<&str>, binding: Option<&str>) -> Result<Value, IpcError> {
+        if let Some(id) = binding {
+            let windows = crate::window::shared().ok_or_else(|| invalid_state("窗口会话已结束"))?;
+            windows.lock().unwrap_or_else(|e| e.into_inner()).bound(id)?;
+        }
+        self.begin(display_id, true, binding)
+    }
+
+    fn begin(&mut self, display_id: Option<&str>, picking: bool, binding: Option<&str>) -> Result<Value, IpcError> {
         if self.active.is_some() {
             // 06：重复会话 BUSY（retryable=true）
             return Err(IpcError::busy());
@@ -124,8 +137,9 @@ impl SelectionController {
         }
 
         // 打开覆盖层（WS_EX_LAYERED + WDA_EXCLUDEFROMCAPTURE，见 wiring）
-        let selection_id = self.new_selection_id(&display.id);
-        let overlay = match self.env.open_overlay(&display, &selection_id) {
+        let selection_id = if picking { format!("pick-{}", uuid::Uuid::new_v4()) } else { self.new_selection_id(&display.id) };
+        let overlay = match if picking { self.env.open_point_overlay(&display, &selection_id) }
+            else { self.env.open_overlay(&display, &selection_id) } {
             Ok(h) => h,
             Err(e) => {
                 let _ = self.env.set_main_window_visible(was_visible);
@@ -143,8 +157,13 @@ impl SelectionController {
             was_main_window_visible: was_visible,
             temp_images: Vec::new(),
             paused_script,
+            pick: picking.then(|| PointPick { topology: displays, binding: binding.map(str::to_owned) }),
         });
 
+        if picking {
+            self.emit("point_pick_started", json!({"pick_id":selection_id,"display_id":display.id}));
+            return Ok(json!({"pick_id":selection_id}));
+        }
         // selection_started：主窗口已隐藏（03）
         self.emit(
             "selection_started",
@@ -159,6 +178,7 @@ impl SelectionController {
 
     /// 确认选区：返回 `{image, region}`；事件 `selection_completed` 在恢复之后发出。
     pub fn confirm(&mut self, selection_id: &str, region: &Region) -> Result<Value, IpcError> {
+        self.require_mode(selection_id, false)?;
         let session_display = self.active_display_id(selection_id)?;
 
         // 显示器拔除检测（F01：显示器拔除 → 结束会话并恢复）
@@ -215,14 +235,7 @@ impl SelectionController {
 
     /// 停止框选（等价取消，恢复窗口）。无匹配活动会话 → INVALID_STATE。
     pub fn stop(&mut self, selection_id: &str) -> Result<Value, IpcError> {
-        let is_match = self
-            .active
-            .as_ref()
-            .map(|a| a.session.selection_id == selection_id)
-            .unwrap_or(false);
-        if !is_match {
-            return Err(invalid_state("没有匹配的活动框选会话"));
-        }
+        self.require_mode(selection_id, false)?;
         self.finish_and_emit_cancelled("cancelled");
         Ok(json!({ "ok": true }))
     }
@@ -241,9 +254,7 @@ impl SelectionController {
         origin: (i64, i64),
         scale: f64,
     ) -> Result<Value, IpcError> {
-        if self.active_selection_id() != Some(selection_id) {
-            return Err(invalid_state("没有匹配的活动框选会话"));
-        }
+        self.require_mode(selection_id, false)?;
         let rect = local_dip_rect_to_physical(a, b, origin, scale).map_err(geometry_to_error)?;
 
         let display_id = self
@@ -334,6 +345,68 @@ impl SelectionController {
     }
 
     /// 释放临时图 + 关覆盖层 + 恢复主窗口（幂等；终态事件之前调用）。
+    fn require_mode(&self, id: &str, point: bool) -> Result<(), IpcError> {
+        if self.active.as_ref().is_some_and(|a| a.session.selection_id == id && a.pick.is_some() == point) { Ok(()) }
+        else { Err(invalid_state("没有匹配的活动选择")) }
+    }
+
+    pub fn cancel_pick(&mut self, id: &str, reason: &str) -> Result<Value, IpcError> {
+        self.require_mode(id, true)?;
+        self.finish_session();
+        self.emit("point_pick_cancelled", json!({"pick_id":id,"reason":reason}));
+        Ok(json!({"ok":true}))
+    }
+
+    pub fn end_session(&mut self) {
+        if let Some(active) = self.active.as_ref() {
+            let id = active.session.selection_id.clone();
+            if active.pick.is_some() { let _ = self.cancel_pick(&id, "session_ended"); }
+            else { let _ = self.stop(&id); }
+        }
+    }
+
+    pub fn confirm_pick(&mut self, id: &str, point: Point) -> Result<Value, IpcError> {
+        self.require_mode(id, true)?;
+        let result = (|| {
+            let active = self.active.as_ref().unwrap();
+            let pick = active.pick.as_ref().unwrap();
+            let displays = self.env.list_displays().map_err(port_to_error)?;
+            if displays.len() != pick.topology.len() || !displays.iter().all(|d| pick.topology.contains(d)) {
+                return Err(display_not_found("取点期间显示拓扑已变化"));
+            }
+            let display = find_display(&displays, &active.session.display_id)
+                .ok_or_else(|| display_not_found("取点显示器已移除"))?;
+            if i32::try_from(point.x).is_err() || i32::try_from(point.y).is_err() {
+                return Err(IpcError::invalid_params("点超出系统物理坐标范围"));
+            }
+            if !contains_point(&display.rect, point.x, point.y) { return Err(IpcError::invalid_params("点超出取点显示器")); }
+            let mut value = json!({"pick_id":id,"point":point,"space":"screen_physical","display_id":display.id});
+            if let Some(binding) = pick.binding.as_ref() {
+                let windows = crate::window::shared().ok_or_else(|| invalid_state("窗口会话已结束"))?;
+                let bound = windows.lock().unwrap_or_else(|e| e.into_inner()).bound(binding)?;
+                let rect = &bound.live.rect;
+                if bound.live.minimized || !bound.live.visible || !contains_point(rect, point.x, point.y) {
+                    return Err(IpcError::invalid_params("取点不在绑定窗口可见客户区内"));
+                }
+                value["client_point"] = json!({"x": point.x - rect.x, "y": point.y - rect.y});
+                value["binding_id"] = json!(binding);
+                value["geometry_revision"] = json!(bound.revision);
+            }
+            Ok(value)
+        })();
+        match result {
+            Ok(payload) => {
+                self.finish_session();
+                self.emit("point_pick_completed", payload.clone());
+                Ok(payload)
+            }
+            Err(err) => {
+                self.cancel_pick(id, &err.code)?;
+                Err(err)
+            }
+        }
+    }
+
     fn finish_session(&mut self) {
         let Some(active) = self.active.take() else {
             return;

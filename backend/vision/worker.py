@@ -42,7 +42,16 @@ class DeadlineCancelToken:
         return self._timed_out
 
     def is_cancelled(self) -> bool:
-        return self._base.is_cancelled() or self.timed_out()
+        # Preserve non-blocking polling for script gates, whose checkpoint can pause.
+        poll = getattr(self._base, "is_cancelled", None)
+        if poll is not None:
+            return poll() or self.timed_out()
+        # Earlier condition evaluators require only a throwing cancellation check.
+        try:
+            self._base.throw_if_cancelled()
+        except CancelledError:
+            return True
+        return self.timed_out()
 
     def throw_if_cancelled(self) -> None:
         if self.is_cancelled():

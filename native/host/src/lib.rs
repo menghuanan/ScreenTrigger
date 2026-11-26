@@ -6,10 +6,15 @@ mod desktop_windows;
 pub mod import;
 pub mod input;
 mod measurements;
+#[cfg(any(not(debug_assertions), test))]
+mod portable;
 pub mod ipc;
 pub mod selection;
 pub mod sidecar;
 pub mod types;
+mod text_output;
+mod recording;
+mod winmessages;
 
 pub mod window;
 

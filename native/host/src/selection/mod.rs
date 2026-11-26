@@ -56,6 +56,22 @@ impl SelectionManager {
     /// 协议命令分派（参数校验 + 委托控制器）。返回 03 约定的 `data` 形状。
     pub fn dispatch_command(&mut self, command: &str, params: &Value) -> Result<Value, IpcError> {
         match command {
+            "start_point_pick" => self.controller.start_pick(optional_string(params,"display_id")?, optional_string(params,"binding_id")?),
+            "confirm_point_pick" => {
+                let id = optional_string(params, "pick_id")?.ok_or_else(|| IpcError::invalid_params("缺少 pick_id"))?;
+                crate::types::region::validate_point(&params["point"])
+                    .map_err(|_| IpcError::invalid_params("point 只允许整数 x/y"))?;
+                let point = serde_json::from_value(params["point"].clone()).map_err(|_| IpcError::invalid_params("point 必须包含整数 x/y"))?;
+                self.controller.confirm_pick(id, point)
+            }
+            "cancel_point_pick" => {
+                let id = optional_string(params, "pick_id")?.ok_or_else(|| IpcError::invalid_params("缺少 pick_id"))?;
+                let reason = optional_string(params, "reason")?.unwrap_or("cancelled");
+                if !matches!(reason, "cancelled" | "escape" | "closed" | "focus_lost" | "display_changed" | "pointer_lost") {
+                    return Err(IpcError::invalid_params("未知取点终止原因"));
+                }
+                self.controller.cancel_pick(id, reason)
+            }
             "start_selection_mode" => match params.get("display_id") {
                 None | Some(Value::Null) => self.controller.start(None),
                 Some(Value::String(s)) => self.controller.start(Some(s)),
@@ -106,9 +122,15 @@ impl SelectionManager {
     }
 
     pub fn end_session(&mut self) {
-        if let Some(id) = self.controller.active_selection_id().map(str::to_owned) {
-            let _ = self.controller.stop(&id);
-        }
+        self.controller.end_session();
+    }
+}
+
+fn optional_string<'a>(params: &'a Value, key: &str) -> Result<Option<&'a str>, IpcError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if !s.is_empty() => Ok(Some(s)),
+        _ => Err(IpcError::invalid_params(&format!("{key} 必须为非空字符串"))),
     }
 }
 

@@ -246,16 +246,13 @@ class AssemblySharingTest(unittest.TestCase):
         self.assertIs(vision_service.pixels._store, self.image_store)
         # frame 解析器读同一 store（image_id → Frame 真实还原）
         self.assertIs(vision_service._frames._store, self.image_store)  # noqa: SLF001
-        expected_models_dir = os.path.join(os.path.abspath(self.data_dir), "models")
-        if _HAS_OCR_STACK:
-            ready = registry.ready_providers.get("builtin.ocr")
-            self.assertIsNotNone(ready, "探针 venv 下 OCR Provider 应就绪")
-            self.assertIs(ready._pixels, vision_service.pixels)  # noqa: SLF001
-            self.assertIs(ready._pixels._store, self.image_store)  # noqa: SLF001
-            self.assertEqual(ready.models_dir, expected_models_dir)
-            self.assertEqual(ready.library_root, resolve_library_root()[0])
-        else:
-            self.assertIsNone(registry.ready_providers.get("builtin.ocr"))
+        manager = registry.managed_ocr
+        self.assertIs(manager.pixels, vision_service.pixels)
+        self.assertIs(manager.pixels._store, self.image_store)
+        self.assertEqual(os.path.normcase(str(manager.library.metadata)),
+                         os.path.normcase(os.path.join(os.path.realpath(self.data_dir), "models")))
+        self.assertEqual(os.path.normcase(str(manager.library.factory)), os.path.normcase(resolve_library_root()[0]))
+        self.assertTrue(all(slot.worker._process is None for slot in manager.running.values()))
 
     def test_sidecar_app_wires_vision_and_honest_capabilities(self):
         repository, target_service, script_service = build_catalog_services(

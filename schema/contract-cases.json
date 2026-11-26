@@ -17,7 +17,8 @@
       "window_snapshot",
       "query_pointer",
       "acquire_input_lease",
-      "release_input_lease"
+      "release_input_lease",
+      "text_output"
     ],
     "mergeableEvents": ["selection_updated", "recognition_stats"],
     "configLimits": {
@@ -276,7 +277,7 @@
       "id": "host-whitelist",
       "kind": "host_whitelist",
       "applies_to": ["python", "rust"],
-      "allowed": ["input_action", "window_snapshot", "query_pointer", "acquire_input_lease", "release_input_lease"],
+      "allowed": ["input_action", "window_snapshot", "query_pointer", "acquire_input_lease", "release_input_lease", "text_output"],
       "deniedExample": "click_mouse",
       "deniedPythonCode": "INVALID_PARAMS",
       "deniedRustCode": "UNKNOWN_COMMAND"
@@ -523,6 +524,32 @@
       "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "local_rect.width"}
     },
     {
+      "id": "type-target-orb",
+      "kind": "type_validation", "applies_to": ["python", "rust", "csharp"], "typeName": "target",
+      "description": "ORB 条件可持久化为识别锚点",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "纹理", "group_id": null,
+        "image": {"path": "images/tile.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 100, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "f",
+        "conditions": {"op": "all", "children": [{"id": "f", "type": "feature_match", "params": {"min_inliers": 8, "min_inlier_ratio": 0.45, "max_reprojection_error": 3}}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": true}
+    },
+    {
+      "id": "type-target-orb-too-few-inliers",
+      "kind": "type_validation", "applies_to": ["python", "rust", "csharp"], "typeName": "target",
+      "description": "几何阈值下限三端一致",
+      "value": {
+        "id": "t1", "sample_no": 1, "revision": 1, "name": "纹理", "group_id": null,
+        "image": {"path": "images/tile.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 120, "height": 100, "format": "png", "storage_mode": "original"},
+        "thumbnail_path": null, "anchor_condition_id": "f",
+        "conditions": {"op": "all", "children": [{"id": "f", "type": "feature_match", "params": {"min_inliers": 3}}]},
+        "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "metadata": {}
+      },
+      "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "conditions.params.min_inliers"}
+    },
+    {
       "id": "type-target-valid-minimal",
       "kind": "type_validation",
       "applies_to": ["python", "rust", "csharp"],
@@ -717,6 +744,78 @@
       "expect": {"valid": true}
     },
     {
+      "id": "type-window-mode-run-config-foreground",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "run_config",
+      "value": {"script_id":"s1","args":{},"mode":"once","iterations":null,"stop_target_id":null,"debug":false,"region":null,"display_id":"display-1","binding_id":null,"allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"window_mode":"foreground"},
+      "expect": {"valid":true}
+    },
+    {
+      "id": "type-window-mode-run-config-background",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "run_config",
+      "value": {"script_id":"s1","args":{},"mode":"once","iterations":null,"stop_target_id":null,"debug":false,"region":null,"display_id":null,"binding_id":"test-binding","allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"window_mode":"background"},
+      "expect": {"valid":true}
+    },
+    {
+      "id": "type-window-mode-run-config-background-on-display",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "run_config",
+      "value": {"script_id":"s1","args":{},"mode":"once","iterations":null,"stop_target_id":null,"debug":false,"region":null,"display_id":"display-1","binding_id":null,"allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"window_mode":"background"},
+      "expect": {"valid":false,"code":"INVALID_PARAMS","field":"window_mode"}
+    },
+    {
+      "id": "type-window-mode-run-config-unknown",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "run_config",
+      "value": {"script_id":"s1","args":{},"mode":"once","iterations":null,"stop_target_id":null,"debug":false,"region":null,"display_id":"display-1","binding_id":null,"allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"window_mode":"unknown"},
+      "expect": {"valid":false,"code":"INVALID_PARAMS","field":"window_mode"}
+    },
+    {
+      "id": "type-window-mode-monitor-config-omitted",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "monitor_config",
+      "value": {"target_id":"t1","region":null,"display_id":"display-1","binding_id":null,"allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"debug":false,"repeat":false,"wait_timeout_ms":30000,"on_match":"stop","action_script_id":null,"action_args":{},"on_timeout":"stop","timeout_script_id":null,"timeout_args":{},"max_retries":0,"retry_delay_ms":1000,"trigger":"rising_edge","cooldown_ms":1000},
+      "expect": {"valid":true}
+    },
+    {
+      "id": "type-window-mode-monitor-config-foreground",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "monitor_config",
+      "value": {"target_id":"t1","region":null,"display_id":"display-1","binding_id":null,"allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"debug":false,"repeat":false,"wait_timeout_ms":30000,"on_match":"stop","action_script_id":null,"action_args":{},"on_timeout":"stop","timeout_script_id":null,"timeout_args":{},"max_retries":0,"retry_delay_ms":1000,"trigger":"rising_edge","cooldown_ms":1000,"window_mode":"foreground"},
+      "expect": {"valid":true}
+    },
+    {
+      "id": "type-window-mode-monitor-config-background",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "monitor_config",
+      "value": {"target_id":"t1","region":null,"display_id":null,"binding_id":"test-binding","allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"debug":false,"repeat":false,"wait_timeout_ms":30000,"on_match":"stop","action_script_id":null,"action_args":{},"on_timeout":"stop","timeout_script_id":null,"timeout_args":{},"max_retries":0,"retry_delay_ms":1000,"trigger":"rising_edge","cooldown_ms":1000,"window_mode":"background"},
+      "expect": {"valid":true}
+    },
+    {
+      "id": "type-window-mode-monitor-config-background-on-display",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "monitor_config",
+      "value": {"target_id":"t1","region":null,"display_id":"display-1","binding_id":null,"allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"debug":false,"repeat":false,"wait_timeout_ms":30000,"on_match":"stop","action_script_id":null,"action_args":{},"on_timeout":"stop","timeout_script_id":null,"timeout_args":{},"max_retries":0,"retry_delay_ms":1000,"trigger":"rising_edge","cooldown_ms":1000,"window_mode":"background"},
+      "expect": {"valid":false,"code":"INVALID_PARAMS","field":"window_mode"}
+    },
+    {
+      "id": "type-window-mode-monitor-config-unknown",
+      "kind": "type_validation",
+      "applies_to": ["python","rust","csharp"],
+      "typeName": "monitor_config",
+      "value": {"target_id":"t1","region":null,"display_id":"display-1","binding_id":null,"allow_exit":false,"frequency_hz":1,"total_timeout_ms":0,"debug":false,"repeat":false,"wait_timeout_ms":30000,"on_match":"stop","action_script_id":null,"action_args":{},"on_timeout":"stop","timeout_script_id":null,"timeout_args":{},"max_retries":0,"retry_delay_ms":1000,"trigger":"rising_edge","cooldown_ms":1000,"window_mode":"unknown"},
+      "expect": {"valid":false,"code":"INVALID_PARAMS","field":"window_mode"}
+    },
+    {
       "id": "type-runconfig-count-missing-iterations-invalid",
       "kind": "type_validation",
       "applies_to": ["python", "rust", "csharp"],
@@ -807,6 +906,12 @@
       "value": {"id": "s1", "revision": 1, "name": "脚本", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": {"name": "x"}, "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z"},
       "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "parameters"}
     },
+    {"id": "type-script-policy-fields", "kind": "type_validation", "applies_to": ["python", "rust", "csharp"], "description": "TASK-035 fields", "typeName": "script", "value": {"id": "s1", "revision": 1, "name": "登录点击", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "retry", "type": "number", "required": false, "default": 3, "description": "重试次数"}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "action_policy": {"version": 1, "curve": {"c1": [7, 3], "c2": [-4, -5]}, "delay_ms": [0, 5000], "offset": {"x": [-3, 0], "y": [0, 2]}}}, "expect": {"valid": true}},
+    {"id": "type-script-policy-disabled", "kind": "type_validation", "applies_to": ["python", "rust", "csharp"], "description": "TASK-035 disabled", "typeName": "script", "value": {"id": "s1", "revision": 1, "name": "登录点击", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "retry", "type": "number", "required": false, "default": 3, "description": "重试次数"}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "action_policy": {"version": 1, "curve": false, "offset": false, "delay_ms": false}}, "expect": {"valid": true}},
+    {"id": "type-script-policy-unknown-version", "kind": "type_validation", "applies_to": ["python", "rust", "csharp"], "description": "TASK-035 unknown-version", "typeName": "script", "value": {"id": "s1", "revision": 1, "name": "登录点击", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "retry", "type": "number", "required": false, "default": 3, "description": "重试次数"}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "action_policy": {"version": 2}}, "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "action_policy.version"}},
+    {"id": "type-script-policy-y-reversed", "kind": "type_validation", "applies_to": ["python", "rust", "csharp"], "description": "TASK-035 y-reversed", "typeName": "script", "value": {"id": "s1", "revision": 1, "name": "登录点击", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "retry", "type": "number", "required": false, "default": 3, "description": "重试次数"}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "action_policy": {"version": 1, "offset": {"x": [0, 0], "y": [1, -1]}}}, "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "action_policy.offset.y"}},
+    {"id": "type-script-policy-long-wait", "kind": "type_validation", "applies_to": ["python", "rust", "csharp"], "description": "TASK-035 long-wait", "typeName": "script", "value": {"id": "s1", "revision": 1, "name": "登录点击", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "retry", "type": "number", "required": false, "default": 3, "description": "重试次数"}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "action_policy": {"version": 1, "delay_ms": [0, 5001]}}, "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "action_policy.delay_ms"}},
+    {"id": "type-script-policy-missing-control", "kind": "type_validation", "applies_to": ["python", "rust", "csharp"], "description": "TASK-035 missing-control", "typeName": "script", "value": {"id": "s1", "revision": 1, "name": "登录点击", "source_path": "scripts/s1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.lua", "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "parameters": [{"name": "retry", "type": "number", "required": false, "default": 3, "description": "重试次数"}], "created_at": "2026-09-21T09:00:00Z", "updated_at": "2026-09-21T09:00:00Z", "action_policy": {"version": 1, "curve": {"c1": [0, 0]}}}, "expect": {"valid": false, "code": "INVALID_PARAMS", "field": "action_policy.curve.c2"}},
     {
       "id": "type-script-minimal-valid",
       "kind": "type_validation",

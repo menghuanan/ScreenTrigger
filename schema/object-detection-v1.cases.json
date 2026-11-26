@@ -1,0 +1,30 @@
+{
+  "contract_version": 1,
+  "model": {
+    "contract_version": 1, "model_id": "synthetic-icons", "version": "1", "class_ids": [2, 3],
+    "input_width": 400, "input_height": 400, "input_format": "RGB_NCHW_FLOAT32_0_1",
+    "resize": "letterbox_center_114", "output_layout": "N_XYXY_SCORE_CLASS", "external_nms": true
+  },
+  "frame": {
+    "frame_id": "frame-7", "image_ref": {"image_id": "image-7", "width": 400, "height": 240, "format": "png",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+    "space": "window_client_physical", "origin": {"x": 0, "y": 0}, "geometry_revision": 4,
+    "captured_at": "2026-11-26T00:00:00Z", "binding_id": "fixture-window"
+  },
+  "request": {"model_id": "synthetic-icons", "class_id": 2, "threshold": 0.5,
+              "roi": {"x": 100, "y": 50, "width": 200, "height": 100}},
+  "cases": [
+    {"id": "xyxy", "rows": [[20,120,100,180,0.9,2]], "expect": {"matches": [{"bbox": [110,60,40,30], "class_id": 2, "confidence": 0.9}]}},
+    {"id": "empty", "rows": [], "expect": {"matches": []}},
+    {"id": "other-class", "rows": [[20,120,100,180,0.9,3]], "expect": {"matches": []}},
+    {"id": "below-threshold", "rows": [[20,120,100,180,0.49,2]], "expect": {"matches": []}},
+    {"id": "padding", "rows": [[1,1,20,99,0.7,2]], "expect": {"matches": []}},
+    {"id": "nms", "rows": [[20,120,100,180,0.6,2],[20,120,100,180,0.9,2]], "expect": {"matches": [{"bbox": [110,60,40,30], "class_id": 2, "confidence": 0.9}]}},
+    {"id": "unknown-class", "rows": [[20,120,100,180,0.9,42]], "expect": {"code": "RECOGNITION_FAILED"}},
+    {"id": "inverted", "rows": [[100,120,20,180,0.9,2]], "expect": {"code": "RECOGNITION_FAILED"}},
+    {"id": "wrong-shape", "rows": [[20,120,180,0.9,2]], "expect": {"code": "RECOGNITION_FAILED"}},
+    {"id": "nonfinite", "rows": [[20,120,100,180,0.9,2]], "inject": "nan_score", "expect": {"code": "RECOGNITION_FAILED"}},
+    {"id": "cancelled", "rows": [[20,120,100,180,0.9,2]], "inject": "cancel_after_decode", "expect": {"status": "cancelled"}},
+    {"id": "stale", "rows": [[20,120,100,180,0.9,2]], "inject": "move_after_decode", "expect": {"code": "STALE_FRAME"}}
+  ]
+}

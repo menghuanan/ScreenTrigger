@@ -10,7 +10,7 @@ from backend.vision.registry import ProviderRegistry
 from backend.vision.ports import SessionPixelReader
 
 
-def main(resources, data):
+def main(resources, data, portable=False):
     if Path(sys.executable).resolve() != resources / "python/python.exe":
         raise ValueError("Use the staged interpreter to produce compatible bytecode")
     args = SidecarArgs("build-offline-startup", data_dir=str(data))
@@ -23,7 +23,7 @@ def main(resources, data):
         try:
             vision.initialize_all(str(data / "models"))
             status, detail = vision.capability_reason("ocr")
-            if status != "available":
+            if status != "available" and not portable:
                 raise RuntimeError(f"Offline OCR could not start: {detail}")
             sources = set((resources / "backend").rglob("*.py"))
             for module in tuple(sys.modules.values()):
@@ -46,4 +46,4 @@ def main(resources, data):
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]).resolve(strict=True), Path(sys.argv[2]).resolve())
+    main(Path(sys.argv[1]).resolve(strict=True), Path(sys.argv[2]).resolve(), "--portable" in sys.argv[3:])

@@ -25,6 +25,7 @@ CAPABILITY_IDS: Tuple[str, ...] = (
     "ocr",
     "lua_script",
     "template_match",
+    "feature_match",
     "contour_match",
     "color_match",
     "input",
@@ -76,7 +77,7 @@ ERROR_CODES: Tuple[str, ...] = (
     "RESOURCE_LIMIT",
 )
 
-CONDITION_TYPES: Tuple[str, ...] = ("template", "contour", "ocr", "color")
+CONDITION_TYPES: Tuple[str, ...] = ("template", "contour", "ocr", "color", "feature_match")
 
 REGIONS_SPACES: Tuple[str, ...] = ("screen_physical", "window_client_physical", "image_pixel")
 

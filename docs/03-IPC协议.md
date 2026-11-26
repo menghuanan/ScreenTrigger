@@ -1,5 +1,15 @@
 # IPC 协议 v1
 
+## 单次屏幕取点（TASK-032）
+
+WinUI 草稿发起 `start_point_pick {display_id?,binding_id?}`，返回 `{pick_id}`。指定显示器可选，默认使用主窗口所在显示器。框选与取点互斥。覆盖层接收左键按下和抬起，再用按下时的单像素屏幕点调用 `confirm_point_pick {pick_id,point}`。取消使用 `cancel_point_pick {pick_id,reason?}`。
+
+主窗口恢复后，`point_pick_completed` 事件和确认响应携带 `pick_id,space,point,display_id`。指定窗口绑定时还包含 `client_point,binding_id,geometry_revision`。取消事件为 `point_pick_cancelled {pick_id,reason}`。会话内一个选择只发布一个终态，重复或越类请求返回 INVALID_STATE。
+
+## 租约内的锚点输入（TASK-031）
+
+`input_action` 新增 `kind=click_anchor`，字段为 `anchor:AnchoredPoint` 及沿用 click 的可选 `button`、`clicks`。宿主先核对活动租约与动作去重，再按本次绑定及范围解析。派发前复查范围、显示器覆盖、窗口几何版本与前台身份。沿用既有响应和错误。
+
 Rust 与 Python 子进程间采用自定义 UTF-8 NDJSON v1 和双向 stdio。WinUI 3 的 C# 客户端经进程内 C ABI 调用 Rust，两个边界分别处理传输和生命周期。UI 不直接启动 Python 或读写用户数据。所有字段类型引用 [02](02-数据结构.md)，错误码引用 [06](06-边界条件与约束.md)。
 
 ## WinUI 3 与 Rust 宿主
@@ -39,6 +49,8 @@ request/response 的 id 必填且同会话唯一；成功含 data、失败含 er
 连接建立时 Rust 分配 session_id，通过引擎启动参数传入（非用户控制字符串拼 shell）；第一请求 hello 返回 protocol_version、engine_version、lua_version、schema_version、capabilities、model_manifests。capabilities 元素固定为 {id:string, state:"available"|"pending"|"unavailable", reason:string或null}；lua_version 探测失败返回 null，且 capabilities 中 lua_script 标 unavailable。协议 major 不一致拒绝业务请求。capabilities 明确标 unavailable 的功能不能显示可用按钮。
 
 ## 全双工与宿主调用
+
+桌面 ABI `pick_text_output {session_id,mode}` 打开受信选择器，取消返回空令牌；选定后返回 `{output_token,name}`。启动命令可携带该令牌。新增内部 host_request `text_output` 的操作为 bind（execution_id、output_token）、commit（execution_id、action_id、text）、close（execution_id）。路径仅由系统选择器交给宿主，内部调用不接收路径。commit 返回写入字节数；同一逻辑动作重试保持同一 ID。应用通过 `text_exported {execution_id,action_id,bytes_written}` 观察结果。
 
 Lua 请求输入时 Python 发 `type=host_request,id=py-<uuid>,command=input_action,params={execution_id,lease_id,action_id,geometry_revision,action}`，Rust 回同 ID 的 `host_response`（相同 success/data/error 规则）。其他允许的 host 命令：window_snapshot、acquire_input_lease、release_input_lease，以及只读 query_pointer。query_pointer 的 params 为 {}，返回物理屏幕整数 {x,y}，允许负数；未装配返回 CAPABILITY_DENIED，系统读取失败返回 WINDOW_UNAVAILABLE。它不属于对外命令目录。单独 reader 持续读两端流，不允许“发请求后直接 readline 等一条”抢走其他响应。
 
@@ -93,6 +105,10 @@ InputAction 为带 kind 的对象：move `{x,y,duration_ms}`；click `{x,y,butto
 | test_recognition | {image_id:string,draft:TargetDraft} | {job_id:string} | 允许未保存草稿，结果 sample_no/target_id=null；绝不输入 |
 
 TargetDraft 为 `{name,group_id?,image_id,anchor_condition_id,conditions,storage_mode?}`，与持久 Target 差异只有尚无 ID/编号/revision/时间；确认保存分配这些值。ColorParams 与 02 的 color 叶 params 相同。Candidate=`{bbox,center,confidence,space}`。
+
+### 目标检测扩展契约 v1
+
+生产调用方通过 `hello.capabilities` 与 `hello.model_manifests` 查当前可运行能力。当前发行清单没有 YOLO 检测器，缺少 `object_detect` 即该能力不可用。内部请求从注册表解析提供者，缺提供者返回 `CAPABILITY_DENIED`。版本化模型、请求和结果用于受信 Provider 适配，合成向量运行入口独立于生产工厂。[检测器契约](../schema/object-detection-v1.schema.json)
 
 ### 目标、分组和脚本文件
 
@@ -211,3 +227,37 @@ P3 新增上述四条备份命令，后续增加本地图像裁剪，当前公�
 两个窗口通过同一 DispatcherQueue 收取事件。关闭副窗会退订并丢弃仍在等待的界面更新。遇到序号缺口，客户端重读配置、分页目标列表及已知在运行的执行状态。结束的执行不会因迟来的状态通知重新出现。GetConfigAsync、UpdateConfigAsync、ResetConfigAsync 返回已解包的 ConfigDocument。更新和重置传原修订号，错误保留 code、message、details、retryable。
 
 P2 扩展两个历史命令，公开目录共 64 条。get_execution_logs 可读取保留执行的日志分卷；当前会话内仍可查询内存摘要。日志页遇到消息字节上限时附 truncated=true 和 next_offset。清除活动执行的日志返回 INVALID_STATE。日志盘写入失败通过 system_error 披露，普通日志仍由用户主动查询。
+
+## 后续自动化版本的模型管理命令
+
+| 命令 | 参数 | 回执 |
+|---|---|---|
+| list_ocr_models | {} | revision、pipelines 及各管线的实际加载状态 |
+| preview_ocr_model_change | {operation:"import" 或 "remove", model_id, directory?} | job_id，成功结果含 preview_id、revision、文件字节与静态引用。directory 为用户在本机选择的包含组件子目录的离线介质根，仅导入时提供 |
+| apply_ocr_model_change | {preview_id, expected_revision} | job_id，提交成功后返回新模型库快照；复用现有 get_job、cancel_job。预览属于当前会话 |
+
+首次实际请求按指定模型加载。hello 随时可重查当前能力和已装模型，system_ready 仍只发送一次。尚有健康管线时 OCR 可受理；具体是否已加载由 list_ocr_models 披露。缺失、损坏、取消按原识别 job 终态返回。
+## ORB 能力查询
+
+自动化扩展通过现有 hello 的能力表披露 `feature_match`。协议主版本沿用 1，能力和叶参数由调用者按标识选择。内置 `builtin.orb` 的 provider_version 为 1.0.0。通过 `test_recognition`、`evaluate_target_conditions` 及原有作业查询接口取得结果；匹配沿用源帧 ID、几何修订、半开 bbox、中心及分数。
+## 脚本级和动作级配置
+
+`save_script` 可提交版本化 `action_policy`。更新时省略则保留该脚本原设置，传仅含版本号的对象清空设置。单动作覆盖独立合并每个属性，再经既有 `input_action` 的 action.policy 送到 Rust。在该 action_id 的去重后采样一次并预检整条轨迹。异常、取消和部分派发沿用原动作契约。
+
+## 绑定窗口后台取像
+
+`get_window_capture_capabilities(binding_id)` 返回同一绑定的 `capture.non_foreground`、`capture.fully_occluded` 与 `reason`。两项独立取值 `unknown`、`available` 或 `unavailable`。切换前台后成功绘制才登记非前台能力；普通前台窗口的无异形客户区完全覆盖目标且后台绘制成功时登记全遮挡能力。最小化、隐藏和平台能力缺失直接报告原因。
+
+`capture_window`、`capture_region`、`execute_script`、`start_monitor` 接受可选 `window_mode`。用 `list_windows` 和 `bind_window` 明确建立绑定，再将 `window_mode` 设为 `background`。单帧成功返回新的 `frame_id` 和 `image`，图像可按原协议预览和释放。捕获前后均校验宿主保存的窗口身份和几何。窗口最小化返回 `WINDOW_UNAVAILABLE`，关闭或绑定失效返回 `WINDOW_NOT_FOUND`，绘制超时返回 `CAPTURE_FAILED`。
+## 前台录制会话
+
+`start_recording {context}` 使用运行设置的 `display_id`、`binding_id` 和可选 `region`。同一桌面同时仅允许一个录制或输入执行；同一请求 ID 的重发沿用一般请求去重。`pause_recording`、`resume_recording`、`get_recording_state`、`finish_recording`、`cancel_recording` 均仅接受当前会话的 `{recording_id}`。状态含 `status`、`action_count`、`interrupted`、`keyboard_source`。`finish_recording` 返回冻结的内存 `actions`。取消清除草稿，结束后拒绝新事件。
+
+Windows 鼠标来源是可见录制时段内的鼠标事件。键盘来源 `focused_window_messages` 需要目标窗口主动提供自身收到的键消息。当前普通第三方窗口的完整键序支持尚未验收。窗口原生接入在顶层 HWND 设置非零属性 `ScreenTrigger.RecordingInput.v1`。实际焦点及鼠标归属确认后，宿主向该 HWND 发送 `WM_COPYDATA`，`dwData=0x53545231`，16 字节为本次随机令牌，`wParam` 为可见停止窗口。目标只对自己的非密码焦点控件转发实际键按下和释放。回复使用 `WM_COPYDATA`，`wParam` 为实际焦点 HWND，`dwData=0x53545232`，数据为原令牌、两个小端 `u16`（VK、扫描码）及四个 `u8`（扩展位、按下位、受保护控件标志、版本 1）。受保护控件拒绝采集。协议不接受文本、剪贴板、候选词、其他窗口消息或磁盘时间线。
+
+用户显式开始录制，并通过范围内点击建立归属后，标准 Edit、RichEdit、按钮和列表等具有已知输入语义的前台控件还可报告 `keyboard_source=foreground_command_keys`、`keyboard_available=true`。此来源只提供导航键、功能键、修饰键和已列明的输入法命令键。每次采样前后均复核实际焦点及范围，原生编辑框同时复核密码样式和运行时遮盖字符。快捷键多边沿次序无法确定或采样间隔过大时，中止本次组合。短于采样间隔的脉冲无法重建。普通窗口的字母数字完整键序仍须目标主动接入。未取得来源时客户端显示“当前焦点尚无键盘录制来源”。
+## 已绑定窗口的后台输入
+
+`get_window_input_capabilities({binding_id})` 返回绑定、`input.{click,drag,scroll,key,hotkey}` 和 `reason`。各项为 `available`、`unknown` 或 `unavailable`。目标可用 Windows 注册消息 `ScreenTrigger.BackgroundInput.Capabilities.v1` 声明其已实现的消息处理能力。查询的两个参数为零，返回值为 0x53540000 加上五项低位掩码（依次为 1、2、4、8、16）。无声明的普通窗口展示待验证；目标最小化、隐藏、拒绝访问或无响应时展示原因。
+
+执行的 `window_mode: "background"` 由受理时的窗口绑定和输入租约锁定。`input_action` 沿用已有动作。鼠标消息使用该目标或同进程子控件的客户区物理坐标，滚轮消息使用屏幕物理坐标。键盘消息只定位到该目标线程的焦点后代或虚拟落点所在控件。成功回执仍为 `dispatched:true`，程序内业务效果由接收方确认。超时报告 `INPUT_FAILED` 和 `details.delivery_unknown:true`，相同动作 ID 不重发。后台脚本查询位置时，宿主 `query_pointer` 另收该执行的 `execution_id` 和 `lease_id`，返回本租约的虚拟落点。

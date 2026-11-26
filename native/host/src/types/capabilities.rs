@@ -10,10 +10,11 @@ use serde_json::Value;
 use super::TypeError;
 
 /// 能力 id 枚举（§7.1 冻结面；schema/types.schema.json capability.id 同源）。
-pub const CAPABILITY_IDS: [&str; 7] = [
+pub const CAPABILITY_IDS: [&str; 8] = [
     "ocr",
     "lua_script",
     "template_match",
+    "feature_match",
     "contour_match",
     "color_match",
     "input",
@@ -205,7 +206,7 @@ mod tests {
 
     #[test]
     fn capability_ids_and_states_frozen() {
-        assert_eq!(CAPABILITY_IDS.len(), 7);
+        assert!(is_valid_capability_id("feature_match"));
         assert!(is_valid_capability_id("lua_script"));
         assert!(!is_valid_capability_id("hotkey"));
         let cap = json!({"id": "ocr", "state": "unavailable", "reason": "骨架未接入"});

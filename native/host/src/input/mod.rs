@@ -19,6 +19,9 @@
 //! 输入不变量、docs/07 §5。
 
 pub mod action;
+pub mod anchor;
+pub mod background;
+pub mod policy;
 pub mod dispatch;
 pub mod gate;
 pub mod geometry_guard;
@@ -48,6 +51,7 @@ use model::{
 
 /// 输入管理器：包租约表/闸门/账本/派发流水线，向宿主调用暴露 [`HostHandler`]。
 pub struct InputManager {
+    bound_routes: std::collections::HashMap<String, DispatchPipeline>,
     gate: Arc<GateTable>,
     leases: LeaseTable,
     ledger: Arc<Mutex<Ledger>>,
@@ -63,6 +67,7 @@ impl InputManager {
         clock: Box<dyn ClockPort>,
     ) -> Self {
         InputManager {
+            bound_routes: Default::default(),
             gate: Arc::new(GateTable::new()),
             leases: LeaseTable::new(),
             ledger: Default::default(),
@@ -83,7 +88,14 @@ impl InputManager {
     pub fn handle(&mut self, command: &str, params: &Value) -> Result<Value, IpcError> {
         match command {
             "query_pointer" if params.as_object().is_some_and(|p| p.is_empty()) => self.pipeline.query_pointer(),
-            "query_pointer" => Err(IpcError::invalid_params("query_pointer 的参数必须为空对象")),
+            "query_pointer" => {
+                if params.as_object().map_or(0,|o|o.len()) != 2 {
+                    return Err(IpcError::invalid_params("后台位置须绑定执行与租约"));
+                }
+                let execution = req_str(params, "execution_id")?;
+                let lease = req_str(params, "lease_id")?;
+                self.bound_route(&execution,&lease)?.query_pointer()
+            }
             "input_action" => self.handle_input_action(params),
             "acquire_input_lease" => self.handle_acquire_lease(params),
             "release_input_lease" => self.handle_release_lease(params),
@@ -139,12 +151,15 @@ impl InputManager {
         execution_id: &str,
         context: InputContext,
     ) -> Result<LeaseId, IpcError> {
+        let _recording_admission=crate::recording::ADMISSION.lock().unwrap();
+        if crate::recording::active(){return Err(IpcError::new("BUSY","请先完成或取消录制",true));}
         if !self.gate.is_open(execution_id) {
             return Err(IpcError::invalid_state("闸门已关闭，拒绝获取输入租约"));
         }
         let binding = context.binding_id.clone();
+        let background = context.background;
         let lease=self.leases.acquire(execution_id,context)?;
-        if let Err(e)=self.gate.register(execution_id,binding) { self.leases.release(execution_id); return Err(e); }
+        if let Err(e)=self.gate.register(execution_id,binding,background) { self.leases.release(execution_id); return Err(e); }
         Ok(lease)
     }
 
@@ -157,7 +172,12 @@ impl InputManager {
         geometry_revision: i64,
         action: &InputAction,
     ) -> Result<ActionAck, IpcError> {
-        self.pipeline.run(
+        let bound = self.leases.get_by_execution(execution_id).is_some_and(|l|l.context.background);
+        let route = if bound {
+            self.bound_route(execution_id, lease_id)?;
+            self.bound_routes.get_mut(execution_id).expect("bound route was just established")
+        } else { &mut self.pipeline };
+        route.run(
             &self.gate,
             &self.leases,
             &self.ledger,
@@ -167,6 +187,23 @@ impl InputManager {
             geometry_revision,
             action,
         )
+    }
+
+    fn bound_route(&mut self, execution: &str, lease_id: &str) -> Result<&mut DispatchPipeline, IpcError> {
+        if !self.gate.is_open(execution) { return Err(IpcError::invalid_state("执行已停止")); }
+        let lease = self.leases.get_by_execution(execution)
+            .filter(|l| l.context.background && l.lease_id.as_str() == lease_id)
+            .ok_or_else(|| IpcError::invalid_state("后台操作缺少有效的绑定窗口租约"))?;
+        use std::collections::hash_map::Entry;
+        match self.bound_routes.entry(execution.to_owned()) {
+            Entry::Occupied(slot) => Ok(slot.into_mut()),
+            Entry::Vacant(slot) => {
+                let route = background::pipeline(&lease.context)?;
+                self.ledger.lock().unwrap_or_else(|p|p.into_inner())
+                    .register_bound(execution,route.shared_input());
+                Ok(slot.insert(route))
+            }
+        }
     }
 
     /// 释放该执行持有的键/鼠标按钮（账本逆序；只释放本程序持有者）。
@@ -181,10 +218,13 @@ impl InputManager {
 
     /// 释放租约（Lua 侧 release；未持有 → INVALID_STATE）。同时尽力释放账本。
     pub fn release_input_lease(&mut self, execution_id: &str) -> Result<(), IpcError> {
+        // Keep this desktop's input claim until all held events have been released.
+        let released = self.release_owned_inputs(execution_id);
         let removed = self.leases.release(execution_id);
         self.gate.unregister(execution_id);
         if let Some(ref lease) = removed { self.pipeline.forget_lease(lease.as_str()); }
-        let released = self.release_owned_inputs(execution_id);
+        self.bound_routes.remove(execution_id);
+        self.ledger.lock().unwrap_or_else(|p|p.into_inner()).forget_bound(execution_id);
         match removed {
             Some(_) => Ok(()),
             None => {

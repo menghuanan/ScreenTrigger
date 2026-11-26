@@ -23,11 +23,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
-from ..types.capabilities import TypeValidationError
+from ..types.capabilities import CONDITION_TYPES, TypeValidationError
 from ..types.conditions import (
     _validate_color_params,
     _validate_condition_tree,
     _validate_contour_params,
+    _validate_feature_params,
     _validate_ocr_params,
     _validate_template_params,
     validate_target,
@@ -35,10 +36,11 @@ from ..types.conditions import (
 from ..types.region import LocalRect, Rect, validate_local_rect
 
 #: 叶类型枚举（02；与 types.conditions 逐字）。
-LEAF_TYPES: Tuple[str, ...] = ("template", "contour", "ocr", "color")
+LEAF_TYPES: Tuple[str, ...] = CONDITION_TYPES
 
 #: 叶 params 校验器（权威复用，不重造）。
 _PARAM_VALIDATORS = {
+    "feature_match": _validate_feature_params,
     "template": _validate_template_params,
     "contour": _validate_contour_params,
     "ocr": _validate_ocr_params,

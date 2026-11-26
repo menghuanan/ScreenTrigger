@@ -733,8 +733,8 @@ class CapabilityDisclosureTest(unittest.TestCase):
         capture = [c for c in caps if c["id"] == "capture"][0]
         self.assertEqual(capture["state"], "available")
         self.assertIsNone(capture["reason"])
-        # 仍为 7 项，其余保持 unavailable（不误报）
-        self.assertEqual(len(caps), 7)
+        # 只有已装配的捕获服务可用。
+        self.assertEqual(len(caps), 8)
         self.assertTrue(all(c["state"] == "unavailable" for c in caps if c["id"] != "capture"))
         # hello 同步披露
         hello_capture = [c for c in app.cmd_hello()["capabilities"] if c["id"] == "capture"][0]

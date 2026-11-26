@@ -66,6 +66,16 @@ pub fn pick_image(session: &str) -> Result<Value, IpcError> {
     Ok(json!({"import_token":token}))
 }
 
+pub fn pick_text_output(session: &str, mode: crate::text_output::Mode) -> Result<Value, IpcError> {
+    let path = ui(json!({"op":"pick_text_output","mode":mode}))
+        .map_err(|e| IpcError::internal(&e.message))?;
+    match path.as_str() {
+        Some(path) => crate::text_output::prepare(session, path, mode),
+        None if path.is_null() => Ok(json!({"output_token":null,"name":null})),
+        _ => Err(IpcError::invalid_params("系统选择器未返回文件名")),
+    }
+}
+
 pub fn prepare_capture(rect: &Rect) -> PortResult<()> {
     ui(json!({"op":"prepare_capture","region":rect})).map(drop)
 }
@@ -118,5 +128,9 @@ impl HostEnvironmentPort for Windows {
     }
     fn close_overlay(&self, handle: &OverlayHandle) -> PortResult<()> {
         ui(json!({"op":"close_overlay","selection_id":handle.0})).map(drop)
+    }
+    fn open_point_overlay(&self, display: &DisplayInfo, id: &str) -> PortResult<OverlayHandle> {
+        ui(json!({"op":"open_overlay","mode":"point","display":display,"selection_id":id}))?;
+        Ok(OverlayHandle(id.to_owned()))
     }
 }

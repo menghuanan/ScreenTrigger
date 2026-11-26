@@ -24,9 +24,10 @@ from .service import CaptureService
 # 各命令允许的 params 键集（白名单外 → INVALID_PARAMS，定位多余字段）
 _CAPTURE_COMMAND_PARAMS: Dict[str, Tuple[str, ...]] = {
     "get_display_list": (),
-    "capture_region": ("region",),
+    "capture_region": ("region", "window_mode"),
     "capture_full_screen": ("display_id",),
-    "capture_window": ("binding_id",),
+    "capture_window": ("binding_id", "window_mode"),
+    "get_window_capture_capabilities": ("binding_id",),
     "release_image": ("image_id",),
     "get_image_preview": ("image_id", "max_edge"),
 }
@@ -118,7 +119,7 @@ def register_capture_commands(dispatcher: Any, service: CaptureService) -> None:
 
     def _cmd_capture_region(params: Dict[str, Any]) -> Dict[str, Any]:
         region = validate_region(params.get("region"))
-        frame = service.capture(region)
+        frame = service.capture(region, **({"window_mode": params["window_mode"]} if "window_mode" in params else {}))
         return {"image": image_ref_to_dict(frame.image_ref), "frame_id": frame.frame_id}
 
     def _cmd_capture_full_screen(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -128,7 +129,7 @@ def register_capture_commands(dispatcher: Any, service: CaptureService) -> None:
 
     def _cmd_capture_window(params: Dict[str, Any]) -> Dict[str, Any]:
         binding_id = _require_str(params, "binding_id")
-        frame = service.capture_window(binding_id)
+        frame = service.capture_window(binding_id, **({"window_mode": params["window_mode"]} if "window_mode" in params else {}))
         return {"image": image_ref_to_dict(frame.image_ref), "frame_id": frame.frame_id}
 
     def _cmd_release_image(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -151,6 +152,8 @@ def register_capture_commands(dispatcher: Any, service: CaptureService) -> None:
         "capture_full_screen", _wrap("capture_full_screen", _cmd_capture_full_screen)
     )
     dispatcher.register("capture_window", _wrap("capture_window", _cmd_capture_window))
+    dispatcher.register("get_window_capture_capabilities", _wrap("get_window_capture_capabilities",
+        lambda p: service.window_capabilities(_require_str(p, "binding_id"))))
     dispatcher.register("release_image", _wrap("release_image", _cmd_release_image))
     dispatcher.register(
         "get_image_preview", _wrap("get_image_preview", _cmd_get_image_preview)

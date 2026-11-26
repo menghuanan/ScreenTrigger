@@ -131,6 +131,7 @@ impl ClockPort for SystemClock {
 
 /// Snapshot client geometry and display membership for a whole motion segment.
 pub struct SystemRegionResolution {
+    background: bool,
     monitors: Box<dyn Fn() -> Vec<MonitorRect> + Send + Sync>,
     windows: Option<Windows>,
     physical: bool,
@@ -143,6 +144,7 @@ impl Default for SystemRegionResolution {
 impl SystemRegionResolution {
     pub fn new() -> Self {
         Self {
+            background: false,
             monitors: Box::new(win32::enum_monitors),
             windows: window::shared(),
             physical: true,
@@ -150,10 +152,14 @@ impl SystemRegionResolution {
     }
     pub fn with_monitors(monitors: Box<dyn Fn() -> Vec<MonitorRect> + Send + Sync>) -> Self {
         Self {
+            background: false,
             monitors,
             windows: None,
             physical: false,
         }
+    }
+    pub(super) fn background() -> Self {
+        Self { background: true, ..Self::new() }
     }
     fn binding(&self, id: &str) -> Result<Entry, IpcError> {
         let entry = self
@@ -163,7 +169,7 @@ impl SystemRegionResolution {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .bound(id)?;
-        if !entry.live.visible || !entry.live.foreground || entry.live.minimized {
+        if !entry.live.visible || entry.live.minimized || (!self.background && !entry.live.foreground) {
             return Err(IpcError::window_unavailable(
                 "请手动恢复绑定窗口并使其位于前台",
             ));
@@ -172,6 +178,38 @@ impl SystemRegionResolution {
     }
 }
 impl RegionResolutionPort for SystemRegionResolution {
+    fn anchor_scope(&self, scope: super::anchor::Scope, ctx: &InputContext) -> Result<super::anchor::ScopeSnapshot, IpcError> {
+        use super::anchor::{covered, Scope, ScopeSnapshot};
+        use crate::types::region::RegionSpace;
+        let mismatch = || IpcError::region_limit_violation("锚点与当前执行范围不一致或范围超界");
+        let displays = (self.monitors)();
+        let base = match (&ctx.binding_id, &ctx.display_id) {
+            (Some(id), None) => {
+                let r = self.binding(id)?.live.rect;
+                MonitorRect { x:r.x, y:r.y, width:r.width, height:r.height }
+            }
+            (None, Some(id)) => *displays.iter().find(|d|
+                window::system::monitor_at(d.x, d.y).as_deref() == Some(id)).ok_or_else(mismatch)?,
+            _ => return Err(mismatch()),
+        };
+        let rect = match (scope, &ctx.region) {
+            (Scope::Window, None) if ctx.binding_id.is_some() => base,
+            (Scope::Display, None) if ctx.display_id.is_some() => base,
+            (Scope::Region, Some(r)) => {
+                let (x, y) = match r.space {
+                    RegionSpace::ScreenPhysical if ctx.display_id.is_some() && r.display_id == ctx.display_id => (r.x,r.y),
+                    RegionSpace::WindowClientPhysical if ctx.binding_id.is_some() && r.binding_id == ctx.binding_id =>
+                        (base.x.checked_add(r.x).ok_or_else(mismatch)?,base.y.checked_add(r.y).ok_or_else(mismatch)?),
+                    _ => return Err(mismatch()),
+                };
+                let area = MonitorRect { x, y, width:r.width, height:r.height };
+                if !covered(area, &[base]) { return Err(mismatch()); }
+                area
+            }
+            _ => return Err(mismatch()),
+        };
+        ScopeSnapshot::new(rect, displays)
+    }
     fn check_point(&self, x: i64, y: i64, ctx: &InputContext) -> Result<(), IpcError> {
         self.check_path(Point { x, y }, Point { x, y }, ctx)
     }
@@ -224,7 +262,7 @@ impl RegionResolutionPort for SystemRegionResolution {
         for p in [from, to] {
             check(p)?;
             if let Some(w) = bound.as_ref() {
-                if window::system::window_at(p.x, p.y) != Some(w.live.identity.hwnd) {
+                if !self.background && window::system::window_at(p.x, p.y) != Some(w.live.identity.hwnd) {
                     return Err(IpcError::window_unavailable("绑定窗口的操作点被遮挡"));
                 }
             } else if self.physical

@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import time
 from typing import Callable, List, Optional
 
@@ -76,6 +77,7 @@ class CaptureService:
         logger: Optional[Logger] = None,
         frame_id_factory: Optional[Callable[[], str]] = None,
         retry_delay_seconds: float = RETRY_DELAY_SECONDS,
+        background=None,
     ) -> None:
         self._backend = backend
         self._enumerator = display_enumerator
@@ -86,6 +88,7 @@ class CaptureService:
         self._logger = logger
         self._frame_id_factory = frame_id_factory or self._default_frame_id
         self._retry_delay_seconds = retry_delay_seconds
+        self._background = background
 
     @staticmethod
     def _default_frame_id() -> str:
@@ -112,10 +115,22 @@ class CaptureService:
         """当前显示器集合（物理像素；拓扑变化重新枚举）。"""
         return list(self._enumerator.list_displays())
 
-    def run_region(self, display_id, binding_id):
+    def window_capabilities(self, binding):
+        window = self._window_provider.snapshot(binding)
+        reason = None
+        if self._background is None or window.minimized or not window.visible:
+            capture = {"non_foreground": "unavailable", "fully_occluded": "unavailable"}
+            reason = "后台绘制适配器不可用" if self._background is None else "窗口已最小化或不可见"
+        else:
+            capture = self._background.capabilities(binding)
+            reason = self._background.unavailable_reason(binding)
+        return {"binding_id": binding, "capture": capture, "reason": reason}
+
+    def run_region(self, display_id, binding_id, *, window_mode="foreground"):
         """Resolve the current full display or client area in its declared space."""
+        self._check_mode(window_mode, binding_id)
         if binding_id:
-            rect = self._resolve_window(binding_id).client_rect
+            rect = self._resolve_window(binding_id, window_mode).client_rect
             return Region("window_client_physical", 0, 0, rect.width, rect.height,
                           binding_id=binding_id)
         display = find_display(self.list_displays(), display_id)
@@ -125,12 +140,13 @@ class CaptureService:
         return Region("screen_physical", rect.x, rect.y, rect.width, rect.height,
                       display_id=display.id)
 
-    def capture_point(self, x, y, region, cancel):
+    def capture_point(self, x, y, region, cancel, *, window_mode="foreground"):
         """Read one physical pixel with the same identity checks as a whole frame."""
+        self._check_mode(window_mode, region.binding_id)
         if region.binding_id:
-            snapshot = self._resolve_window(region.binding_id)
+            snapshot = self._resolve_window(region.binding_id, window_mode)
             left, top = snapshot.client_rect.x + region.x, snapshot.client_rect.y + region.y
-            valid = lambda: self._check_window(snapshot)
+            valid = lambda: self._check_window(snapshot, window_mode)
             bounds = Rect(snapshot.client_rect.x, snapshot.client_rect.y,
                           snapshot.client_rect.width, snapshot.client_rect.height)
         else:
@@ -143,7 +159,10 @@ class CaptureService:
                 and bounds.x <= x < bounds.x + bounds.width and bounds.y <= y < bounds.y + bounds.height):
             raise invalid_region("point", "像素位于有效识别区之外")
         cancel.throw_if_cancelled()
-        raw = self._capture_with_retry(x, y, 1, 1, cancel, valid)
+        if window_mode == "background":
+            raw = self._background.read(snapshot, x-bounds.x, y-bounds.y, 1, 1, cancel)
+        else:
+            raw = self._capture_with_retry(x, y, 1, 1, cancel, valid)
         valid()
         cancel.throw_if_cancelled()
         if (raw.width, raw.height, len(raw.data)) != (1, 1, 3):
@@ -153,7 +172,7 @@ class CaptureService:
 
     # -- 捕获 -----------------------------------------------------------------
 
-    def capture(self, region: Region, cancel: Optional[CancelToken] = None) -> Frame:
+    def capture(self, region: Region, cancel: Optional[CancelToken] = None, *, window_mode="foreground") -> Frame:
         """捕获一个区域为 Frame。
 
         screen_physical：校验区域落在其 ``display_id`` 对应的真实显示器内；
@@ -168,6 +187,7 @@ class CaptureService:
         token: CancelToken = cancel if cancel is not None else NullCancelToken()
         token.throw_if_cancelled()
         self._validate_region_shape(region)
+        self._check_mode(window_mode, region.binding_id)
 
         if region.space == "screen_physical":
             display = find_display(self.list_displays(), region.display_id or "")
@@ -191,7 +211,7 @@ class CaptureService:
             )
 
         # window_client_physical
-        snapshot = self._resolve_window(region.binding_id or "")
+        snapshot = self._resolve_window(region.binding_id or "", window_mode)
         # 客户区 region 为**客户区局部坐标**（原点为客户区左上，02）；不得越出
         # 客户区尺寸（client_rect 的位置是屏幕坐标，仅用于换算，不参与局部包含）。
         if (
@@ -203,6 +223,9 @@ class CaptureService:
             raise invalid_region("region", "区域越出窗口客户区（不自动裁剪）")
         screen_x = snapshot.client_rect.x + region.x
         screen_y = snapshot.client_rect.y + region.y
+        read = None
+        if window_mode == "background":
+            read = lambda: self._background.read(snapshot, region.x, region.y, region.width, region.height, token)
         return self._capture_physical(
             x=screen_x,
             y=screen_y,
@@ -212,7 +235,8 @@ class CaptureService:
             geometry_revision=snapshot.geometry_revision,
             binding_id=snapshot.binding_id,
             cancel=token,
-            validate=lambda: self._check_window(snapshot),
+            validate=lambda: self._check_window(snapshot, window_mode),
+            read=read,
         )
 
     def capture_full_screen(
@@ -242,7 +266,7 @@ class CaptureService:
         )
 
     def capture_window(
-        self, binding_id: str, cancel: Optional[CancelToken] = None
+        self, binding_id: str, cancel: Optional[CancelToken] = None, *, window_mode="foreground"
     ) -> Frame:
         """捕获绑定窗口的整个客户区（可见前台客户区）。
 
@@ -252,6 +276,9 @@ class CaptureService:
         """
         token: CancelToken = cancel if cancel is not None else NullCancelToken()
         token.throw_if_cancelled()
+        self._check_mode(window_mode, binding_id)
+        if window_mode == "background":
+            return self.capture(self.run_region(None, binding_id, window_mode=window_mode), token, window_mode=window_mode)
         snapshot = self._resolve_window(binding_id)
         client = snapshot.client_rect
         if client.width < MIN_REGION_EDGE or client.height < MIN_REGION_EDGE:
@@ -283,6 +310,8 @@ class CaptureService:
 
     def close(self) -> None:
         """会话收尾：释放全部引用。"""
+        if self._background is not None:
+            self._background.close()
         self._store.close()
 
     # -- 内部 -----------------------------------------------------------------
@@ -300,16 +329,24 @@ class CaptureService:
                 "region.height", "区域高不得小于 %d 物理像素" % MIN_REGION_EDGE
             )
 
-    def _resolve_window(self, binding_id: str) -> WindowSnapshot:
+    def _check_mode(self, mode, binding):
+        if mode not in ("foreground", "background") or (mode == "background" and not binding):
+            raise CaptureError("INVALID_PARAMS", "后台模式需要已绑定窗口", field="window_mode")
+        if mode == "background" and self._background is None:
+            raise CaptureError("CAPABILITY_DENIED", "当前平台未提供后台窗口取像")
+
+    def _resolve_window(self, binding_id: str, mode="foreground") -> WindowSnapshot:
         if not binding_id:
             raise window_not_found(binding_id)
         snapshot = self._window_provider.snapshot(binding_id)
-        if snapshot.minimized or not snapshot.visible or not snapshot.foreground:
+        if snapshot.minimized or not snapshot.visible or (mode == "foreground" and not snapshot.foreground):
             raise window_unavailable(binding_id)
         return snapshot
 
-    def _check_window(self, expected: WindowSnapshot) -> None:
-        current = self._resolve_window(expected.binding_id)
+    def _check_window(self, expected: WindowSnapshot, mode="foreground") -> None:
+        current = self._resolve_window(expected.binding_id, mode)
+        if mode == "background":
+            current = replace(current, foreground=expected.foreground)
         if current != expected:
             raise CaptureError("STALE_FRAME", "捕获期间窗口几何已变化", retryable=True)
 
@@ -331,10 +368,11 @@ class CaptureService:
         binding_id: Optional[str],
         cancel: CancelToken,
         validate: Callable[[], None],
+        read: Optional[Callable[[], RawImage]] = None,
     ) -> Frame:
         """执行物理抓取 → 登记图像 + 帧元数据 → 组装 Frame（space 恒为 screen_physical）。"""
         cancel.throw_if_cancelled()
-        raw = self._capture_with_retry(x, y, width, height, cancel, validate)
+        raw = read() if read is not None else self._capture_with_retry(x, y, width, height, cancel, validate)
         validate()
         cancel.throw_if_cancelled()
         if (raw.width, raw.height) != (width, height):

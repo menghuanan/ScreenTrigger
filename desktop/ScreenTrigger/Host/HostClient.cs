@@ -33,7 +33,7 @@ internal sealed class HostClient : IAsyncDisposable
             {
                 var request = CopyJson(data, length);
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(windowLifetime.Token);
-                if (request.GetProperty("op").GetString() != "pick_image")
+                if (request.GetProperty("op").GetString() is not ("pick_image" or "pick_text_output"))
                     timeout.CancelAfter(TimeSpan.FromSeconds(5));
                 var done = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
                 if (!dispatch(async () =>
@@ -59,6 +59,8 @@ internal sealed class HostClient : IAsyncDisposable
     private static extern uint st_host_abi_version();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern nint st_host_open(uint version, Receive callback);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void st_host_open_error(Receive callback);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern int st_host_call(Handle host, byte[] data, nuint length, Receive reply);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
@@ -110,7 +112,12 @@ internal sealed class HostClient : IAsyncDisposable
             catch (Exception error) { System.Diagnostics.Trace.TraceError(error.ToString()); }
         };
         var native = st_host_open(AbiVersion, receiver);
-        if (native == 0) throw new InvalidOperationException("无法建立桌面宿主会话。");
+        if (native == 0)
+        {
+            string? failure = null;
+            st_host_open_error((p, n) => failure = CopyJson(p, n).GetString());
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(failure) ? "无法建立桌面宿主会话。" : failure);
+        }
         handle = new Handle(native, receiver);
     }
 

@@ -19,6 +19,30 @@ $env:SIDECAR_DATA_DIR = Join-Path $PWD ('reports\raw\dev-' + [guid]::NewGuid().T
 
 在 Windows x64 开发者终端运行，使 `dotnet`、`cargo`、MSVC 链接器及 Windows SDK 可用。开发态宿主默认查找项目的 `.venv\Scripts\python.exe`。需要替换解释器时用 `SIDECAR_PYTHON`，指定本地权重库用 `ST_OCR_MODELS_DIR`。开新终端即可恢复原来的会话环境。面板就绪后先查看引擎版本和能力，走与需求有关的页面，在隔离数据根模拟一次失败或取消并验证可恢复。
 
+## 自动化扩展验收
+
+在仓库根运行以下命令。省略版本或指定 `--version v1` 时使用首版目录、首版账本和首版报告。自动化扩展使用 `automation-v2`，卡号、硬依赖和各测试组的验收场景见[开发入口](../agent/自动化扩展-开发入口.md)。下列各条分别执行，退出码 0 表示选中门槛通过，1 表示尚未就绪，2 表示参数、文件或工具出错。
+
+```powershell
+$py = '.\.venv\Scripts\python.exe'
+& $py tools/run_acceptance.py catalog --version automation-v2
+& $py tools/run_acceptance.py audit --version automation-v2 --scope baseline
+& $py tools/run_acceptance.py audit --version automation-v2 --task TASK-030
+& $py tools/run_acceptance.py audit --version automation-v2 --test TEST-024
+& $py tools/run_acceptance.py audit --version automation-v2 --scope release
+& $py tools/check_docs.py
+& $py tools/check_docs.py --version automation-v2
+& $py -X utf8 -m unittest discover -s tools/tests -v
+```
+
+首次创建空账本用 `& $py tools/run_acceptance.py init --version automation-v2`。已有授权工作区继续使用 `reports/automation-v2/check-state.json`。开卡登记负责人、硬依赖审计、修改范围、测试组与可观察预期。实现就绪后登记 `IMPLEMENTED`；只有单卡审计的 `tasks` 项可以给出 `VERIFIED`。测试组入口核对该组自己的回执，release 汇总全部卡、测试组与独立的发布签核。
+
+每次尝试把原始输出写入 `reports/automation-v2/raw/` 的新文件。运行 `template --version automation-v2 --check TASK-030.CATALOG` 或 `capture --version automation-v2 --check TASK-030.CATALOG -- <命令及参数>`（入口均为 `tools/run_acceptance.py`），按[证据和问题闭环约定](../agent/检查与闭环.md)补齐预期、实际、环境、哈希与审查，再用 `submit --version automation-v2 <草稿路径>` 提交。回执进入同版本的 `evidence/`；每份审计在 `audits/<运行号>/` 保存完整目录、结果和摘要。源码变化后用当前基线重跑受影响项及失效的前置卡，保留历次尝试。
+
+将新版候选归档为 `dist/automation-v2/ScreenTrigger-automation-v2-<候选号>.zip`。逐包计算 SHA-256，将根目录相对路径与哈希填入新版账本的 `release_artifact`，包级回执使用同一引用。变更候选后复验。用 RC16 原审计的源码清单、原回执及原包在隔离目录复演首版 release，保存此次复演的原始输出作为 TASK-030 的兼容性对照。
+
+保有原签核材料的工作区可运行 `& $py tools/replay_rc16.py`，按源码哈希恢复 RC16，在副本内调用原审计器。终端打印本次复演目录，其中 `replay.json` 给出签核差异，`fixtures.json` 列出旧数据文件、Lua、配置及专窗探针的运行命令。
+
 ## 一个改动的交付边界
 
 1. 写明已有行为、期望行为、受影响的标准和可观察的失败。在已有首版卡内修复时沿用 TASK/TEST 编号。新增功能在确定范围后再分配独立任务、测试和前置，并同步索引、目录生成器和回归。
@@ -50,3 +74,13 @@ foreach ($mode in 'types','config','protocol','faults') {
 ```
 
 业务任务还应提交对应检查项的证据，执行例如 `& $py tools/run_acceptance.py audit --task TASK-015`，再执行相应累计阶段审计。单测成功、静态文档检查通过以及账本的 IMPLEMENTED 各有独立含义。放行条件见[验收矩阵](../agent/验收与测试.md)。
+### 绑定窗口的后台动作
+
+在运行设置中绑定目标，使用“查询后台动作支持”查看五个动作，再勾选“在后台读取和操作绑定窗口”。支持声明只限当前目标。切换绑定会清除后台选择。前台仍可接受键鼠，后台动作的虚拟落点从所选区域中心开始。
+
+| 窗口与状态 | 点击、左拖、滚轮、普通键、组合键 | 实际接收与限制 |
+|---|---|---|
+| 自有普通 Win32 根窗口和同进程 EDIT，另一窗口在前台 | 五类均已实测 | 接收方的鼠标消息点为客户区坐标，滚轮点为屏幕坐标，按键投到焦点后代或虚拟落点控件。 |
+| 自有根窗口和 EDIT，客户区完全被遮挡 | 五类均已实测 | 前台仍可独立输入，真实指针位置不变。 |
+| 自有窗口最小化 | 暂停 | 释放本执行在原控件持有的键。还原后需显式恢复。 |
+| 未声明能力、拒绝访问、无响应或已关闭的窗口 | 未验证或不可用，原因随查询返回 | 超时保存结果未知，同一动作不自动重发；同标题的新窗口须重新绑定。 |

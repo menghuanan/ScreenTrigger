@@ -14,6 +14,7 @@ public sealed partial class SettingsPage : UserControl, IWorkspaceDraft
     private readonly JsonElement definitions;
     private readonly List<(string[] Path, Func<JsonNode?> Read, JsonNode? Default)> fields = [];
     private JsonObject? config;
+    private readonly nint owner;
     private static readonly Dictionary<string,string> Labels = new() {
         ["general"]="常规", ["language"]="界面语言", ["theme"]="主题", ["recognition"]="识别",
         ["default_frequency_hz"]="默认频率（Hz）", ["default_threshold"]="默认阈值", ["rgb_tolerance"]="RGB 容差",
@@ -25,9 +26,10 @@ public sealed partial class SettingsPage : UserControl, IWorkspaceDraft
         ["level"]="记录级别", ["rotate_bytes"]="单个日志文件上限（字节）", ["file_count"]="分卷数"
     };
     private static string Label(string key) => Labels.GetValueOrDefault(key, key);
-    internal SettingsPage(HostClient host, Action<JsonElement> apply)
+    internal SettingsPage(HostClient host, Action<JsonElement> apply, nint owner)
     {
         InitializeComponent(); commands = new(host, this, Feedback); applyDisplayConfig = apply;
+        this.owner = owner;
         using var stream = typeof(SettingsPage).Assembly.GetManifestResourceStream("ScreenTrigger.config.json")!;
         using var schema = JsonDocument.Parse(stream);
         definitions = schema.RootElement.GetProperty("definitions").Clone();
@@ -46,6 +48,54 @@ public sealed partial class SettingsPage : UserControl, IWorkspaceDraft
         Location.Text = data.TryGetProperty("data_root", out var path) ? $"数据目录　{path.GetString()}" : "";
         Display(data.GetProperty("config"));
         await ReadBackups();
+        await ReadModels();
+    }
+    private async Task ReadModels()
+    {
+        var result = await commands.Call("list_ocr_models", new { });
+        var rows = result.GetProperty("pipelines").EnumerateArray().ToArray();
+        string? selected = OcrPipelines.SelectedItem as string;
+        var names = rows.Select(r => r.GetProperty("model_id").GetString()).ToArray();
+        OcrPipelines.ItemsSource = names;
+        OcrPipelines.SelectedItem = names.Contains(selected) ? selected : names.FirstOrDefault();
+        ModelInfo.Text = string.Join("\n", rows.Select(r => {
+            var state = r.GetProperty("state").GetString() switch {
+                "missing" => "未安装", "installed" => "已安装，首次使用时装载",
+                "loading" => "正在加载", "ready" => "已就绪", _ => "模型不可用"
+            };
+            var error = r.GetProperty("error");
+            return $"{r.GetProperty("model_id")}　{state}　{string.Join(", ", r.GetProperty("languages").EnumerateArray())}"
+                + (error.ValueKind == JsonValueKind.Object ? $"　{error.GetProperty("message")}" : "");
+        }));
+    }
+    private async void RefreshModels(object sender, RoutedEventArgs args) => await commands.Run(ReadModels);
+    private async void ImportModel(object sender, RoutedEventArgs args) => await commands.Run(() => ChangeModel(true));
+    private async void RemoveModel(object sender, RoutedEventArgs args) => await commands.Run(() => ChangeModel(false));
+
+    private async Task ChangeModel(bool import)
+    {
+        if (OcrPipelines.SelectedItem is not string model) return;
+        object request = new { operation = "remove", model_id = model };
+        if (import)
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker();
+            picker.FileTypeFilter.Add("*");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, owner);
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is null) return;
+            request = new { operation = "import", model_id = model, directory = folder.Path };
+        }
+        var preview = await BackupJob("preview_ocr_model_change", request);
+        var refs = preview.GetProperty("references").EnumerateArray()
+            .Select(r => $"{r.GetProperty("kind")}　{r.GetProperty("id")}");
+        var detail = $"{model}\n模型文件 {preview.GetProperty("bytes")} 字节。\n" +
+            string.Join("\n", refs) + "\n脚本中的动态引用在运行时解析。";
+        if (!await commands.Confirm(import ? "导入此 OCR 管线？" : "移除此 OCR 管线？", detail, "确认")) return;
+        await BackupJob("apply_ocr_model_change", new {
+            preview_id = preview.GetProperty("preview_id").GetString(),
+            expected_revision = preview.GetProperty("revision").GetInt32() });
+        await ReadModels();
+        Feedback.Text = import ? "模型已导入。" : "模型已移除。";
     }
     private async Task ReadBackups()
     {

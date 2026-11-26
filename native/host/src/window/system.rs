@@ -12,6 +12,12 @@ struct NativeRect {
 }
 #[repr(C)]
 #[derive(Default)]
+struct GuiThreadInfo {
+    size:u32, flags:u32, active:isize, focus:isize, capture:isize,
+    menu:isize, move_size:isize, caret:isize, caret_rect:NativeRect,
+}
+#[repr(C)]
+#[derive(Default)]
 struct Point {
     x: i32,
     y: i32,
@@ -45,6 +51,7 @@ struct SystemTime {
 
 #[link(name = "user32")]
 extern "system" {
+    fn GetGUIThreadInfo(thread:u32,info:*mut GuiThreadInfo)->i32;
     fn EnumWindows(cb: unsafe extern "system" fn(isize, isize) -> i32, param: isize) -> i32;
     fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
     fn GetWindowTextW(hwnd: isize, text: *mut u16, len: i32) -> i32;
@@ -59,6 +66,11 @@ extern "system" {
     fn GetAncestor(hwnd: isize, flags: u32) -> isize;
     fn MonitorFromPoint(point: Point, flags: u32) -> isize;
     fn GetMonitorInfoW(monitor: *mut std::ffi::c_void, info: *mut std::ffi::c_void) -> i32;
+}
+pub fn thread_focus(thread:u32)->Option<isize>{
+    if thread==0 {return None;}
+    let mut info=GuiThreadInfo{size:size_of::<GuiThreadInfo>() as u32,..Default::default()};
+    (unsafe{GetGUIThreadInfo(thread,&mut info)}!=0 && info.focus!=0).then_some(info.focus)
 }
 #[link(name = "kernel32")]
 extern "system" {
@@ -120,26 +132,31 @@ fn process(hwnd: isize) -> Option<(Identity, String)> {
         ))
     }
 }
-pub fn observe(hwnd: isize) -> Option<Observation> {
-    let (identity, process_name) = process(hwnd)?;
+fn client_rect(hwnd:isize)->Option<Rect> {
     unsafe {
         let mut rect = NativeRect::default();
         let mut origin = Point::default();
         if GetClientRect(hwnd, &mut rect) == 0 || ClientToScreen(hwnd, &mut origin) == 0 {
             return None;
         }
+        Some(Rect{x:origin.x.into(),y:origin.y.into(),width:i64::from(rect.right)-i64::from(rect.left),height:i64::from(rect.bottom)-i64::from(rect.top)})
+    }
+}
+pub fn recording_geometry(hwnd:isize)->Option<(Identity,Rect,u32)> {
+    if unsafe{IsWindowVisible(hwnd)==0 || IsIconic(hwnd)!=0}{return None;}
+    Some((process(hwnd)?.0,client_rect(hwnd)?,unsafe{GetDpiForWindow(hwnd)}))
+}
+pub fn observe(hwnd: isize) -> Option<Observation> {
+    let (identity, process_name) = process(hwnd)?;
+    let rect=client_rect(hwnd)?;
+    unsafe {
         let mut title = [0u16; 1024];
         let n = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32).max(0) as usize;
         Some(Observation {
             identity,
             title: String::from_utf16_lossy(&title[..n]),
             process_name,
-            rect: Rect {
-                x: origin.x.into(),
-                y: origin.y.into(),
-                width: i64::from(rect.right) - i64::from(rect.left),
-                height: i64::from(rect.bottom) - i64::from(rect.top),
-            },
+            rect,
             dpi: GetDpiForWindow(hwnd),
             visible: IsWindowVisible(hwnd) != 0,
             minimized: IsIconic(hwnd) != 0,

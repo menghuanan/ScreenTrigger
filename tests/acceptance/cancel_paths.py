@@ -10,7 +10,9 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0,str(Path(__file__).resolve().parent))
+fixture_directory = Path(__file__).resolve().parent
+windows_probes = fixture_directory.parents[1] / "tools/probes/windows"
+sys.path[:0] = [str(fixture_directory), str(windows_probes)]
 from window_edges import fixture
 from verify_p1_runtime import Host, chord, common, user, wait
 
@@ -100,8 +102,15 @@ def exercise(output):
         mark=wait(lambda:marker(eid,"inside child"),"child active")
         stop("child",eid,mark)
         eid=start('key_down("f6")\nlog("entering OCR")\nlocal b=ocr(nil,nil,"korean_PP-OCRv5_mobile_rec")\nlog("OCR finished")\ntype_text("late",0)')
+        history = output / "data/history"
+        app = Path(sys.executable).resolve().parent
+        marker = app / "ScreenTrigger.portable.json"
+        if marker.is_file():
+            layout = json.loads(marker.read_bytes())
+            if (layout.get("format"), layout.get("mode"), layout.get("data")) == (1, "portable", "data"):
+                history = app / "data/history"
         def own_log(message):
-            for path in (output/"data/history").glob(eid+"*.jsonl"):
+            for path in history.glob(eid+"*.jsonl"):
                 for line in path.read_text("utf8").splitlines():
                     if message in line:
                         return json.loads(line)

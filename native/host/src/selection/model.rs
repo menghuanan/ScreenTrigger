@@ -93,6 +93,9 @@ pub trait HostEnvironmentPort: Send {
     fn set_main_window_visible(&self, visible: bool) -> PortResult<()>;
     /// 在指定显示器打开覆盖层（WS_EX_LAYERED + WDA_EXCLUDEFROMCAPTURE，见 wiring）。
     fn open_overlay(&self, display: &DisplayInfo, selection_id: &str) -> PortResult<OverlayHandle>;
+    fn open_point_overlay(&self, display: &DisplayInfo, pick_id: &str) -> PortResult<OverlayHandle> {
+        self.open_overlay(display, pick_id)
+    }
     /// 关闭覆盖层。
     fn close_overlay(&self, handle: &OverlayHandle) -> PortResult<()>;
 }

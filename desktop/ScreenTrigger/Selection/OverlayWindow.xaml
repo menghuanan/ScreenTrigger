@@ -10,8 +10,12 @@
                 PointerMoved="DragMoved" PointerReleased="DragEnded" PointerCaptureLost="DragLost"
                 PointerCanceled="DragLost">
             <Rectangle x:Name="Outline" Stroke="#FFFF27DC" StrokeThickness="2" IsHitTestVisible="False" />
+            <Border x:Name="PointLabel" Visibility="Collapsed" IsHitTestVisible="False" CornerRadius="4" Padding="8,4"
+                    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+                <TextBlock x:Name="PointReadout" AutomationProperties.AutomationId="PointReadout" />
+            </Border>
         </Canvas>
-        <Border VerticalAlignment="Top" HorizontalAlignment="Right" Margin="12" Padding="12" CornerRadius="6"
+        <Border x:Name="RegionTools" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="12" Padding="12" CornerRadius="6"
                 Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" MaxWidth="320">
             <StackPanel Spacing="6">
                 <TextBlock x:Name="Coordinates" Text="拖动选择区域 · Esc 取消" TextWrapping="Wrap" />

@@ -32,7 +32,7 @@ from .service import (
 _SCRIPT_COMMAND_PARAMS: Dict[str, Tuple[str, ...]] = {
     "list_scripts": ("offset", "limit"),
     "load_script": ("script_id",),
-    "save_script": ("script_id", "expected_revision", "name", "source", "parameters"),
+    "save_script": ("script_id", "expected_revision", "name", "source", "parameters", "action_policy"),
     "delete_script": ("script_id", "expected_revision"),
     "validate_script": ("source",),
 }
@@ -162,6 +162,7 @@ def register_script_commands(dispatcher: Any, service: ScriptService) -> None:
                 parameters,
                 script_id=script_id,
                 expected_revision=expected_revision,
+                **({"action_policy": params["action_policy"]} if "action_policy" in params else {}),
             )
         }
 

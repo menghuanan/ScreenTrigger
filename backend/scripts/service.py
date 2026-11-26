@@ -30,6 +30,8 @@ from ..targets.repository import CatalogChange, Repository
 from . import domain
 from .domain import UNSET
 from .sources import ScriptSourceStore
+from ..types.action_policy import validate_policy
+from ..types.capabilities import TypeValidationError
 
 Clock = Callable[[], str]
 IdGen = Callable[[], str]
@@ -163,6 +165,7 @@ class ScriptService:
         *,
         script_id: Any = UNSET,
         expected_revision: Any = UNSET,
+        action_policy: Any = UNSET,
     ) -> Dict[str, Any]:
         """新建或更新脚本元数据 + 落源码（**不编译、不执行**，Q2）。
 
@@ -190,6 +193,11 @@ class ScriptService:
             name, source, parameters
         )
         source_sha256 = sha256_hex(source_bytes)
+        if action_policy is not UNSET:
+            try:
+                validate_policy(action_policy)
+            except TypeValidationError as exc:
+                raise invalid_params(exc.field, exc.message) from exc
 
         existing: Optional[Mapping[str, Any]] = None
         if has_id:
@@ -201,7 +209,10 @@ class ScriptService:
                 domain.find_script(scripts, script_id), str(script_id)
             )
             domain.ensure_script_revision(existing, expected_revision)
-            if domain.is_noop_save(existing, normalized_name, normalized_params, source_sha256):
+            if action_policy is UNSET:
+                action_policy = existing.get("action_policy", UNSET)
+            if (action_policy == existing.get("action_policy", UNSET)
+                    and domain.is_noop_save(existing, normalized_name, normalized_params, source_sha256)):
                 return dict(existing)  # no-op：不写盘、不 commit、不发事件
 
         now = self._clock()
@@ -226,6 +237,8 @@ class ScriptService:
             created_at=created_at,
             updated_at=now,
         )
+        if action_policy is not UNSET:
+            script_dict["action_policy"] = action_policy
         new_scripts = domain.upsert_script(scripts, script_dict)
         change = CatalogChange.build(
             snapshot,

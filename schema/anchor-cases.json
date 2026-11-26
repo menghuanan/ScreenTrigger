@@ -1,0 +1,14 @@
+[
+  {"id":"negative-origin","anchor":{"version":1,"scope":"window","strategy":"relative","reference_width":101,"reference_height":51,"x":50,"y":25},"rect":{"x":-300,"y":40,"width":201,"height":101},"expected":[-200,90]},
+  {"id":"last-pixel","anchor":{"version":1,"scope":"window","strategy":"relative","reference_width":101,"reference_height":51,"x":100,"y":50},"rect":{"x":-300,"y":40,"width":201,"height":101},"expected":[-100,140]},
+  {"id":"source-outside","anchor":{"version":1,"scope":"window","strategy":"relative","reference_width":101,"reference_height":51,"x":101,"y":25},"rect":{"x":-300,"y":40,"width":201,"height":101},"expected":"REGION_LIMIT_VIOLATION"},
+  {"id":"half-up","anchor":{"version":1,"scope":"display","strategy":"relative","reference_width":3,"reference_height":7,"x":1,"y":3},"rect":{"x":9,"y":12,"width":2,"height":2},"expected":[10,13]},
+  {"id":"one-pixel","anchor":{"version":1,"scope":"region","strategy":"relative","reference_width":1,"reference_height":1,"x":0,"y":0},"rect":{"x":-300,"y":40,"width":201,"height":101},"expected":[-300,40]},
+  {"id":"offset-moved","anchor":{"version":1,"scope":"window","strategy":"offset","reference_width":101,"reference_height":51,"x":50,"y":25},"rect":{"x":257,"y":20,"width":399,"height":201},"expected":[307,45]},
+  {"id":"offset-after-shrink","anchor":{"version":1,"scope":"window","strategy":"offset","reference_width":101,"reference_height":51,"x":50,"y":25},"rect":{"x":257,"y":20,"width":50,"height":51},"expected":"REGION_LIMIT_VIOLATION"},
+  {"id":"rect-reference","anchor":{"version":1,"scope":"region","strategy":"relative","reference_width":1920,"reference_height":1080,"x":1919,"y":1079},"rect":{"x":0,"y":0,"width":2560,"height":1440},"expected":[2559,1439]},
+  {"id":"unknown-version","anchor":{"version":2,"scope":"window","strategy":"relative","reference_width":101,"reference_height":51,"x":50,"y":25},"rect":{"x":-300,"y":40,"width":201,"height":101},"expected":"INVALID_PARAMS"},
+  {"id":"zero-reference","anchor":{"version":1,"scope":"window","strategy":"relative","reference_width":0,"reference_height":51,"x":50,"y":25},"rect":{"x":-300,"y":40,"width":201,"height":101},"expected":"INVALID_PARAMS"},
+  {"id":"invalid-field","anchor":{"version":1,"scope":"window","strategy":"relative","reference_width":101,"reference_height":51,"x":50,"y":25,"binding_id":"old-session"},"rect":{"x":-300,"y":40,"width":201,"height":101},"expected":"INVALID_PARAMS"},
+  {"id":"fraction","anchor":{"version":1,"scope":"window","strategy":"relative","reference_width":101,"reference_height":51,"x":1.5,"y":25},"rect":{"x":-300,"y":40,"width":201,"height":101},"expected":"INVALID_PARAMS"}
+]

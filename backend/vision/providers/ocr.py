@@ -85,12 +85,16 @@ class OCREngineProvider(BaseProvider):
         paddleocr_module: Any = None,
         catalog: Optional[OcrModelCatalog] = None,
         library_root: Optional[str] = None,
+        model_id: Optional[str] = None,
+        component_roots: Optional[Dict[str, str]] = None,
     ) -> None:
         super().__init__(_MANIFEST)
         self._pixels = pixels
         self._paddleocr_module = paddleocr_module
         self._catalog: Optional[OcrModelCatalog] = catalog
         self._library_root_override = library_root
+        self._selected_model = model_id
+        self._component_roots = component_roots or {}
         self._engines: Dict[str, Tuple[Any, Optional[str]]] = {}
         self._initialized = False
         self.models_dir: Optional[str] = None
@@ -101,7 +105,10 @@ class OCREngineProvider(BaseProvider):
     # -- 契约 ---------------------------------------------------------------
 
     def capabilities(self) -> ProviderManifest:
-        return _MANIFEST
+        if self._selected_model is None:
+            return _MANIFEST
+        from dataclasses import replace
+        return replace(_MANIFEST, model_ids=(self._selected_model,))
 
     def initialize(self, models_dir: Any) -> None:
         """加载**已安装**模型（只读、离线）；任何失败 → 显式 ``RecognitionError``（不静默）。
@@ -120,6 +127,8 @@ class OCREngineProvider(BaseProvider):
         # 使 registry.load_model_manifest 可读到「已安装模型」。
         self.seeded = seed_repo_model_metadata(self.models_dir or "")
         for engine in self._catalog.engines:  # type: ignore[union-attr]
+            if self._selected_model is not None and engine.recognition_model != self._selected_model:
+                continue
             self._engines[engine.recognition_model] = (
                 self._build_engine(paddle, engine.detection_model, engine.recognition_model),
                 self._catalog.language_of(engine.recognition_model),  # type: ignore[union-attr]
@@ -270,7 +279,14 @@ class OCREngineProvider(BaseProvider):
 
     def _verify_library(self) -> None:
         try:
-            self._catalog.verify(self.library_root)  # type: ignore[union-attr]
+            if self._selected_model is None:
+                self._catalog.verify(self.library_root)
+            else:
+                engine = self._catalog.engine_for(self._selected_model)
+                if engine is None:
+                    raise RecognitionError("MODEL_UNAVAILABLE", "未知 OCR 管线")
+                for key in (engine.detection_model, engine.recognition_model):
+                    self._catalog.verify(self._component_roots.get(key, self.library_root), (key,))
         except RecognitionError as exc:
             raise RecognitionError(exc.code, self._unavailable_reason(exc.code, exc.message),
                                    retryable=False) from exc
@@ -283,9 +299,9 @@ class OCREngineProvider(BaseProvider):
         try:
             return paddle.PaddleOCR(
                 text_detection_model_name=detection_model,
-                text_detection_model_dir=os.path.join(root, detection_model),
+                text_detection_model_dir=os.path.join(self._component_roots.get(detection_model, root), detection_model),
                 text_recognition_model_name=recognition_model,
-                text_recognition_model_dir=os.path.join(root, recognition_model),
+                text_recognition_model_dir=os.path.join(self._component_roots.get(recognition_model, root), recognition_model),
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=False,

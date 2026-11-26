@@ -36,7 +36,7 @@ from .types import (
     build_recognition_result,
     validate_recognition_result,
 )
-from .worker import INFERENCE_DEADLINE_MS, ThreadInferenceWorker, WorkerRunner
+from .worker import DeadlineCancelToken, INFERENCE_DEADLINE_MS, ThreadInferenceWorker, WorkerRunner
 
 #: 每执行最多识别在途（06：并发 3 根执行、每执行 ≤1 在途；Q1 → 超限 BUSY）。
 DEFAULT_MAX_INFLIGHT: int = 3
@@ -173,6 +173,14 @@ class VisionService:
 
     # -- 受理（同步，≤5s） ----------------------------------------------------
 
+    def _admit_models(self, command, params):
+        models = getattr(self._registry, "managed_ocr", None)
+        involves_models = command in ("recognize_text", "evaluate_target_conditions", "test_recognition")
+        if models is None or not involves_models:
+            return None, None, self._deadline_ms
+        model = params.get("model_id") if command == "recognize_text" else None
+        return models, models.pin(model), self._deadline_ms + 60_000
+
     def submit(self, command: str, params: Dict[str, Any]) -> str:
         """受理一次识别：建 job → 交 worker → 返回 ``job_id``（**不等待**推理）。
 
@@ -198,19 +206,26 @@ class VisionService:
             if not job_token.is_cancelled():
                 self._conclude_timeout(job_id)
 
-        watchdog = threading.Timer(self._deadline_ms / 1000, expire)
+        models, admission, budget = self._admit_models(command, params)
+        watchdog = threading.Timer(budget / 1000, expire)
         watchdog.daemon = True
         def _run(token: Any) -> None:
+            binding = models.admitted.set(admission) if models is not None else None
             try:
                 self._run_job(job_id, command, params, token)
             finally:
                 watchdog.cancel()
+                if models is not None:
+                    models.admitted.reset(binding)
+                    models.unpin(admission)
 
         watchdog.start()
         try:
-            self._worker.submit(_run, deadline_ms=self._deadline_ms, cancel=job_token)
+            self._worker.submit(_run, deadline_ms=budget, cancel=job_token)
         except Exception:
             watchdog.cancel()
+            if models is not None:
+                models.unpin(admission)
             with self._lock:
                 self._active.discard(job_id)
             self._jobs.fail(job_id, RecognitionError("RECOGNITION_FAILED", "推理工作线程未启动").to_dict())
@@ -255,16 +270,18 @@ class VisionService:
     def run_sync(self, command, params, cancel, *, catalog=None):
         """Use the job execution path with a bounded wait on the script thread."""
         outcome = Future()
-        expires = time.monotonic() + self._deadline_ms / 1000
         # Include script inference in the same budget as interactive recognition jobs.
         slot = object()
         with self._lock:
             if len(self._active) >= self._max_inflight:
                 raise RecognitionError("BUSY", "识别在途任务已达上限", retryable=True)
             self._active.add(slot)
+        models, admission, budget = self._admit_models(command, params)
+        expires = time.monotonic() + budget / 1000
 
         def run(token):
             binding = _run_catalog.set(catalog)
+            model_binding = models.admitted.set(admission) if models is not None else None
             try:
                 value = self._execute(command, params, token)
                 token.throw_if_cancelled()
@@ -273,14 +290,19 @@ class VisionService:
                 outcome.set_exception(exc)
             finally:
                 _run_catalog.reset(binding)
+                if models is not None:
+                    models.admitted.reset(model_binding)
+                    models.unpin(admission)
                 with self._lock:
                     self._active.discard(slot)
 
         try:
-            self._worker.submit(run, deadline_ms=self._deadline_ms, cancel=cancel)
+            self._worker.submit(run, deadline_ms=budget, cancel=cancel)
         except Exception:
             with self._lock:
                 self._active.discard(slot)
+            if models is not None:
+                models.unpin(admission)
             raise
         while True:
             cancel.throw_if_cancelled()
@@ -399,6 +421,9 @@ class VisionService:
             condition_revision = getattr(snapshot, "revision", None)
         cache_params = dict(cache_params, origin=[frame.origin.x, frame.origin.y],
                             binding_id=frame.binding_id)
+        models = getattr(self._registry, "managed_ocr", None)
+        if models is not None:
+            cache_params["model_revision"] = models.revision()
         key = cache_key(
             command=command,
             provider_id="condition_evaluator",
@@ -416,7 +441,26 @@ class VisionService:
         if cached is not None:
             return dict(cached, frame_id=frame.frame_id)
         token.throw_if_cancelled()
-        result = self._evaluator.evaluate(frame, snapshot, token)
+        conditions = (snapshot.get("conditions") if isinstance(snapshot, dict)
+                      else getattr(snapshot, "conditions", None))
+        nodes = [conditions]
+        needs_ocr = False
+        while nodes:
+            node = nodes.pop()
+            if isinstance(node, dict):
+                if node.get("type") == "ocr":
+                    needs_ocr = True
+                    break
+                if isinstance(node.get("children"), list):
+                    nodes.extend(node["children"])
+        evaluation = token if needs_ocr or models is None else DeadlineCancelToken(token, deadline_ms=self._deadline_ms)
+        try:
+            result = self._evaluator.evaluate(frame, snapshot, evaluation)
+            evaluation.throw_if_cancelled()
+        except CancelledError:
+            if evaluation is not token and evaluation.timed_out():
+                raise RecognitionError("RECOGNITION_TIMEOUT", "条件识别超过推理期限", retryable=True)
+            raise
         token.throw_if_cancelled()
         normalized = self._normalize_result(result, frame.frame_id, force_draft=force_draft)
         self._cache.put(key, normalized)

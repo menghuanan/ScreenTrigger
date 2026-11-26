@@ -87,6 +87,39 @@ class CaptureLifetimeTest(unittest.TestCase):
             service.capture(_screen_region())
         self.assertEqual(raised.exception.code, "IMAGE_EXPIRED")
 
+    def test_background_binding_changed_while_painting(self):
+        windows = FakeWindowProvider({"b1": window_snapshot("b1", 20, 30, 100, 80, foreground=False)})
+        class MovingWindow:
+            def read(self, snapshot, x, y, width, height, cancel):
+                windows.snapshots["b1"] = window_snapshot("b1", 30, 30, 100, 80, geometry_revision=2)
+                return solid_image(width, height)
+        desktop = FakeCaptureBackend()
+        service = make_service(window_provider=windows, backend=desktop, background=MovingWindow())
+        with self.assertRaises(CaptureError) as raised:
+            service.capture_window("b1", window_mode="background")
+        self.assertEqual(raised.exception.code, "STALE_FRAME")
+        self.assertEqual(desktop.calls, [])
+
+    def test_background_cancelled_after_paint_returns_no_frame(self):
+        windows = FakeWindowProvider({"b1": window_snapshot("b1", 20, 30, 100, 80, foreground=False)})
+        class CancelDuringPaint:
+            def read(self, snapshot, x, y, width, height, cancel):
+                cancel.cancel()
+                return solid_image(width, height)
+        service = make_service(window_provider=windows, background=CancelDuringPaint())
+        with self.assertRaises(CancelledError):
+            service.capture_window("b1", SimpleCancelToken(), window_mode="background")
+
+    def test_background_requires_adapter_and_bound_client(self):
+        service = make_service()
+        for invoke, code in [
+            (lambda: service.capture_window("b1", window_mode="background"), "CAPABILITY_DENIED"),
+            (lambda: service.capture(_screen_region(), window_mode="background"), "INVALID_PARAMS"),
+        ]:
+            with self.subTest(code=code), self.assertRaises(CaptureError) as raised:
+                invoke()
+            self.assertEqual(raised.exception.code, code)
+
 
 class ScreenCaptureTest(unittest.TestCase):
     def test_capture_region_normal(self):

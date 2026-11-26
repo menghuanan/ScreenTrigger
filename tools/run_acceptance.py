@@ -16,7 +16,9 @@ import sys
 import uuid
 
 from check_docs import ROOT, digest, validate as validate_docs
-from check_model import build
+from acceptance_version import (
+    AUTOMATION, FIRST, VERSIONS, candidate_ref, catalog, ledger_path, raw_ref, report_path,
+)
 
 STATE = "docs/agent/check-state.json"
 SKIP = {"reports", ".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", "target", "dist", ".workbuddy"}
@@ -151,6 +153,9 @@ def record_errors(root, record, model, historical_sources=None, archived_files=N
     errors = []
     if not isinstance(record, dict):
         return ["evidence record must be an object"]
+    version = model.get("version", FIRST)
+    if record.get("version", FIRST) != version:
+        errors.append("receipt belongs to a different version")
     if record.get("schema_version") != 1:
         errors.append("unsupported evidence schema")
     check = model["checks"].get(record.get("check_id"))
@@ -189,6 +194,11 @@ def record_errors(root, record, model, historical_sources=None, archived_files=N
     elif not record.get("steps"):
         errors.append("manual reproduction steps required")
     evidence = record.get("evidence", [])
+    if version == AUTOMATION and isinstance(evidence, list):
+        if not all(raw_ref(root, version, ref) for ref in evidence):
+            errors.append("evidence must be in this version's raw directory")
+        if record.get("artifact") is not None and not candidate_ref(root, version, record["artifact"]):
+            errors.append("artifact outside this version's candidate namespace or RC16 digest")
     if record.get("status") in ("PASS", "FAIL", "N/A") and not evidence:
         errors.append("raw evidence required")
     if not isinstance(evidence, list) or not all(verify_run_evidence(root, ref, historical_sources, archived_files) for ref in evidence):
@@ -218,6 +228,23 @@ def validate_state(state, model):
     for tid, entry in state.get("tasks", {}).items():
         if entry.get("implementation") not in ("NOT_STARTED", "IN_PROGRESS", "IMPLEMENTED") or not entry.get("owner"):
             errors.append(f"{tid}: invalid implementation state/owner")
+        if model.get("version") == AUTOMATION:
+            if "acceptance" in entry:
+                errors.append(f"{tid}: acceptance is computed by the checker")
+            if entry.get("implementation") != "NOT_STARTED" and tid in model["tasks"]:
+                item = model["tasks"][tid]
+                if (entry.get("owner") == "待领取" or entry.get("dependencies") != item["dependencies"]
+                        or entry.get("tests") != item["tests"]):
+                    errors.append(f"{tid}: opening record requires owner, catalogue dependencies and tests")
+                for field in ("allowed_modules", "expected"):
+                    values = entry.get(field)
+                    if not isinstance(values, list) or not values or not all(isinstance(v, str) and v.strip() for v in values):
+                        errors.append(f"{tid}: opening record lacks {field}")
+                try:
+                    if stamp(entry["opened_at"]) > datetime.now(timezone.utc):
+                        raise ValueError("future opening")
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    errors.append(f"{tid}: invalid opened_at")
     for field in ("issues", "scope_changes", "invalidations"):
         if not isinstance(state.get(field), list):
             errors.append(f"{field} must be a list")
@@ -257,10 +284,21 @@ def matches_retired_receipt(root, path, record, item, sources, archived):
                for r in refs)
 
 
-def evaluate(root, scope="baseline", task_id=None):
-    model, state, current = build(root), load(root / STATE), baseline(root)
+def evaluate(root, scope="baseline", task_id=None, version=FIRST, test_id=None):
+    if version == AUTOMATION and scope not in ("baseline", "release"):
+        raise ValueError(f"{scope} is a first-version phase")
+    if version == AUTOMATION and task_id and scope != "baseline":
+        raise ValueError("select an automation task or a release scope")
+    if test_id and (version == FIRST or task_id or scope != "baseline"):
+        raise ValueError("select one automation test group with --test")
+    model, state, current = catalog(root, version), load(ledger_path(root, version)), baseline(root)
     errors = validate_state(state, model)
-    docs = validate_docs(root)
+    if state.get("version", FIRST) != version:
+        errors.append("ledger belongs to a different version")
+    artifact = state.get("release_artifact")
+    if version == AUTOMATION and artifact is not None and not candidate_ref(root, version, artifact):
+        errors.append("ledger candidate must belong to the automation version and have its own digest")
+    docs = validate_docs(root, version)
     errors += docs["errors"]
     records = {}
     archived_manifests = {}
@@ -274,19 +312,24 @@ def evaluate(root, scope="baseline", task_id=None):
             artifact_results[key] = verify_file(folder, ref)
         return artifact_results[key]
 
-    retired = receipt_retirements(root, state, model)
+    if version == AUTOMATION and artifact is not None and not verify_shared_artifact(root, artifact):
+        errors.append("ledger candidate missing or hash mismatch")
+    retired = receipt_retirements(root, state, model) if version == FIRST else {}
     seen_retired = set()
     per_check = {key: [] for key in model["checks"]}
-    for path in sorted((root / "reports/evidence").glob("*.json")):
+    for path in sorted(report_path(root, version, "evidence").glob("*.json")):
         try:
+            report_path(root, version, Path("evidence") / path.name)
             record = load(path)
             previous = isinstance(record, dict) and record.get("baseline") != current["sha256"]
             old_baseline = record.get("baseline") if previous else None
-            if old_baseline and old_baseline not in archived_manifests:
+            if version == FIRST and old_baseline and old_baseline not in archived_manifests:
                 archived_manifests[old_baseline] = historical_manifest(root, old_baseline)
             invalid = record_errors(root, record, model, current["files"] if previous else None,
                                     archived_manifests.get(old_baseline), verify_shared_artifact)
             rid = record.get("run_id")
+            if version == AUTOMATION and path.stem != rid:
+                invalid.append("receipt filename must match run_id")
             if rid in retired and previous and invalid in ([], ["evidence missing or hash mismatch"]):
                 if matches_retired_receipt(root, path, record, retired[rid], current["files"], archived_manifests.get(old_baseline)):
                     seen_retired.add(rid)
@@ -324,6 +367,10 @@ def evaluate(root, scope="baseline", task_id=None):
         if last and (last["baseline"] != current["sha256"] or last["spec_sha256"] != spec_hash(model["checks"][key]) or
                      (key in invalidated and stamp(last["started_at"]) <= invalidated[key])):
             status, reason = "STALE", "Source/specification changed or evidence explicitly invalidated; rerun required"
+        if (version == AUTOMATION and status in ("PASS", "N/A")
+                and (model["checks"][key].get("requires_artifact") or last.get("artifact") is not None)
+                and (artifact is None or last.get("artifact") != artifact)):
+            status, reason = "STALE", "Evidence must reference the current version's candidate"
         result[key] = {"status": status, "reason": reason, "run_id": last["run_id"] if last else None}
 
     # Failure history is append-only. A later success alone cannot erase a failure.
@@ -417,6 +464,8 @@ def evaluate(root, scope="baseline", task_id=None):
 
     def affected_tasks(key):
         definition = model["checks"][key]
+        if definition.get("affected_tasks"):
+            return definition["affected_tasks"]
         if definition.get("task"):
             return [definition["task"]]
         if key in model["decisions"]:
@@ -426,7 +475,7 @@ def evaluate(root, scope="baseline", task_id=None):
         groups = [definition["test"]] if definition.get("test") else model["successes"].get(key, {}).get("tests", [])
         if groups:
             return [t for t, item in model["tasks"].items() if set(item["tests"]) & set(groups)]
-        return ["TASK-029"]
+        return ["TASK-044" if version == AUTOMATION else "TASK-029"]
 
     # Known global regressions reopen their contributing tasks, then the dependency graph.
     # Merely unexecuted global tests do not prevent earlier module development.
@@ -436,6 +485,9 @@ def evaluate(root, scope="baseline", task_id=None):
 
     # Scope changes are recorded, not counted as test passes or automatic waivers.
     for change in state.get("scope_changes", []):
+        if version == AUTOMATION and (change.get("version") != version or change.get("retired_inventory")
+                                      or not raw_ref(root, version, change.get("confirmation"))):
+            errors.append("Scope decision must be authorized for the selected version")
         for field in ("id", "reason", "approved_by", "approved_at", "version", "expires_at", "confirmation", "affected_checks"):
             if not change.get(field):
                 errors.append(f"Scope change lacks {field}")
@@ -453,6 +505,13 @@ def evaluate(root, scope="baseline", task_id=None):
                 errors.append("Input safety invariants cannot be waived")
 
     accepted = lambda key: result[key]["status"] == "PASS" or (result[key]["status"] == "N/A" and model["checks"][key]["allow_na"])
+    final_checks = [k for k, d in model["checks"].items() if d["kind"] in ("acceptance", "release")]
+
+    def final_candidate_verified():
+        return artifact is not None and all(
+            accepted(k) and records[result[k]["run_id"]].get("artifact") == artifact for k in final_checks
+        )
+
     task_rows = {}
 
     def task_status(tid, visiting=None):
@@ -469,7 +528,8 @@ def evaluate(root, scope="baseline", task_id=None):
         implementation = state.get("tasks", {}).get(tid, {}).get("implementation", "NOT_STARTED")
         if errors or tid in blocked_tasks or any(v != "VERIFIED" for v in prerequisites.values()) or any(not accepted(k) for k in gates):
             status = "BLOCKED"
-        elif all(accepted(k) for k in item["checks"]) and implementation == "IMPLEMENTED":
+        elif (all(accepted(k) for k in item["checks"]) and implementation == "IMPLEMENTED"
+              and (tid != "TASK-044" or final_candidate_verified())):
             status = "VERIFIED"
         elif implementation == "NOT_STARTED":
             status = "NOT_RUN"
@@ -493,16 +553,23 @@ def evaluate(root, scope="baseline", task_id=None):
             for dep in model["tasks"][tid]["dependencies"]:
                 include(dep)
         include(task_id)
-    elif scope == "baseline":
+    elif test_id or scope == "baseline":
         selected_tasks = set()
     else:
         phase = "P3" if scope == "release" else scope
-        selected_tasks = {t for t, item in model["tasks"].items() if item["stage"] <= phase}
+        selected_tasks = (set(model["tasks"]) if version == AUTOMATION else
+                          {t for t, item in model["tasks"].items() if item["stage"] <= phase})
     selected_checks = {c for t in selected_tasks for c in model["tasks"][t]["checks"]}
     selected_checks |= {k for k, d in model["decisions"].items() if set(d["tasks"]) & selected_tasks}
     if not task_id:
         selected_checks |= {k for k, r in model["risks"].items() if set(r["tasks"]) & selected_tasks}
-    full_release = not task_id and scope in ("P3", "release")
+    if test_id:
+        if test_id not in model["tests"]:
+            raise ValueError(f"unknown test {test_id}")
+        selected_checks = set(model["tests"][test_id]["checks"])
+    if task_id == "TASK-044":
+        selected_checks.update(final_checks)
+    full_release = not task_id and not test_id and scope in ("P3", "release")
     if full_release:
         selected_checks = set(model["checks"])
         artifact = state.get("release_artifact")
@@ -528,7 +595,8 @@ def evaluate(root, scope="baseline", task_id=None):
     ready = not errors and all(task_rows[t]["acceptance"] == "VERIFIED" for t in selected_tasks) and all(accepted(k) for k in selected_checks)
     if full_release and any(i["status"] != "CLOSED" for i in issue_rows):
         ready = False
-    return dict(schema_version=1, generated_at=now(), scope=task_id or scope,
+    return dict(schema_version=1, **({"version": version} if version != FIRST else {}),
+                generated_at=now(), scope=task_id or test_id or scope,
                 gate="PASS" if ready else "NOT_READY", baseline=current["sha256"],
                 source_files=current["files"], documentation=docs, errors=errors,
                 selected_tasks=sorted(selected_tasks), selected_checks=sorted(selected_checks),
@@ -544,16 +612,19 @@ def evaluate(root, scope="baseline", task_id=None):
 
 
 def write_audit(root, result):
+    version = result.get("version", FIRST)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
-    folder = root / "reports/audits" / run_id
+    folder = report_path(root, version, Path("audits") / run_id)
     save(folder / "result.json", result, exclusive=True)
-    save(folder / "catalog.json", build(root), exclusive=True)
+    save(folder / "catalog.json", catalog(root, version), exclusive=True)
     lines = [f"# 检查结果：{result['scope']}", "", f"结论：**{result['gate']}**", "",
              f"基线：`{result['baseline']}`", "",
              f"任务验收：{result['verified_tasks']}/{result['task_denominator']}；逐项状态：`{json.dumps(result['counts'])}`。",
              "", "baseline 的 PASS 仅表示文档/账本结构有效，不表示业务功能通过。", "",
              "## 阻塞与输入错误", ""]
     lines.extend(f"- {e}" for e in result["errors"])
+    if version != FIRST:
+        lines[2:2] = [f"版本：`{version}`", ""]
     if not result["errors"]:
         lines.append("无输入错误；业务未执行项仍按 NOT_RUN/PENDING/BLOCKED 保留。")
     lines += ["", "## 任务状态", "", "|任务|实施|验收|", "|---|---|---|"]
@@ -566,16 +637,19 @@ def write_audit(root, result):
         lines.append(f"|{key}|{row['status']}|{row['run_id'] or '无'}|")
     lines += ["", "完整预期、任务/需求映射见同目录 catalog.json；各结果原因、缺陷、文件哈希及范围见 result.json。", ""]
     (folder / "summary.md").write_text("\n".join(lines), encoding="utf-8")
-    save(root / "reports/latest-audit.json", {"run_id": run_id, "scope": result["scope"], "path": folder.relative_to(root).as_posix(), "gate": result["gate"]})
+    save(report_path(root, version, "latest-audit.json"), {"run_id": run_id, "scope": result["scope"], "path": folder.relative_to(root).as_posix(), "gate": result["gate"]})
     return folder
 
 
-def template(root, key, artifact=None):
-    model = build(root)
+def template(root, key, artifact=None, version=FIRST):
+    model = catalog(root, version)
     if key not in model["checks"]:
         raise ValueError(f"unknown check {key}")
     current = baseline(root)
-    return dict(schema_version=1, run_id=uuid.uuid4().hex, check_id=key,
+    if version == AUTOMATION and artifact is not None and not candidate_ref(root, version, artifact):
+        raise ValueError("artifact does not belong to this version")
+    return dict(schema_version=1, **({"version": version} if version != FIRST else {}),
+                run_id=uuid.uuid4().hex, check_id=key,
                 baseline=current["sha256"], spec_sha256=spec_hash(model["checks"][key]),
                 expected=model["checks"][key]["expected"], status="NOT_RUN", mode="manual",
                 started_at=now(), finished_at=now(), environment={"os": platform.platform(), "runtime_versions": {"python": sys.version},
@@ -589,9 +663,12 @@ def main(argv=None):
     parser.add_argument("--root", type=Path, default=ROOT)
     sub = parser.add_subparsers(dest="action", required=True)
     audit = sub.add_parser("audit")
+    selector = audit.add_mutually_exclusive_group()
     audit.add_argument("--scope", choices=["baseline", "P0", "P1", "P2", "P3", "release"], default="baseline")
-    audit.add_argument("--task")
-    sub.add_parser("catalog")
+    selector.add_argument("--task")
+    selector.add_argument("--test")
+    catalog_parser = sub.add_parser("catalog")
+    init = sub.add_parser("init", help="create an empty automation-version ledger")
     draft = sub.add_parser("template")
     draft.add_argument("--check", required=True)
     draft.add_argument("--artifact")
@@ -602,38 +679,57 @@ def main(argv=None):
     capture.add_argument("--timeout", type=int, default=600)
     capture.add_argument("--artifact")
     capture.add_argument("command", nargs=argparse.REMAINDER)
+    for command_parser in (audit, catalog_parser, draft, submit, capture, init):
+        command_parser.add_argument("--version", choices=VERSIONS, default=FIRST)
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    version = args.version
     try:
+        if args.action == "init":
+            if version != AUTOMATION:
+                raise ValueError("init requires an explicit automation version")
+            model = catalog(root, version)
+            path = ledger_path(root, version)
+            save(path, dict(schema_version=1, version=version, tasks={
+                tid: {"implementation": "NOT_STARTED", "owner": "待领取"} for tid in model["tasks"]
+            }, issues=[], scope_changes=[], invalidations=[], release_artifact=None), exclusive=True)
+            print(path)
+            return 0
         if args.action == "audit":
-            report = evaluate(root, args.scope, args.task)
+            report = evaluate(root, args.scope, args.task, version, args.test)
             folder = write_audit(root, report)
             print(json.dumps({"gate": report["gate"], "scope": report["scope"], "counts": report["counts"], "errors": report["errors"], "report": str(folder / "summary.md")}, ensure_ascii=False, indent=2))
             return 0 if report["gate"] == "PASS" else 1
         if args.action == "catalog":
-            path = root / "reports/check-catalog.json"
-            save(path, build(root))
+            path = report_path(root, version, "check-catalog.json")
+            save(path, catalog(root, version))
             print(path)
             return 0
         if args.action == "submit":
             record = load(args.file)
-            model = build(root)
+            model = catalog(root, version)
             errors = record_errors(root, record, model)
+            if version == AUTOMATION and record.get("status") in ("PASS", "N/A"):
+                check = model["checks"].get(record.get("check_id"), {})
+                if check.get("requires_artifact") or record.get("artifact") is not None:
+                    candidate = load(ledger_path(root, version)).get("release_artifact")
+                    if candidate is None or record.get("artifact") != candidate:
+                        errors.append("receipt must reference the current version's candidate")
             if record.get("baseline") != baseline(root)["sha256"] or record.get("spec_sha256") != spec_hash(model["checks"].get(record.get("check_id"), {})):
                 errors.append("Cannot submit stale evidence; rerun required")
             if errors:
                 raise ValueError("; ".join(errors))
-            path = root / "reports/evidence" / (record["run_id"] + ".json")
+            path = report_path(root, version, Path("evidence") / (record["run_id"] + ".json"))
             save(path, record, exclusive=True)
             print(path)
             return 0
         artifact = file_ref(root, args.artifact) if args.artifact else None
-        record = template(root, args.check, artifact)
+        record = template(root, args.check, artifact, version)
         if args.action == "capture":
             command = args.command[1:] if args.command[:1] == ["--"] else args.command
             if not command or args.timeout <= 0:
                 raise ValueError("capture requires a command and positive timeout")
-            raw = root / "reports/raw" / (record["run_id"] + ".log")
+            raw = report_path(root, version, Path("raw") / (record["run_id"] + ".log"))
             raw.parent.mkdir(parents=True, exist_ok=True)
             with raw.open("xb") as stream:
                 try:
@@ -651,14 +747,12 @@ def main(argv=None):
                           status="FAIL" if code else "BLOCKED", actual="命令失败" if code else "命令退出 0，待核对断言及人工签核")
             if record["baseline"] != baseline(root)["sha256"]:
                 record.update(status="FAIL", actual="执行期间源码/规格发生变化，结果不可验收")
-            if record["status"] == "FAIL":
-                save(root / "reports/evidence" / (record["run_id"] + ".json"), record, exclusive=True)
-            else:
-                save(root / "reports/evidence" / (record["run_id"] + ".json"), record, exclusive=True)
+            save(report_path(root, version, Path("evidence") / (record["run_id"] + ".json")), record, exclusive=True)
+            if record["status"] != "FAIL":
                 # The reviewer submits a new attempt linked to the captured run, preserving history.
                 record["captured_run_id"] = record["run_id"]
                 record["run_id"] = uuid.uuid4().hex
-        path = root / "reports/drafts" / (record["run_id"] + ".json")
+        path = report_path(root, version, Path("drafts") / (record["run_id"] + ".json"))
         save(path, record, exclusive=True)
         print(path)
         return 1 if record["status"] == "FAIL" else 0

@@ -204,7 +204,7 @@ mod imp {
                     mouse_data: 0,
                     flags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                     time: 0,
-                    extra: 0,
+                    extra: crate::recording::SELF_INPUT,
                 },
             },
         };
@@ -224,7 +224,7 @@ mod imp {
         let input = Input {
             kind: INPUT_MOUSE,
             u: InputUnion {
-                mi: MouseInput { dx: 0, dy: 0, mouse_data: 0, flags: flag, time: 0, extra: 0 },
+                mi: MouseInput { dx: 0, dy: 0, mouse_data: 0, flags: flag, time: 0, extra: crate::recording::SELF_INPUT },
             },
         };
         send(&[input])
@@ -242,7 +242,7 @@ mod imp {
                     mouse_data: amount,
                     flags: MOUSEEVENTF_WHEEL,
                     time: 0,
-                    extra: 0,
+                    extra: crate::recording::SELF_INPUT,
                 },
             },
         };
@@ -261,7 +261,7 @@ mod imp {
         let input = Input {
             kind: INPUT_KEYBOARD,
             u: InputUnion {
-                ki: KeybdInput { vk, scan: 0, flags, time: 0, extra: 0 },
+                ki: KeybdInput { vk, scan: 0, flags, time: 0, extra: crate::recording::SELF_INPUT },
             },
         };
         send(&[input])
@@ -285,7 +285,7 @@ mod imp {
         Input {
             kind: INPUT_KEYBOARD,
             u: InputUnion {
-                ki: KeybdInput { vk: 0, scan, flags, time: 0, extra: 0 },
+                ki: KeybdInput { vk: 0, scan, flags, time: 0, extra: crate::recording::SELF_INPUT },
             },
         }
     }

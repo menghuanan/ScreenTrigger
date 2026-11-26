@@ -14,6 +14,7 @@ from ..storage.errors import StorageError
 from ..debug.service import BREAKPOINTS, STEPS, Breakpoints, DebugSession, fields
 from ..monitor.scheduler import DEFAULT_MONITOR, run_monitor, validate_references
 from ..types.runtime import MonitorConfig, validate_monitor_config, validate_run_config
+from ..vision.text_export import format_snapshot
 from .api import ScriptApi
 from .cancel import CancelFlag, CheckpointCancelled, ExecutionGate
 from .call_stack import arguments, call
@@ -69,6 +70,8 @@ class Root:
         self.effective_hz, self.throttled = None, False
         self.sample_no = None
         self.result, self.error, self.lease = None, None, None
+        self.export_enabled = False
+        self.output_token = None
         self.images, self.stack, self.logs = {}, [], deque(maxlen=1000)
         self.released_images = OrderedDict()
         self.api = ScriptApi(self)
@@ -133,7 +136,10 @@ class Root:
             if self.status != "paused":
                 raise StorageError("INVALID_STATE", "执行没有暂停")
         if self.config.binding_id or self.config.region or self.controller.capture:
-            self.api.screen.region()
+            region = self.api.screen.region()
+            if self.config.window_mode == "background":
+                frame = self.controller.capture.capture(region, self.gate.cancel, window_mode="background")
+                self.controller.capture.release_image(frame.image_ref.image_id)
         with self.changed:
             if self.status != "paused":
                 raise StorageError("INVALID_STATE", "执行状态已改变")
@@ -174,6 +180,10 @@ class Root:
             generation = self.pause_generation
             with self.api.screen.frame() as frame:
                 result = self.api.screen.target(target_id, frame.image_ref.image_id)
+                blocks = None
+                if self.monitor and self.export_enabled:
+                    model = self.settings.get("recognition", {}).get("ocr_model_id")
+                    blocks = self.api.screen.infer("recognize_text", frame.image_ref.image_id, model_id=model)["blocks"]
                 self.gate.checkpoint()
                 if generation != self.pause_generation:
                     raise StorageError("STALE_FRAME", "暂停前取得的识别结果已过期")
@@ -181,6 +191,8 @@ class Root:
                     snapshot = self.controller.input.window_snapshot(self.config.binding_id)
                     if snapshot["geometry_revision"] != frame.geometry_revision:
                         raise StorageError("STALE_FRAME", "识别期间窗口几何已变化")
+                if blocks is not None:
+                    self.export_blocks(blocks)
                 return result
         while True:
             try:
@@ -192,6 +204,24 @@ class Root:
                 elif code != "STALE_FRAME":
                     raise
                 self.gate.checkpoint()
+
+    def export_blocks(self, blocks):
+        if not self.export_enabled:
+            return
+        snapshot = format_snapshot(blocks)
+        if snapshot:
+            self.gate.checkpoint()
+            action = str(uuid4())
+            fields = dict(action_id=action, text=snapshot)
+            try:
+                reply = self.controller.text_output("commit", self.id, **fields)
+            except StorageError as exc:
+                if exc.code != "INTERNAL_ERROR" or "timeout_ms" not in exc.details:
+                    raise
+                self.gate.checkpoint()
+                reply = self.controller.text_output("commit", self.id, **fields)
+            self.controller.emit("text_exported", dict(execution_id=self.id, action_id=action,
+                                                      bytes_written=reply["bytes_written"]))
 
     def run_script(self):
         next_tick = self.active_time()
@@ -225,10 +255,17 @@ class Root:
         result, error, reason = None, None, None
         try:
             self.gate.checkpoint()
+            if self.output_token is not None:
+                self.controller.text_output("bind", self.id, output_token=self.output_token)
+                self.output_token = None
+                self.export_enabled = True
+                self.gate.checkpoint()
             if self.controller.input is not None:
                 region = self.config.region
                 ctx = {"display_id": self.config.display_id, "binding_id": self.config.binding_id,
                        "allow_exit": self.config.allow_exit, "region": None}
+                if self.config.window_mode == "background":
+                    ctx["window_mode"] = "background"
                 if region is not None:
                     # A wire Region permits only the anchor for its coordinate space.
                     ctx["region"] = {key: value for key, value in asdict(region).items() if value is not None}
@@ -249,6 +286,11 @@ class Root:
             error = error_data(exc)
             reason = "timeout" if error["code"] == "WAIT_TIMEOUT" else error["code"]
         finally:
+            if self.export_enabled:
+                try:
+                    self.controller.text_output("close", self.id)
+                except Exception as exc:
+                    error = error or error_data(exc)
             for image_id in self.images:
                 try:
                     self.controller.capture.release_image(image_id)
@@ -280,13 +322,15 @@ class Root:
 
 
 class ExecutionController:
-    def __init__(self, scripts, capture, vision, input_proxy, settings, emit, beep, archive=None):
+    def __init__(self, scripts, capture, vision, input_proxy, settings, emit, beep, archive=None,
+                 text_output=None):
         self.scripts, self.capture, self.vision, self.input = scripts, capture, vision, input_proxy
         self.settings, self.emit, self.beep = settings, emit, beep
         self.changed = threading.Condition(threading.RLock())
         self.roots, self.clients, self.history = {}, {}, OrderedDict()
         self.breakpoints = Breakpoints(self)
         self.archive = archive
+        self.text_output = text_output
         self.catalog_maintenance = False
 
     @contextmanager
@@ -307,12 +351,15 @@ class ExecutionController:
 
     def execute(self, params, *, monitor=False):
         raw = copy.deepcopy(params)
+        output_token = raw.pop("output_token", None)
+        if output_token is not None and (not isinstance(output_token, str) or not output_token):
+            raise StorageError("INVALID_PARAMS", "文字输出授权无效", field="output_token")
         client = raw.pop("client_run_id", None)
         if client is not None and (not isinstance(client, str) or not client):
             raise StorageError("INVALID_PARAMS", "client_run_id 必须为非空字符串", field="client_run_id")
         config = (validate_monitor_config(dict(DEFAULT_MONITOR, **raw)) if monitor else
                   validate_run_config(dict(DEFAULT_RUN, **raw)))
-        signature = json.dumps(asdict(config), ensure_ascii=False, sort_keys=True, allow_nan=False)
+        signature = json.dumps([asdict(config), output_token], ensure_ascii=False, sort_keys=True, allow_nan=False)
         def existing():
             if client not in self.clients:
                 return None
@@ -348,6 +395,10 @@ class ExecutionController:
                 raise StorageError("CONFLICT", "启动时目录已更改，请重新运行。")
             if len(self.roots) >= 3:
                 raise StorageError("BUSY", "已有三个活动根执行", retryable=True)
+            if output_token is not None:
+                if not self.text_output:
+                    raise StorageError("CAPABILITY_DENIED", "宿主未启用文字导出")
+                root.output_token = output_token
             self.roots[root.id] = root
             if client:
                 self.clients[client] = signature, root.id
@@ -436,6 +487,7 @@ class ExecutionController:
                     continue
                 if params.get("state") == "closed":
                     root.fail(StorageError("WINDOW_NOT_FOUND", "绑定窗口已关闭"))
-                elif root.status in ("running", "starting") and params.get("state") in ("minimized", "foreground_lost"):
+                elif root.status in ("running", "starting") and (params.get("state") == "minimized" or
+                        (params.get("state") == "foreground_lost" and root.config.window_mode == "foreground")):
                     root.pause("window_unavailable")
         return {"ok": True}

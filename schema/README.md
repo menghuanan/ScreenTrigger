@@ -1,6 +1,10 @@
 # schema/ — 三端协议一致性唯一来源
 
+TASK-031 的 `anchoredPoint` 使用 [共享坐标向量](anchor-cases.json)。Python 类型、Rust 输入闸门和 C# 契约测试读取相同的录制点、当前物理矩形和精确预期。显示器覆盖与派发前的动态窗口判断由宿主核验。
+
 ## 文件
+
+目标检测扩展的独立 v1 交换格式见[模型、请求、结果声明](object-detection-v1.schema.json)与[正负向量](object-detection-v1.cases.json)。使用 Python 标准库运行 `python -m unittest backend.tests.test_object_detection_contract -v`。已安装能力由应用自己的 hello 回执披露。
 
 | 文件 | 用途 |
 |---|---|

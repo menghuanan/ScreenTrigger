@@ -24,12 +24,14 @@ class ScreenApi:
         self.root = root
         self.capture = root.controller.capture
         self.vision = root.controller.vision
+        self.capture_options = ({"window_mode": "background"}
+                                if getattr(root.config, "window_mode", "foreground") == "background" else {})
 
     def region(self, value=None):
         if self.capture is None:
             raise StorageError("CAPABILITY_DENIED", "捕获服务不可用")
         config = self.root.config
-        area = self.capture.run_region(config.display_id, config.binding_id)
+        area = self.capture.run_region(config.display_id, config.binding_id, **self.capture_options)
         for narrower in (config.region, validate_region(value) if value is not None else None):
             if narrower is None:
                 continue
@@ -50,7 +52,7 @@ class ScreenApi:
     def capture_frame(self, region=None):
         generation = self.root.pause_generation
         area = self.region(region)
-        frame = self.capture.capture(area, self.root.gate)
+        frame = self.capture.capture(area, self.root.gate, **self.capture_options)
         if generation != self.root.pause_generation:
             self.capture.release_image(frame.image_ref.image_id)
             raise Resample()
@@ -138,17 +140,17 @@ class ScreenApi:
     def get_pixel_color(self, x, y):
         from . import integer
         area = self.region()
-        return self.capture.capture_point(integer(x, "x"), integer(y, "y"), area, self.root.gate)
+        return self.capture.capture_point(integer(x, "x"), integer(y, "y"), area, self.root.gate, **self.capture_options)
 
     @contextmanager
     def ocr_image(self, image, region):
         if image is None:
             with self.frame(region) as frame:
-                yield frame.image_ref.image_id, frame.space, frame.origin.x, frame.origin.y
+                yield frame.image_ref.image_id, frame.space, frame.origin.x, frame.origin.y, frame.geometry_revision
             return
         image_id = self.owned(image)
         if region is None:
-            yield image_id, "image_pixel", 0, 0
+            yield image_id, "image_pixel", 0, 0, None
             return
         roi = validate_region(region)
         stored = self.capture.image_store.get(image_id)
@@ -162,7 +164,7 @@ class ScreenApi:
             rows.append(pixels[start:start + roi.width * 3])
         ref = self.capture.image_store.put(RawImage(roi.width, roi.height, b"".join(rows)), "png")
         try:
-            yield ref.image_id, "image_pixel", roi.x, roi.y
+            yield ref.image_id, "image_pixel", roi.x, roi.y, None
         finally:
             self.capture.release_image(ref.image_id)
 
@@ -171,8 +173,15 @@ class ScreenApi:
             model_id = self.root.settings.get("recognition", {}).get("ocr_model_id")
         if model_id is not None and (not isinstance(model_id, str) or not model_id):
             fail("model_id", "OCR 模型 ID 无效")
-        with self.ocr_image(image, region) as (image_id, space, x, y):
+        with self.ocr_image(image, region) as (image_id, space, x, y, revision):
             blocks = self.infer("recognize_text", image_id, model_id=model_id)["blocks"]
+            if getattr(self.root, "export_enabled", False):
+                binding = self.root.config.binding_id
+                if binding and revision is not None:
+                    snapshot = self.root.controller.input.window_snapshot(binding)
+                    if snapshot["geometry_revision"] != revision:
+                        raise Resample()
+                self.root.export_blocks(blocks)
             return [dict(block, space=space, polygon=[{"x": p["x"] + x, "y": p["y"] + y}
                          for p in block["polygon"]]) for block in blocks]
 

@@ -146,10 +146,12 @@ pub struct WindowIdentity {
 /// 输入动作（03 逐字；带 `kind` 的对象，7 种）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputAction {
+    WithPolicy { action: Box<InputAction>, policy: super::policy::ActionPolicy },
     /// `{x,y,duration_ms}`。
     Move { x: i64, y: i64, duration_ms: u32 },
     /// `{x,y,button,clicks}`。
     Click { x: i64, y: i64, button: MouseButton, clicks: u32 },
+    ClickAnchor { anchor: super::anchor::AnchoredPoint, button: MouseButton, clicks: u32 },
     /// `{from:{x,y},to:{x,y},duration_ms}`。
     Drag { from: Point, to: Point, duration_ms: u32 },
     /// `{delta}`。
@@ -166,8 +168,10 @@ impl InputAction {
     /// 动作 kind 标签（日志用；不记录参数全文）。
     pub fn kind_str(&self) -> &'static str {
         match self {
+            InputAction::WithPolicy { action, .. } => action.kind_str(),
             InputAction::Move { .. } => "move",
             InputAction::Click { .. } => "click",
+            InputAction::ClickAnchor { .. } => "click_anchor",
             InputAction::Drag { .. } => "drag",
             InputAction::Scroll { .. } => "scroll",
             InputAction::Key { .. } => "key",
@@ -227,11 +231,12 @@ pub struct InputContext {
     pub display_id: Option<String>,
     /// 是否允许输入离开区域（02：只影响输入，不扩大识别区）。
     pub allow_exit: bool,
+    pub background: bool,
 }
 
 impl Default for InputContext {
     fn default() -> Self {
-        InputContext { region: None, binding_id: None, display_id: None, allow_exit: false }
+        InputContext { region: None, binding_id: None, display_id: None, allow_exit: false, background: false }
     }
 }
 
@@ -248,7 +253,7 @@ impl InputContext {
             .as_object()
             .ok_or_else(|| IpcError::invalid_params("context 必须为对象"))?;
         for key in obj.keys() {
-            if !matches!(key.as_str(), "region" | "binding_id" | "display_id" | "allow_exit") {
+            if !matches!(key.as_str(), "region" | "binding_id" | "display_id" | "allow_exit" | "window_mode") {
                 return Err(IpcError::invalid_params(&format!("context.{key}")));
             }
         }
@@ -269,7 +274,13 @@ impl InputContext {
             Some(Value::Bool(b)) => *b,
             Some(_) => return Err(IpcError::invalid_params("context.allow_exit 必须为布尔")),
         };
-        Ok(InputContext { region, binding_id, display_id, allow_exit })
+        let background = match obj.get("window_mode") {
+            None => false,
+            Some(value) if value.as_str() == Some("foreground") => false,
+            Some(value) if value.as_str() == Some("background") && binding_id.is_some() && display_id.is_none() => true,
+            _ => return Err(IpcError::invalid_params("context.window_mode")),
+        };
+        Ok(InputContext { region, binding_id, display_id, allow_exit, background })
     }
 }
 
@@ -318,6 +329,7 @@ pub type InputError = PortError;
 /// 采用**切片级原语**而非“整动作一次派发”，以满足 07§5 的“长移动/拖拽逐片检查
 /// 取消”（切片编排在 `dispatch.rs`，端口保持无状态）。
 pub trait InputPort: Send + Sync {
+    fn authorize(&self, _action: &InputAction) -> Result<(), IpcError> { Ok(()) }
     /// 绝对移动光标到 `(x,y)`（`screen_physical`；归一化在端口内）。
     fn move_to(&self, x: i64, y: i64) -> Result<(), PortError>;
 
@@ -353,6 +365,9 @@ pub trait PointerPort: Send {
 
 /// 区域/窗口/几何复核端口（TASK-018 提供权威；TASK-017 提供生产实现，见 `wiring.rs`）。
 pub trait RegionResolutionPort: Send {
+    fn anchor_scope(&self, _: super::anchor::Scope, _: &InputContext) -> Result<super::anchor::ScopeSnapshot, IpcError> {
+        Err(IpcError::region_limit_violation("当前范围不可用"))
+    }
     /// 单点判定：须落在实际显示器集合，且（严格模式）落在区域矩形内。
     fn check_point(&self, x: i64, y: i64, ctx: &InputContext) -> Result<(), IpcError>;
 

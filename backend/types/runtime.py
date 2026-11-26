@@ -73,6 +73,9 @@ def _validate_scope_fields(data: Dict[str, Any]) -> Tuple[
     """
     display_id = _validate_optional_str(data, "display_id", "display_id")
     binding_id = _validate_optional_str(data, "binding_id", "binding_id")
+    mode = data.get("window_mode", "foreground")
+    if mode not in ("foreground", "background") or (mode == "background" and not binding_id):
+        fail("INVALID_PARAMS", "window_mode", "后台兼容模式仅允许已绑定窗口")
     if display_id is not None and binding_id is not None:
         fail("INVALID_PARAMS", "binding_id",
              "display_id 与 binding_id 互斥，不得同时非 null")
@@ -115,6 +118,7 @@ class RunConfig:
     allow_exit: bool
     frequency_hz: float
     total_timeout_ms: int
+    window_mode: str = "foreground"
 
 
 def _validate_mode_counters(data: Dict[str, Any], mode: str) -> Tuple[
@@ -153,7 +157,7 @@ def validate_run_config(value: Any) -> RunConfig:
         data,
         ("script_id", "args", "mode", "iterations", "stop_target_id", "debug",
          "region", "display_id", "binding_id", "allow_exit", "frequency_hz",
-         "total_timeout_ms"),
+         "total_timeout_ms", "window_mode"),
         "run_config",
     )
     mode = enum_field(data, "mode", "mode", RUN_MODES)
@@ -163,6 +167,7 @@ def validate_run_config(value: Any) -> RunConfig:
         fail("INVALID_PARAMS", "args", "args 必须为对象")
     region, display_id, binding_id = _validate_scope_fields(data)
     return RunConfig(
+        window_mode=data.get("window_mode", "foreground"),
         script_id=str_field(data, "script_id", "script_id"),
         args=args,
         mode=mode,
@@ -208,6 +213,7 @@ class MonitorConfig:
     retry_delay_ms: int
     trigger: str
     cooldown_ms: int
+    window_mode: str = "foreground"
 
 
 def _validate_args_object(data: Dict[str, Any], name: str) -> Dict[str, Any]:
@@ -225,7 +231,7 @@ def validate_monitor_config(value: Any) -> MonitorConfig:
          "frequency_hz", "total_timeout_ms", "debug", "repeat", "wait_timeout_ms",
          "on_match", "action_script_id", "action_args", "on_timeout",
          "timeout_script_id", "timeout_args", "max_retries", "retry_delay_ms",
-         "trigger", "cooldown_ms"),
+         "trigger", "cooldown_ms", "window_mode"),
         "monitor_config",
     )
     on_match = enum_field(data, "on_match", "on_match", ON_MATCH_ACTIONS)
@@ -269,6 +275,7 @@ def validate_monitor_config(value: Any) -> MonitorConfig:
 
     region, display_id, binding_id = _validate_scope_fields(data)
     return MonitorConfig(
+        window_mode=data.get("window_mode", "foreground"),
         target_id=str_field(data, "target_id", "target_id"),
         region=region,
         display_id=display_id,

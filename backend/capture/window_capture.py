@@ -41,6 +41,8 @@ class WindowSnapshot:
     visible: bool
     minimized: bool
     foreground: bool
+    handle: int | None = None
+    pid: int | None = None
 
 
 @runtime_checkable
@@ -81,5 +83,7 @@ class HostWindowProvider:
         data = response.data
         if not isinstance(data, dict) or data.get("binding", {}).get("binding_id") != binding_id:
             raise CaptureError("PROTOCOL_ERROR", "窗口快照与请求的绑定不一致")
+        binding = data["binding"]
+        handle = int(binding["handle"], 16) if binding.get("handle") else None
         return WindowSnapshot(binding_id, Rect(**data["client_rect"]), data["geometry_revision"],
-                              data["visible"], data["minimized"], data["foreground"])
+                              data["visible"], data["minimized"], data["foreground"], handle, binding.get("pid"))

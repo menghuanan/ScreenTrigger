@@ -1,5 +1,13 @@
 # Lua 脚本 API v1
 
+## 从脚本草稿取点（TASK-032）
+
+脚本页允许手填物理 X、Y，或从指定显示器取点后回填。点击“插入 click_at”将草稿点写入源码的当前选区。例如物理点 (300,400) 生成 `click_at(300, 400)`，仍使用已有运行租约和前台输入边界。
+
+## 按本次运行范围定位（TASK-031）
+
+`click_anchor(anchor,button?,clicks?)` 在本次运行的实际范围点击。例：`click_anchor({version=1,scope='window',strategy='relative',reference_width=101,reference_height=51,x=50,y=25})`。`offset` 保持局部物理偏移，`relative` 按各轴比例定位。窗口重新绑定或移动后使用当前客户区几何。旧 `click_at(x,y)` 始终使用绝对物理坐标。
+
 运行时目标是 Lua 5.4。WinUI 3 编辑器和调试器经已注册命令保存源码、读取诊断及暂停快照，用户脚本通过本页的宿主 API 操作。脚本只引用已保存 script_id/target_id，不传任意本地路径。Lua 秒数在宿主边界转为整数毫秒（向上取整）；物理像素和数据类型见 [02](02-数据结构.md)。
 
 ## 环境、返回和错误
@@ -49,7 +57,11 @@ Match 含 target_id、sample_no、space、bbox、center、confidence、geometry_
 
 `click_target` 不复用 wait_for_target 的旧坐标；中间窗口移动会作废旧帧。直接 `click_at` 使用调用者提供的数值，只做当前几何与边界校验，不负责证明内容仍是原目标；面向目标操作建议用 click_target。当 offset 后点不合法时拒绝，不裁剪。
 
+当前脚本通过已有 `find_target` 使用已装配的目标识别能力。目标检测扩展 v1 在 Provider 边界验证类别、源帧和取消状态。本版 Lua 没有可调用的 YOLO 推理函数。[识别能力](03-IPC协议.md#目标检测扩展契约-v1)
+
 ## 图像与 OCR
+
+用户在运行设置选定 TXT 后，`ocr` 对本次成功识别的 TextBlock 排版并写入；空数组保留文件。区域监控直接使用当次采样保留的同一帧识别文字。识别事件有相同内容时按各自的采样次数分别写入。路径、授权令牌和任意文件写入函数不暴露给 Lua。
 
 | 函数 | 参数/默认 | 返回/语义 |
 |---|---|---|
@@ -139,3 +151,16 @@ return {clicked = click_target(hit.target_id)}
 调试器在宿主中复制变量快照并按深度、总项数和字符串长度截断；相同 table 的后续引用返回 reference_id。调试操作和历史管理通过桌面宿主提供。
 
 备份与恢复由设置页或离线管理命令调用。Lua 的能力表保持封闭，活动执行期间宿主拒绝切换目录快照。
+
+后续自动化版本中，ocr 的 model_id 继续指识别端。相应管线首次使用时加载；已移除的模型引用保留原值并返回 MODEL_UNAVAILABLE。脚本未获得模型介质目录访问或安装权限。
+## ORB 目标
+
+将目标的锚点叶设为 `feature_match` 后使用既有 `find_target`。命中时返回当前帧的最佳单个纹理实例；无合格实例时沿用未命中语义。`click_target` 继续执行几何修订、区域、租约与停止检查。
+## 单动作策略
+
+在脚本编辑器保存动作策略作为该脚本默认。调用 `action_with_policy(options, api_name, ...)` 覆盖一次已注册的输入动作，包括 `click_anchor` 和 `click_target`。例如 `action_with_policy({version=1,curve=false,offset={x={0,0},y={0,1}}},"click_at",300,400)`。未提供的项继承脚本默认。曲线用于移动、点击、拖动，偏移仅用于点击，延迟作用于全部输入动作；脚本级选项只作用于适用的动作，显式的非法动作覆盖在派发前报错。
+
+## 后台读取绑定客户区
+
+在运行设置中绑定窗口并选择后台读取后，`capture_screen`、`get_pixel_color`、OCR 和目标监控从所选窗口的客户区取像。客户区 ROI 继续使用绑定坐标，`get_pixel_color(x,y)` 继续接收屏幕物理坐标。运行使用启动时选定的模式。最小化会暂停执行，还原后由用户恢复。
+显式选择绑定窗口后台模式时，点击、左拖、滚轮、常规按键和组合键沿用现有 Lua 调用。鼠标位置及无参数位置查询来自该租约的虚拟指针。后台动作仅对目标声明并支持的消息类型派发，保留焦点和真实指针。

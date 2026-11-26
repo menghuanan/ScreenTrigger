@@ -87,6 +87,9 @@ class InputProxy:
         duration = action.get("duration_ms", 0)
         if action.get("kind") == "text":
             duration = action.get("interval_ms", 0) * len(action.get("text", ""))
+        delay = action.get("policy", {}).get("delay_ms")
+        if isinstance(delay, list):
+            duration += delay[1]
         timeout_s = 5 + duration / 1000 if isinstance(duration, (int, float)) else 5
         if remaining_ms is not None:
             timeout_s = min(timeout_s, max(.001, remaining_ms / 1000))
@@ -109,8 +112,9 @@ class InputProxy:
         """窗口几何快照转调（TASK-018 落地实现；本任务接口就位）。"""
         return self._call("window_snapshot", {"binding_id": binding_id})
 
-    def query_pointer(self) -> Dict[str, Any]:
-        return self._call("query_pointer", {})
+    def query_pointer(self, execution_id=None, lease_id=None) -> Dict[str, Any]:
+        params = {} if execution_id is None and lease_id is None else {"execution_id": execution_id, "lease_id": lease_id}
+        return self._call("query_pointer", params)
 
     # -- 便捷：典型动作 ------------------------------------------------------
 

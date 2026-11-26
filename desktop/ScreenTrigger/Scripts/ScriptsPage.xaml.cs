@@ -14,15 +14,79 @@ public sealed partial class ScriptsPage : UserControl, IWorkspaceDraft
     private int offset;
     private string original = "";
     private string savedSource = "";
+    private string? pickId;
+    private IDisposable? pickSubscription;
+    private bool startingPick;
+    private EngineEvent? earlyPickResult;
 
     internal ScriptsPage(HostClient host)
     {
         InitializeComponent(); this.host = host; commands = new(host, this, Feedback);
         original = Snapshot();
         Loaded += Initialize;
+        Loaded += (_, _) => pickSubscription ??= host.Events.Subscribe(OnPointEvent);
+        Unloaded += (_, _) => { pickSubscription?.Dispose(); pickSubscription = null; };
+    }
+
+    private async void StartPoint(object sender, RoutedEventArgs args) => await commands.Run(async () =>
+    {
+        var data = await commands.Call("get_bound_window", new { });
+        string? bindingId = data.GetProperty("binding").ValueKind == JsonValueKind.Object
+            ? data.GetProperty("binding").GetProperty("binding_id").GetString() : null;
+        startingPick = true;
+        try
+        {
+            var pick = await commands.Call("start_point_pick", new {
+                binding_id = bindingId, display_id = (PointDisplay.SelectedItem as CatalogItem)?.Id });
+            pickId = pick.GetProperty("pick_id").GetString();
+            if (earlyPickResult != null) OnPointEvent(earlyPickResult);
+        }
+        finally { startingPick = false; earlyPickResult = null; }
+    });
+
+    private void InsertPoint(object sender, RoutedEventArgs args)
+    {
+        if (!int.TryParse(PointX.Text, out int x) || !int.TryParse(PointY.Text, out int y))
+        { Feedback.Text = "X 和 Y 须为物理像素整数。"; return; }
+        Source.SelectedText = $"click_at({x}, {y})";
+        Source.Focus(FocusState.Programmatic);
+    }
+
+    private void OnPointEvent(EngineEvent message)
+    {
+        if (!message.Payload.TryGetProperty("pick_id", out var id) ||
+            message.Name is not ("point_pick_completed" or "point_pick_cancelled")) return;
+        if (pickId == null && startingPick) { earlyPickResult = message; return; }
+        if (pickId == null || id.GetString() != pickId) return;
+        if (message.Name == "point_pick_completed")
+        {
+            var point = message.Payload.GetProperty("point");
+            PointX.Text = point.GetProperty("x").GetRawText();
+            PointY.Text = point.GetProperty("y").GetRawText();
+            Feedback.Text = $"屏幕物理点 ({PointX.Text}, {PointY.Text}) · {message.Payload.GetProperty("display_id").GetString()}";
+            if (message.Payload.TryGetProperty("client_point", out var client))
+                Feedback.Text += $" · 客户区 ({client.GetProperty("x")}, {client.GetProperty("y")}) · 几何修订 {message.Payload.GetProperty("geometry_revision")}";
+        }
+        else if (message.Name == "point_pick_cancelled")
+            Feedback.Text = $"已取消取点 · {message.Payload.GetProperty("reason").GetString()}";
+        else return;
+        pickId = null;
+        PickPoint.Focus(FocusState.Programmatic);
     }
     private async void Initialize(object sender, RoutedEventArgs e)
-    { Loaded -= Initialize; await commands.Run(List); }
+    {
+        Loaded -= Initialize;
+        await commands.Run(async () =>
+        {
+            await List();
+            var data = await commands.Call("get_display_list", new { });
+            List<CatalogItem> displays = [new(null, "主窗口所在显示器", default)];
+            foreach (var d in data.GetProperty("displays").EnumerateArray())
+                displays.Add(new(d.GetProperty("id").GetString(), d.GetProperty("id").GetString()!, d));
+            PointDisplay.ItemsSource = displays;
+            PointDisplay.SelectedIndex = 0;
+        });
+    }
     private async Task List()
     {
         var data = await commands.Call("list_scripts", new { offset, limit = 50 });
@@ -33,7 +97,7 @@ public sealed partial class ScriptsPage : UserControl, IWorkspaceDraft
     }
     private static CatalogItem Item(JsonElement script) =>
         new(script.GetProperty("id").GetString(), script.GetProperty("name").GetString()!, script);
-    private string Snapshot() => JsonSerializer.Serialize(new[] { ScriptName.Text, Source.Text, Parameters.Text });
+    private string Snapshot() => JsonSerializer.Serialize(new[] { ScriptName.Text, Source.Text, Parameters.Text, Policy.Text });
     bool IWorkspaceDraft.HasChanges => original != Snapshot();
     Task IWorkspaceDraft.WhenIdle => commands.WhenIdle;
     Task<bool> IWorkspaceDraft.ResolveChanges() => commands.Guard(CanReplace);
@@ -47,6 +111,7 @@ public sealed partial class ScriptsPage : UserControl, IWorkspaceDraft
         Source.Text = source;
         savedSource = source;
         Parameters.Text = item?.Document.GetProperty("parameters").GetRawText() ?? "[]";
+        Policy.Text = item != null && item.Document.TryGetProperty("action_policy", out var policy) ? policy.GetRawText() : "";
         original = Snapshot();
     }
 
@@ -65,6 +130,8 @@ public sealed partial class ScriptsPage : UserControl, IWorkspaceDraft
     {
         var fields = new Dictionary<string, object?> { ["name"] = ScriptName.Text, ["source"] = Source.Text,
             ["parameters"] = JsonSerializer.Deserialize<JsonElement>(Parameters.Text) };
+        if (!string.IsNullOrWhiteSpace(Policy.Text)) fields["action_policy"] = JsonSerializer.Deserialize<JsonElement>(Policy.Text);
+        else if (edited != null && edited.Document.TryGetProperty("action_policy", out _)) fields["action_policy"] = new { version = 1 };
         if (edited != null) { fields["script_id"] = edited.Id; fields["expected_revision"] = edited.Revision; }
         var saved = await commands.Call("save_script", fields);
         Edit(Item(saved.GetProperty("script")), Source.Text);

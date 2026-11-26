@@ -8,6 +8,7 @@ import sys
 from urllib.parse import unquote
 
 from check_model import build, ids
+from acceptance_version import AUTOMATION, FIRST, VERSIONS, catalog
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,7 +32,7 @@ def anchors(text):
     return result
 
 
-def validate(root=ROOT):
+def validate(root=ROOT, version=FIRST):
     errors = []
     documents = [root / "README.md", root / "AGENTS.md", *sorted((root / "docs").rglob("*.md"))]
     # The immutable v1 originals keep their historical links and IDs. Validate the
@@ -40,12 +41,21 @@ def validate(root=ROOT):
     texts = {p: p.read_text(encoding="utf-8-sig") for p in documents}
     try:
         model = build(root)
-    except (ValueError, KeyError, IndexError) as exc:
+        extension = None
+        if version == AUTOMATION or (root / "docs/agent/自动化扩展-开发入口.md").is_file():
+            extension = catalog(root, AUTOMATION)
+    except (OSError, ValueError, KeyError, IndexError) as exc:
         return {"status": "FAIL", "errors": [f"Cannot parse check catalogue: {exc}"]}
     known = set(model["tasks"]) | set(model["tests"]) | set(model["checks"])
+    if extension is not None:
+        known.update(extension["tasks"])
+        known.update(extension["tests"])
+        known.update(extension["checks"])
     known |= {f"{p}{i:02}" for p, count in (("A", 10), ("U", 19), ("S", 9), ("D", 12), ("R", 11)) for i in range(1, count + 1)}
     counts = {"documents": len(documents), "links": 0, "json_examples": 0,
               "archive_hashes": 0, "checks": len(model["checks"])}
+    if version == AUTOMATION:
+        counts.update(checks=len(extension["checks"]), tasks=len(extension["tasks"]), tests=len(extension["tests"]))
     for path, text in texts.items():
         rel = path.relative_to(root).as_posix()
         for obsolete in re.findall(r"\bT(?:\d{2}|xx)\b", text):
@@ -149,8 +159,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--version", choices=VERSIONS, default=FIRST)
     args = parser.parse_args()
-    result = validate(args.root.resolve())
+    result = validate(args.root.resolve(), args.version)
     payload = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

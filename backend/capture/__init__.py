@@ -97,6 +97,7 @@ def build_default_capture_service(
     """
     # 延迟 import：避免在非 Windows 环境 import 本包即失败。
     from .gdi import GdiCaptureBackend, GdiDisplayEnumerator, ensure_per_monitor_v2
+    from .background import WindowPaintBackend
 
     ensure_per_monitor_v2()
     store = image_store if image_store is not None else SessionImageStore(
@@ -104,6 +105,7 @@ def build_default_capture_service(
     )
     return CaptureService(
         backend=GdiCaptureBackend(),
+        background=WindowPaintBackend(),
         display_enumerator=GdiDisplayEnumerator(),
         window_provider=NullWindowProvider(),
         image_store=store,

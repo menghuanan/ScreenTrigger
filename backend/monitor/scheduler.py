@@ -46,6 +46,7 @@ def run_monitor(root, sample):
     retries = 0
     match_count, last_match = 0, None
     previous_sample = None
+    next_action = 0.0
     last_logged_found = None
     while True:
         root.wait(max(0, min(next_tick, deadline) - root.active_time()))
@@ -67,7 +68,7 @@ def run_monitor(root, sample):
                 previous_sample = now
                 root.controller.emit("recognition_stats", dict(execution_id=root.id, effective_hz=root.effective_hz,
                                      throttled=root.throttled, last_found=found))
-                trigger = found and (config.trigger == "every_match" or not previous_found)
+                trigger = now >= next_action and found and (config.trigger == "every_match" or not previous_found)
                 previous_found = found
                 if found:
                     retries = 0
@@ -85,7 +86,10 @@ def run_monitor(root, sample):
                     root.gate.checkpoint()
                     if not config.repeat:
                         return dict(match_count=match_count, last_match=last_match), "target_detected"
-                    root.wait(config.cooldown_ms / 1000)
+                    if getattr(root, "export_enabled", False):
+                        next_action = root.active_time() + config.cooldown_ms / 1000
+                    else:
+                        root.wait(config.cooldown_ms / 1000)
                     deadline = root.active_time() + timeout if timeout else math.inf
                 period = 1 / root.frequency
                 steps = max(1, math.ceil((root.active_time() - next_tick) / period - 1e-9))

@@ -11,6 +11,7 @@ use super::model::{InputPort, Key, MouseButton};
 /// 持有账本（按 execution_id 分区）。
 #[derive(Default)]
 pub struct Ledger {
+    bound_ports: HashMap<String, std::sync::Arc<dyn InputPort>>,
     keys: HashMap<String, Vec<Key>>,
     buttons: HashMap<String, Vec<MouseButton>>,
 }
@@ -18,7 +19,15 @@ pub struct Ledger {
 impl Ledger {
     /// 新建空账本。
     pub fn new() -> Self {
-        Ledger { keys: HashMap::new(), buttons: HashMap::new() }
+        Self::default()
+    }
+
+    pub fn register_bound(&mut self, execution: &str, port: std::sync::Arc<dyn InputPort>) {
+        self.bound_ports.insert(execution.to_string(),port);
+    }
+
+    pub fn forget_bound(&mut self, execution: &str) {
+        self.bound_ports.remove(execution);
     }
 
     pub fn owns_key(&self, execution: &str, key: &Key) -> bool {
@@ -88,7 +97,8 @@ impl Ledger {
         let keys = self.keys.remove(execution_id).unwrap_or_default();
         let count = keys.len() + buttons.len();
         if count > 0 {
-            input.release_keys(execution_id, &keys, &buttons);
+            self.bound_ports.get(execution_id).map(|p| p.as_ref()).unwrap_or(input)
+                .release_keys(execution_id, &keys, &buttons);
         }
         count
     }

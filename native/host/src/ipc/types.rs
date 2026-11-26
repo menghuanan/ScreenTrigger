@@ -237,21 +237,26 @@ const FRAMEWORK_COMMANDS: [&str; 9] = [
 /// `backend/capture/commands.py` + `backend/image/commands.py`。按 03「其余命令路由
 /// 给 Python」转发 Python（此前误置 HostDenied，导致 import_image / capture_region /
 /// get_image_preview 等经 UI 的端到端路径返回 CAPABILITY_DENIED——TASK-008 修正）。
-const HOST_PYTHON_COMMANDS: [&str; 8] = [
+const HOST_PYTHON_COMMANDS: [&str; 9] = [
     "import_image",
     "crop_image",
     "get_display_list",
     "capture_region",
     "capture_full_screen",
     "capture_window",
+    "get_window_capture_capabilities",
     "release_image",
     "get_image_preview",
 ];
 
 /// **Rust 本地宿主能力**（TASK-008 框选，03：UI 发给宿主的 start_selection_mode 类
 /// 命令由 Rust 处理）：经 [`super::HostCommandHandler`] 在 Rust 内处理并回同样信封。
-const HOST_HANDLED_COMMANDS: [&str; 3] = [
+const HOST_HANDLED_COMMANDS: [&str; 12] = [
+    "start_recording", "get_recording_state", "pause_recording", "resume_recording", "finish_recording", "cancel_recording",
     "start_selection_mode",
+    "start_point_pick",
+    "confirm_point_pick",
+    "cancel_point_pick",
     "confirm_selection",
     "stop_selection_mode",
 ];
@@ -259,7 +264,8 @@ const HOST_HANDLED_COMMANDS: [&str; 3] = [
 /// 宿主窗口族命令（03 归属 Rust/后续任务 TASK-018，骨架期 CAPABILITY_DENIED）。
 /// TASK-008：18→15（config 三命令移出，TASK-006）→ 再移 7 条 Python 实现命令与
 /// 3 条框选命令 → 余 5 条窗口命令。
-const HOST_COMMANDS: [&str; 5] = [
+const HOST_COMMANDS: [&str; 6] = [
+    "get_window_input_capabilities",
     "list_windows",
     "get_window_info",
     "bind_window",
@@ -269,7 +275,10 @@ const HOST_COMMANDS: [&str; 5] = [
 
 /// 引擎业务命令（§5.2 第三类；转发 Python → 骨架期 UNKNOWN_COMMAND，
 /// 业务 handler 属 M03–M07）。
-const ENGINE_COMMANDS: [&str; 44] = [
+const ENGINE_COMMANDS: [&str; 47] = [
+    "list_ocr_models",
+    "preview_ocr_model_change",
+    "apply_ocr_model_change",
     // 识别测试（异步 job）。TASK-013：6 条识别命令由 Python 侧 register_vision_commands
     // 注册（job result：match_*/detect_color={matches,truncated}（Q4/02）；recognize_text={blocks}；
     // 条件树两命令=RecognitionResult）。无命令集合变更——total==62 断言不变。
@@ -450,15 +459,13 @@ mod tests {
 
     #[test]
     fn routing_table_covers_full_command_catalog() {
-        // 03 命令目录 69 条 = 框架 9（含 config 三命令，TASK-006 §2.3）
-        //   + 宿主-Python 8（含本地图像裁剪）+ 框选 3（TASK-008 Rust 处理）
-        //   + 窗口 5（TASK-018 前 HostDenied）+ 引擎 44；无重叠、无遗漏
+        // 03 命令目录：框架、Python 资源、Rust 框选/取点/录制、窗口和业务命令。
         let total = FRAMEWORK_COMMANDS.len()
             + HOST_PYTHON_COMMANDS.len()
             + HOST_HANDLED_COMMANDS.len()
             + HOST_COMMANDS.len()
             + ENGINE_COMMANDS.len();
-        assert_eq!(total, 69);
+        assert_eq!(total, 83);
         for cmd in ["list_execution_history", "clear_execution_logs", "list_catalog_backups",
                     "create_catalog_backup", "preview_catalog_restore", "restore_catalog_backup"] {
             assert!(ENGINE_COMMANDS.contains(&cmd));

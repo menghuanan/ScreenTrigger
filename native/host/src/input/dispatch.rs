@@ -32,6 +32,7 @@ fn input_failed(err: PortError) -> IpcError {
 
 /// 派发流水线：持有副作用端口与 `action_id` 去重表。
 pub struct DispatchPipeline {
+    pub(super) background: bool,
     input: std::sync::Arc<dyn InputPort>,
     pointer: Box<dyn PointerPort>,
     region: Box<dyn RegionResolutionPort>,
@@ -49,6 +50,7 @@ impl DispatchPipeline {
         clock: Box<dyn ClockPort>,
     ) -> Self {
         DispatchPipeline {
+            background: false,
             input: input.into(),
             pointer,
             region,
@@ -107,6 +109,9 @@ impl DispatchPipeline {
             }
         };
 
+        if context.background != self.background {
+            return Err(IpcError::capability_denied("输入端口与租约的窗口模式不符"));
+        }
         if let Some(result) = self
             .dedup
             .get(lease_id)
@@ -114,6 +119,10 @@ impl DispatchPipeline {
         {
             return result.clone();
         }
+        let (action, policy) = match action {
+            InputAction::WithPolicy { action, policy } => (action.as_ref(), policy.sample(action_id)),
+            bare => (bare, Default::default()),
+        };
         let action_context = CheckedAction {
             pipeline: self,
             gate,
@@ -121,8 +130,10 @@ impl DispatchPipeline {
             context: &context,
             revision: geometry_revision,
             submitted: Cell::new(false),
+            anchor: Default::default(),
+            policy,
         };
-        let result = action_context.execute(action, ledger);
+        let result = self.input.authorize(action).and_then(|_| action_context.execute(action, ledger));
         let submitted = action_context.submitted.get();
         let result = match result {
             Ok(()) => Ok(ActionAck::dispatched(action_id)),
@@ -133,7 +144,9 @@ impl DispatchPipeline {
                     .release_owned(execution_id, self.input.as_ref());
                 if submitted && err.code != "INVALID_STATE" {
                     Err(IpcError::input_failed(&err.message)
-                        .with_details(serde_json::json!({"partially_dispatched":true})))
+                        .with_details(if context.background {
+                            serde_json::json!({"partially_dispatched":true,"delivery_unknown":true})
+                        } else {serde_json::json!({"partially_dispatched":true})}))
                 } else {
                     Err(err)
                 }
@@ -172,6 +185,8 @@ struct CheckedAction<'a> {
     context: &'a InputContext,
     revision: i64,
     submitted: Cell<bool>,
+    anchor: std::cell::RefCell<Option<(super::anchor::Scope, super::anchor::ScopeSnapshot)>>,
+    policy: super::policy::SampledPolicy,
 }
 
 impl CheckedAction<'_> {
@@ -180,11 +195,16 @@ impl CheckedAction<'_> {
     }
 
     fn geometry(&self) -> Result<(), IpcError> {
+        if let Some((scope, snapshot)) = self.anchor.borrow().as_ref() {
+            if self.pipeline.region.anchor_scope(*scope, self.context)? != *snapshot {
+                return Err(IpcError::stale_frame("定位期间窗口或显示器几何发生变化"));
+            }
+        }
         let binding = self.context.binding_id.as_deref().unwrap_or("");
         self.pipeline
             .region
             .check_geometry(binding, self.revision)?;
-        if !binding.is_empty()
+        if !self.context.background && !binding.is_empty()
             && !self
                 .pipeline
                 .region
@@ -196,6 +216,14 @@ impl CheckedAction<'_> {
     }
 
     fn path(&self, start: Point, end: Point) -> Result<(), IpcError> {
+        if let Some((_, snapshot)) = self.anchor.borrow().as_ref() {
+            let rect = &snapshot.rect;
+            for p in [start, end] {
+                if p.x < rect.x || p.y < rect.y || p.x >= rect.x + rect.width || p.y >= rect.y + rect.height {
+                    return Err(IpcError::region_limit_violation("定位动作路径越出当前范围"));
+                }
+            }
+        }
         self.pipeline.region.check_path(start, end, self.context)
     }
 
@@ -229,15 +257,21 @@ impl CheckedAction<'_> {
         Ok(())
     }
 
-    fn glide(&self, from: Point, to: Point, duration: u32) -> Result<(), IpcError> {
-        let slices = duration.div_ceil(MOVE_SLICE_MS).max(1);
-        for i in 1..=slices {
-            self.delay(duration * i / slices - duration * (i - 1) / slices)?;
-            let t = i as f64 / slices as f64;
-            let p = Point {
-                x: (from.x as f64 + (to.x as f64 - from.x as f64) * t).round() as i64,
-                y: (from.y as f64 + (to.y as f64 - from.y as f64) * t).round() as i64,
-            };
+    fn plan(&self, from: Point, to: Point, duration: u32) -> Result<Vec<Point>, IpcError> {
+        let points = self.policy.trajectory(from, to, duration.div_ceil(MOVE_SLICE_MS).max(1));
+        let mut previous = from;
+        for point in &points {
+            self.path(previous, *point)?;
+            previous = *point;
+        }
+        Ok(points)
+    }
+
+    fn glide(&self, points: &[Point], duration: u32) -> Result<(), IpcError> {
+        let count = points.len() as u32;
+        for (index, &p) in points.iter().enumerate() {
+            let i = index as u32;
+            self.delay(duration * (i + 1) / count - duration * i / count)?;
             self.send(Some(p), |port| port.move_to(p.x, p.y))?;
         }
         Ok(())
@@ -309,6 +343,21 @@ impl CheckedAction<'_> {
         Ok(())
     }
 
+    fn click(&self, dest: Point, button: MouseButton, clicks: u32, ledger: &std::sync::Mutex<Ledger>) -> Result<(), IpcError> {
+        self.button_free(button, &ledger.lock().unwrap_or_else(|e| e.into_inner()))?;
+        let [dx, dy] = self.policy.offset;
+        let overflow = || IpcError::region_limit_violation("偏移坐标溢出");
+        let dest = Point { x: dest.x.checked_add(dx).ok_or_else(overflow)?, y: dest.y.checked_add(dy).ok_or_else(overflow)? };
+        let duration = if self.policy.curve.is_some() { 120 } else { 0 };
+        let points = self.plan(self.current()?, dest, duration)?;
+        self.glide(&points, duration)?;
+        for _ in 0..clicks {
+            self.button_down(button, ledger)?;
+            self.button_up(button, ledger)?;
+        }
+        Ok(())
+    }
+
     fn execute(
         &self,
         action: &InputAction,
@@ -317,26 +366,37 @@ impl CheckedAction<'_> {
         self.geometry()?;
         let origin = self.current()?;
         self.path(origin, origin)?;
+        if self.policy.delay > 0 {
+            self.policy.wait(|| {
+                if self.gate.paused(self.execution) {
+                    return Err(IpcError::window_unavailable("执行已暂停"));
+                }
+                if !self.gate.is_open(self.execution) {
+                    return Err(IpcError::invalid_state("输入闸门已关闭"));
+                }
+                Ok(())
+            }, |ms| std::thread::sleep(Duration::from_millis(ms.into())))?;
+            self.geometry()?;
+        }
         match action {
+            InputAction::WithPolicy { .. } => Err(IpcError::invalid_params("嵌套动作策略")),
+            InputAction::ClickAnchor { anchor, button, clicks } => {
+                let scope = self.pipeline.region.anchor_scope(anchor.scope, self.context)?;
+                let p = anchor.resolve(scope.rect)?;
+                self.anchor.replace(Some((anchor.scope, scope)));
+                self.click(p, *button, *clicks, ledger)
+            }
             InputAction::Move { x, y, duration_ms } => {
                 let dest = Point { x: *x, y: *y };
-                self.path(origin, dest)?;
-                self.glide(origin, dest, *duration_ms)
+                let points = self.plan(origin, dest, *duration_ms)?;
+                self.glide(&points, *duration_ms)
             }
             InputAction::Click {
                 x,
                 y,
                 button,
                 clicks,
-            } => {
-                self.button_free(*button, &ledger.lock().unwrap_or_else(|e| e.into_inner()))?;
-                self.send(Some(Point { x: *x, y: *y }), |p| p.move_to(*x, *y))?;
-                for _ in 0..*clicks {
-                    self.button_down(*button, ledger)?;
-                    self.button_up(*button, ledger)?;
-                }
-                Ok(())
-            }
+            } => self.click(Point { x: *x, y: *y }, *button, *clicks, ledger),
             InputAction::Drag {
                 from,
                 to,
@@ -347,10 +407,10 @@ impl CheckedAction<'_> {
                     &ledger.lock().unwrap_or_else(|e| e.into_inner()),
                 )?;
                 self.path(origin, *from)?;
-                self.path(*from, *to)?;
+                let points = self.plan(*from, *to, *duration_ms)?;
                 self.send(Some(*from), |p| p.move_to(from.x, from.y))?;
                 self.button_down(MouseButton::Left, ledger)?;
-                self.glide(*from, *to, *duration_ms)?;
+                self.glide(&points, *duration_ms)?;
                 self.button_up(MouseButton::Left, ledger)
             }
             InputAction::Scroll { delta } => {

@@ -21,7 +21,7 @@ struct GateInner {
     per_exec: HashMap<String, String>,
     /// 关闸后被拒的派发尝试计数（TEST-008 不变量观测点）。
     rejected: u64,
-    active: HashMap<String, Option<String>>,
+    active: HashMap<String, (Option<String>, bool)>,
     paused: std::collections::HashSet<String>,
     epoch: u64,
     freeze: bool,
@@ -57,12 +57,12 @@ impl GateTable {
         }
     }
 
-    pub fn register(&self, id: &str, binding: Option<String>) -> Result<(), crate::ipc::IpcError> {
+    pub fn register(&self, id: &str, binding: Option<String>, background: bool) -> Result<(), crate::ipc::IpcError> {
         let mut state = self.inner.lock().unwrap_or_else(|p| p.into_inner());
         if state.closed_all || state.freeze || state.per_exec.contains_key(id) {
             return Err(crate::ipc::IpcError::invalid_state("执行已停止"));
         }
-        state.active.insert(id.into(), binding);
+        state.active.insert(id.into(), (binding, background));
         Ok(())
     }
     pub fn unregister(&self, id: &str) {
@@ -72,11 +72,14 @@ impl GateTable {
         state.per_exec.remove(id);
     }
     pub fn active(&self, binding: Option<&str>) -> Vec<String> {
+        self.window_roots(binding, false)
+    }
+    pub fn window_roots(&self, binding: Option<&str>, foreground_only: bool) -> Vec<String> {
         let state = self.inner.lock().unwrap_or_else(|p| p.into_inner());
         state
             .active
             .iter()
-            .filter(|(_, b)| binding.is_none() || binding == b.as_deref())
+            .filter(|(_, (b, background))| (!foreground_only || !background) && (binding.is_none() || binding == b.as_deref()))
             .map(|(id, _)| id.clone())
             .collect()
     }

@@ -165,7 +165,7 @@ class ResolveTest(unittest.TestCase):
         data_dir = tempfile.mkdtemp(prefix="st-ocr-data-")
         resolved, source = resolve_models_dir(data_dir)
         self.assertEqual(source, "data_dir_default")
-        self.assertTrue(resolved.endswith(os.path.join(os.path.abspath(data_dir), "models")))
+        self.assertEqual(os.path.normcase(resolved), os.path.normcase(os.path.join(os.path.realpath(data_dir), "models")))
 
     def test_models_dir_override(self):
         target = tempfile.mkdtemp(prefix="st-ocr-override-")

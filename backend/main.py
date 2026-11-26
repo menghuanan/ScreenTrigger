@@ -198,6 +198,7 @@ CAPABILITIES: Tuple[Dict[str, Any], ...] = (
     {"id": "ocr", "state": "unavailable", "reason": "骨架未接入识别，模型未由引擎加载"},
     {"id": "lua_script", "state": "unavailable", "reason": "Lua 运行时未由骨架接入"},
     {"id": "template_match", "state": "unavailable", "reason": "骨架未实现"},
+    {"id": "feature_match", "state": "unavailable", "reason": "ORB 未就绪"},
     {"id": "contour_match", "state": "unavailable", "reason": "骨架未实现"},
     {"id": "color_match", "state": "unavailable", "reason": "骨架未实现"},
     {"id": "input", "state": "unavailable", "reason": "M05 输入闸门未实现"},
@@ -607,7 +608,7 @@ class SidecarApp:
             if os.environ.get("ST_WINDOW_AVAILABLE") == "1":
                 from backend.capture.window_capture import HostWindowProvider
                 capture_service.attach_window_provider(HostWindowProvider(self.hostclient))
-                self.dispatcher.enable_workers("capture_region", "capture_window")
+                self.dispatcher.enable_workers("capture_region", "capture_window", "get_window_capture_capabilities")
             register_capture_commands(self.dispatcher, capture_service)
 
         # TASK-009：图片导入命令（import_image）。导入服务复用同一 SessionImageStore
@@ -660,6 +661,11 @@ class SidecarApp:
                 self.transport, self.health, self.session, self._clock, logger=self._log
             )
             register_vision_commands(self.dispatcher, vision_service)
+            models = getattr(getattr(vision_service, "registry", None), "managed_ocr", None)
+            if models is not None:
+                from backend.vision.model_commands import register_model_commands
+                self.close_model_jobs = register_model_commands(self.dispatcher, self.jobs, models,
+                                                                self.config_service, script_service)
 
         self.executions = None
         self.history_store = None
@@ -704,8 +710,18 @@ class SidecarApp:
                 winsound.Beep(hz, milliseconds)
 
             settings = self.config_service.get_config if self.config_service else dict
+            def text_output(op, execution_id, **fields):
+                from backend.storage.errors import StorageError
+                result = self.hostclient.request("text_output", dict(op=op, execution_id=execution_id, **fields))
+                if not result.success:
+                    err = result.error
+                    raise StorageError(err["code"], err["message"], details=err.get("details"),
+                                       retryable=err.get("retryable", False))
+                return result.data
+
             self.executions = ExecutionController(script_service, capture_service, vision_service,
-                                                  self.input_proxy, settings, emit, beep, self.history_store)
+                                                  self.input_proxy, settings, emit, beep, self.history_store,
+                                                  text_output=text_output)
             script_service.repository.attach_reference_port(self.executions.referenced)
             for name in (*STEPS, *BREAKPOINTS, "get_variables", "get_stack", "execute_script", "start_monitor",
                          "get_script_state", "query_execution", "pause_script", "resume_script", "stop_script"):
@@ -762,7 +778,7 @@ class SidecarApp:
         # 基座装配（内置工厂表为空）下仍全 unavailable（带 reason）——**未装配不得显示 available**。
         if self.vision_service is not None:
             for cap in caps:
-                if cap["id"] in ("ocr", "template_match", "contour_match", "color_match"):
+                if cap["id"] in ("ocr", "template_match", "contour_match", "color_match", "feature_match"):
                     state, reason = self.vision_service.capability_state(cap["id"])
                     cap["state"] = state
                     cap["reason"] = reason
@@ -850,6 +866,8 @@ class SidecarApp:
         if self._shutdown_done:
             return
         self._shutdown_done = True
+        if hasattr(self, "close_model_jobs"):
+            self.close_model_jobs()
         if self.executions is not None:
             self.executions.stop_all("engine_exit")
             with self.executions.changed:

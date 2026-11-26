@@ -5,6 +5,8 @@ import time
 from uuid import uuid4
 
 from ...storage.errors import StorageError
+from ...types.anchor import AnchoredPoint
+from ...types.action_policy import effective_policy, validate_policy
 from ..cancel import CheckpointCancelled
 from .vision import Resample, ScreenApi, fail
 
@@ -35,6 +37,7 @@ class ScriptApi:
         settings = root.settings.get("input", {})
         self.move_ms = settings.get("move_duration_ms", 200)
         self.type_ms = settings.get("type_interval_ms", 50)
+        self.override = {}
 
     def dispatch(self, kind, revision=None, **action):
         root = self.root
@@ -47,6 +50,11 @@ class ScriptApi:
                 revision = proxy.window_snapshot(root.config.binding_id)["geometry_revision"]
         root.gate.checkpoint()
         action_id = str(uuid4())
+        stack = getattr(root, "stack", ())
+        defaults = root.scripts[stack[-1][0]].get("action_policy", {}) if stack else {}
+        active = effective_policy(defaults, self.override, kind)
+        if len(active)>1:
+            action["policy"] = active
         try:
             proxy.dispatch_action(root.id, root.lease, action_id, revision, dict(action, kind=kind),
                                   remaining_ms=root.gate.remaining_ms())
@@ -67,7 +75,10 @@ class ScriptApi:
         proxy = self.root.controller.input
         if proxy is None:
             raise StorageError("CAPABILITY_DENIED", "未连接宿主指针服务")
-        point = proxy.query_pointer()
+        if getattr(self.root.config, "window_mode", "foreground") == "background":
+            point = proxy.query_pointer(self.root.id, self.root.lease)
+        else:
+            point = proxy.query_pointer()
         return point["x"], point["y"]
 
     def move_to(self, x, y, duration=None):
@@ -80,6 +91,11 @@ class ScriptApi:
 
     def click(self, button=None, clicks=None):
         return self.click_at(*self.pointer(), button, clicks)
+
+    def click_anchor(self, anchor, button=None, clicks=None):
+        AnchoredPoint.parse(anchor)
+        return self.dispatch("click_anchor", anchor=anchor, button="left" if button is None else button,
+                             clicks=1 if clicks is None else clicks)
 
     def drag(self, from_x, from_y, to_x, to_y, duration=None):
         start = {"x": integer(from_x, "from_x"), "y": integer(from_y, "from_y")}
@@ -205,7 +221,8 @@ class ScriptApi:
             "wait_for_any_target": lambda ids, timeout=None: s.poll("any", ids, timeout),
             "wait_for_all_targets": lambda ids, timeout=None: s.poll("all", ids, timeout),
             "wait_until_target_disappear": lambda id, timeout=None: s.poll("gone", [id], timeout),
-            "move_to": self.move_to, "click": self.click, "click_at": self.click_at, "drag": self.drag,
+            "move_to": self.move_to, "click": self.click, "click_at": self.click_at,
+            "click_anchor": self.click_anchor, "drag": self.drag,
             "move_to_target": lambda *args: self.target_action("move", *args),
             "click_target": lambda *args: self.target_action("click", *args),
             "scroll": lambda delta: self.dispatch("scroll", delta=integer(delta, "delta")),
@@ -223,6 +240,18 @@ class ScriptApi:
             "should_stop": self.root.gate.is_cancelled, "set_recognition_frequency": self.frequency,
             "call_script": self.root.call,
         }
+        input_names = ("move_to","move_to_target","click","click_at","click_anchor","click_target",
+                       "drag","scroll","press_key","key_down","key_up","hotkey","type_text")
+        def with_policy(options, name, *args):
+            if name not in input_names:
+                fail("api_name","需要已注册的输入动作")
+            policy = validate_policy(options)
+            previous, self.override = self.override, policy
+            try:
+                return functions[name](*args)
+            finally:
+                self.override = previous
+        functions["action_with_policy"] = with_policy
         for name, fn in functions.items():
             vm.registry.register(name, self.guarded(fn))
         tostring = vm.interop.eval("tostring")

@@ -16,6 +16,7 @@
         <Button x:Name="Next" Content="下一页" Tag="next" Click="Action" />
         <Button Content="打开目标" Tag="open" Click="Action" />
         <Button Content="新建目标" Tag="new" Click="Action" />
+        <Button Content="新建 ORB 目标" Tag="new-orb" Click="Action" AutomationProperties.AutomationId="NewOrbTarget"/>
       </StackPanel>
       <TextBox Header="目标名称" x:Name="TargetName" AutomationProperties.AutomationId="TargetName" />
       <Grid ColumnDefinitions="*,*" ColumnSpacing="8">

@@ -17,13 +17,29 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
         if (args.Length > 1 && Path.GetFileName(args[0]) == "main.py") return FaultPeer.Run(args);
-        if (args.Length != 2 || args[0] is not ("types" or "config" or "protocol" or "faults")) return 2;
+        if (args.Length != 2 || args[0] is not ("types" or "config" or "protocol" or "faults" or "points")) return 2;
         output = Path.GetFullPath(args[1]);
         if (Directory.Exists(output)) throw new IOException("证据目录已存在。");
         Directory.CreateDirectory(output);
         using var source = JsonDocument.Parse(File.ReadAllBytes("schema/contract-cases.json"));
         cases = source.RootElement.GetProperty("cases");
         if (args[0] == "types") await TypeCases();
+        if (args[0] == "points")
+        {
+            foreach (double scale in new[] { 1, 1.25, 1.5, 2, 3 })
+                await Check($"pick/dip-{scale}", () =>
+                {
+                    var pixel = new PixelPoint(-200, 65);
+                    var edge = new PixelPoint(-100, 140);
+                    foreach (var p in new[] { pixel, edge })
+                    {
+                        var local = p.ToOverlayDip(scale, -300, 40);
+                        if (Math.Round(local.X * scale) - 300 != p.X || Math.Round(local.Y * scale) + 40 != p.Y)
+                            throw new Exception($"标签与实际物理点不一致 {p}");
+                    }
+                    return Task.FromResult<object?>(new { scale, pixel, edge });
+                });
+        }
         if (args[0] == "config") await ConfigCases();
         if (args[0] == "protocol") await ProtocolCases();
         if (args[0] == "faults") await FaultCases();
@@ -64,6 +80,23 @@ internal static class Program
 
     private static async Task TypeCases()
     {
+        using var anchors = JsonDocument.Parse(File.ReadAllBytes("schema/anchor-cases.json"));
+        foreach (var c in anchors.RootElement.EnumerateArray())
+        {
+            await Check("anchor/" + c.GetProperty("id").GetString(), () =>
+            {
+                JsonElement actual;
+                try
+                {
+                    var anchor = WireContracts.Read<AnchoredPoint>(c.GetProperty("anchor"), "anchoredPoint");
+                    var p = anchor.Project(WireContracts.Read<PixelRect>(c.GetProperty("rect"), "rect"));
+                    actual = Data(new[] { p.X, p.Y });
+                }
+                catch (ContractException e) { actual = Data(e.Code); }
+                Require(JsonElement.DeepEquals(actual, c.GetProperty("expected")), actual.GetRawText());
+                return Task.FromResult<object?>(actual);
+            });
+        }
         foreach (var c in Shared("type_validation"))
         {
             await Check(c.GetProperty("id").GetString()!, () =>

@@ -7,13 +7,14 @@
 use std::collections::HashMap;
 
 use crate::ipc::IpcError;
+use crate::recording::desktop::{Claim,Role};
 
 use super::model::{InputContext, Lease, LeaseId, MAX_ROOT_LEASES};
 
 /// 活动租约表（execution_id → Lease）。
 #[derive(Default)]
 pub struct LeaseTable {
-    by_execution: HashMap<String, Lease>,
+    by_execution: HashMap<String, (Lease,Claim)>,
 }
 
 impl LeaseTable {
@@ -31,30 +32,31 @@ impl LeaseTable {
             return Err(IpcError::busy());
         }
         let lease_id = LeaseId::generate();
+        let claim=Claim::acquire(Role::Input)?;
         self.by_execution.insert(
             execution_id.to_string(),
-            Lease {
+            (Lease {
                 lease_id: lease_id.clone(),
                 execution_id: execution_id.to_string(),
                 context,
-            },
+            },claim),
         );
         Ok(lease_id)
     }
 
     /// 释放租约（未持有 → None）。
     pub fn release(&mut self, execution_id: &str) -> Option<LeaseId> {
-        self.by_execution.remove(execution_id).map(|l| l.lease_id)
+        self.by_execution.remove(execution_id).map(|(lease,_)| lease.lease_id)
     }
 
     /// 按 lease_id 查租约。
     pub fn get(&self, lease_id: &str) -> Option<&Lease> {
-        self.by_execution.values().find(|l| l.lease_id.as_str() == lease_id)
+        self.by_execution.values().map(|(lease,_)|lease).find(|l| l.lease_id.as_str() == lease_id)
     }
 
     /// 按 execution_id 查租约。
     pub fn get_by_execution(&self, execution_id: &str) -> Option<&Lease> {
-        self.by_execution.get(execution_id)
+        self.by_execution.get(execution_id).map(|(lease,_)|lease)
     }
 
     /// 活动租约数。
