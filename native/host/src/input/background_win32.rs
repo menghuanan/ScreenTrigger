@@ -283,7 +283,7 @@ impl Target {
                 .get(&key.vk)
                 .ok_or_else(|| PortError::new("按键没有绑定接收控件"))?
         };
-        let scan = unsafe { MapVirtualKeyW(u32::from(key.vk), 0) } & 255;
+        let scan = key.scan_code.map(u32::from).unwrap_or_else(|| unsafe { MapVirtualKeyW(u32::from(key.vk), 0) } & 255);
         let mut flags = 1 | (scan << 16) | (u32::from(key.extended) << 24);
         if !down {
             flags |= 0xc000_0000;
@@ -326,8 +326,12 @@ impl InputPort for Target {
         let allowed = match action {
             InputAction::Move { .. } => mask & 7 != 0,
             InputAction::Click { .. } | InputAction::ClickAnchor { .. } => mask & 1 != 0,
-            InputAction::Drag { .. } => mask & 2 != 0,
-            InputAction::Scroll { .. } => mask & 4 != 0,
+            InputAction::Drag { .. } | InputAction::DragAnchor { .. } => mask & 2 != 0,
+            InputAction::Scroll { .. } | InputAction::ScrollAnchor { .. } => mask & 4 != 0,
+            InputAction::RecordedKeys { events, .. } => {
+                let chord = events.iter().filter(|e| e.down).any(|e| e.key != events[0].key);
+                mask & 8 != 0 && (!chord || mask & 16 != 0)
+            }
             InputAction::Key { .. } => mask & 8 != 0,
             InputAction::Hotkey { .. } => mask & 16 != 0,
             _ => false,
@@ -361,12 +365,20 @@ impl InputPort for Target {
         Ok(())
     }
     fn wheel(&self, delta: i32) -> Result<(), PortError> {
+        let amount = i16::try_from(i64::from(delta) * 120)
+            .map_err(|_| PortError::new("滚轮增量超出窗口消息范围"))?;
+        self.raw_wheel(amount)
+    }
+    fn key_target(&self) -> Result<(isize, isize), PortError> {
+        let entry = self.usable(false)?;
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        Ok((self.identity.hwnd, self.keyboard(self.screen(&state, &entry))?.hwnd))
+    }
+    fn raw_wheel(&self, amount: i16) -> Result<(), PortError> {
         let entry = self.usable(false)?;
         let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let screen = self.screen(&state, &entry);
         let recv = self.hit(screen)?;
-        let amount = i16::try_from(i64::from(delta) * 120)
-            .map_err(|_| PortError::new("滚轮增量超出窗口消息范围"))?;
         self.message(
             recv,
             0x20a,

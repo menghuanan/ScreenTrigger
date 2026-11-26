@@ -1,5 +1,11 @@
 # IPC 协议 v1
 
+## 录制草稿交接（TASK-034）
+
+引擎命令 `compile_recording {scope,actions,interrupted}` 生成 `{scope,source,action_count,omitted}`。`omitted` 每项给出 `after` 和 `reason`。时间或序号损坏时返回 INVALID_PARAMS，超过脚本字节限制返回 RESOURCE_LIMIT。界面在有中止或无法表达的动作时显示位置、原因并请求确认。宿主命令 `release_recording_draft {recording_id}` 释放同会话已结束的草稿，返回 `{released:true}`。释放后，结束响应及嵌套查询的缓存副本一并失效。
+
+租约输入沿用 `input_action`。锚点点击支持可选 `hold_ms`，`drag_anchor` 携带 `points,duration_ms`，`scroll_anchor` 携带 `anchor,delta_raw`，`recorded_keys` 携带 `scope,events`。数组顺序与经过的路径在宿主派发前整体校验。原有滚轮动作仍以格为单位。
+
 ## 单次屏幕取点（TASK-032）
 
 WinUI 草稿发起 `start_point_pick {display_id?,binding_id?}`，返回 `{pick_id}`。指定显示器可选，默认使用主窗口所在显示器。框选与取点互斥。覆盖层接收左键按下和抬起，再用按下时的单像素屏幕点调用 `confirm_point_pick {pick_id,point}`。取消使用 `cancel_point_pick {pick_id,reason?}`。

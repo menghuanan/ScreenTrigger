@@ -28,6 +28,7 @@ pub mod geometry_guard;
 pub mod lease;
 pub mod ledger;
 pub mod model;
+mod recorded;
 #[cfg(test)]
 mod tests;
 pub mod win32;

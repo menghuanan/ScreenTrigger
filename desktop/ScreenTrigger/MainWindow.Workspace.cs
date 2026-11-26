@@ -88,7 +88,7 @@ public sealed partial class MainWindow
                 "settings" => new Settings.SettingsPage(host, ApplyDisplayConfig, WindowNative.GetWindowHandle(this)),
                 "scripts" => new Scripts.ScriptsPage(host),
                 "run" or "monitor" => new RunContext.RunContextPage(host, luaAvailable, tag == "monitor", workspaceOcr,
-                    WindowNative.GetWindowHandle(this)),
+                    WindowNative.GetWindowHandle(this), OpenRecordingEditor),
                 "recognition" => new Recognition.RecognitionPage(host, () => image, () => imageOrigin, () => pendingDraft),
                 _ => null
             };
@@ -96,6 +96,18 @@ public sealed partial class MainWindow
             pages[tag] = page;
         }
         BusinessPage.Content = page;
+    }
+
+    private async Task<bool> OpenRecordingEditor(string source, WorkspaceCommands prompts)
+    {
+        var origin = BusinessPage.Content;
+        if (origin is not RunContext.RunContextPage || !workspaceReady || host == null || closing) return false;
+        if (pages.TryGetValue("scripts", out var cached) && cached is Scripts.ScriptsPage existing &&
+            !await existing.CanAcceptRecording(prompts)) return false;
+        if (origin != BusinessPage.Content || !await ChangePage(ScriptsNav) || BusinessPage.Content is not Scripts.ScriptsPage scripts)
+            return false;
+        scripts.EditRecordingSource(source);
+        return true;
     }
 
     private async void OpenDraft(object value)

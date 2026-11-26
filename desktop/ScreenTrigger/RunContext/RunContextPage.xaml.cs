@@ -30,11 +30,14 @@ public sealed partial class RunContextPage : UserControl
     private bool recordingQuery;
     private readonly nint owner;
     private bool pickingIsolatedRegion;
-    private JsonElement? isolatedRegion, recordedActions;
+    private JsonElement? isolatedRegion, frozenDraft;
+    private readonly Func<string, WorkspaceCommands, Task<bool>> openRecordingEditor;
 
-    internal RunContextPage(HostClient client, bool luaAvailable, bool monitorMode, bool ocrAvailable, nint owner)
+    internal RunContextPage(HostClient client, bool luaAvailable, bool monitorMode, bool ocrAvailable, nint owner,
+                            Func<string, WorkspaceCommands, Task<bool>> openRecordingEditor)
     {
         this.owner = owner;
+        this.openRecordingEditor = openRecordingEditor;
         InitializeComponent();
         Execute.AddHandler(PointerPressedEvent, new PointerEventHandler((_, e) =>
         {
@@ -67,8 +70,11 @@ public sealed partial class RunContextPage : UserControl
             if (recordingId is string id) {
                 EndRecordingQuery("已离开录制页。");
                 try { await commands.Call("cancel_recording", new { recording_id = id }); }
-                catch (Exception) { /* Ending the host session also disposes its recording. */ }
+                catch (Exception) { /* The recording may have just finished. */ }
+                try { await commands.Call("release_recording_draft", new { recording_id = id }); }
+                catch (Exception) { /* A changed session has already disposed its resources. */ }
             }
+            try { await ReleaseDraft(); } catch (Exception ex) { Feedback.Text = ex.Message; }
         };
     }
     private async void RecordClick(object sender, RoutedEventArgs args) => await commands.Run(async () => {
@@ -79,7 +85,8 @@ public sealed partial class RunContextPage : UserControl
                 display_id = bindingId == null ? (Displays.SelectedItem as CatalogItem)?.Id : null, binding_id = bindingId,
                 region = CurrentRegion(), allow_exit = false } };
             if (parameters is null || !IsLoaded) return;
-            ClearRecordingDraft();
+            await ReleaseDraft();
+            if (!IsLoaded) return;
             recordingId = id;
             RecordingStatus.Text = "正在启动本次录制…";
             StartRecording.IsEnabled = StartIsolated.IsEnabled = false;
@@ -114,13 +121,51 @@ public sealed partial class RunContextPage : UserControl
     private static bool IsRequestTimeout(HostException error) => error.Error.Code == "INTERNAL_ERROR" &&
         error.Error.Details.ValueKind == JsonValueKind.Object && error.Error.Details.TryGetProperty("deadline_ms", out _);
 
-    private void ClearRecordingDraft()
+    private async Task ReleaseDraft()
     {
-        recordedActions = null;
+        var prior = frozenDraft;
+        frozenDraft = null;
+        EditRecordingScript.Visibility = Visibility.Collapsed;
         RecordingDraft.IsExpanded = false;
         RecordingDraft.Visibility = Visibility.Collapsed;
         RecordingActions.Text = "";
+        if (prior is JsonElement draft)
+            await commands.Call("release_recording_draft", new { recording_id = draft.GetProperty("recording_id").GetString() });
     }
+
+    private async void EditRecording(object sender, RoutedEventArgs args) => await commands.Run(async () => {
+        if (frozenDraft is not JsonElement draft) return;
+        var id = draft.GetProperty("recording_id").GetString();
+        var compiled = await commands.Call("compile_recording", new { scope = draft.GetProperty("scope"),
+            actions = draft.GetProperty("actions"), interrupted = draft.GetProperty("interrupted") });
+        if (!IsLoaded || frozenDraft?.GetProperty("recording_id").GetString() != id) return;
+        var omitted = compiled.GetProperty("omitted");
+        var locations = omitted.EnumerateArray().Take(12).Select(item => {
+            int after = item.GetProperty("after").GetInt32();
+            var position = after == 0 ? "首个动作前" : $"第 {after} 个动作后";
+            var reason = item.GetProperty("reason").GetString() switch {
+                "unpaired_on_finish" => "结束时仍有键或鼠标按钮未抬起",
+                "key_focus_lost" or "bound_focus_lost" or "key_control_changed" => "输入焦点改变",
+                "pointer_left_scope" or "drag_left_scope" => "指针移出录制范围",
+                "geometry_changed" => "窗口或录制范围发生变化",
+                "manual_pause" => "录制已暂停",
+                "recording_limit" => "达到录制上限",
+                var other => other
+            };
+            return $"{position} · {reason}";
+        });
+        var details = string.Join("\n", locations);
+        if (compiled.GetProperty("action_count").GetInt32() == 0) {
+            Feedback.Text = ("本次录制没有可编辑的完整动作。\n" + details).TrimEnd();
+            return;
+        }
+        if (omitted.GetArrayLength() > 0) {
+            var message = $"共 {omitted.GetArrayLength()} 处中止。\n{details}";
+            if (!await commands.Confirm("只编辑完整动作？", message, "编辑完整动作")) return;
+        }
+        if (IsLoaded && frozenDraft?.GetProperty("recording_id").GetString() == id)
+            await openRecordingEditor(compiled.GetProperty("source").GetString()!, commands);
+    });
 
     private void EndRecordingQuery(string message)
     {
@@ -183,10 +228,11 @@ public sealed partial class RunContextPage : UserControl
                 _ => " · 可记录当前窗口的按键"
             };
         if (status == "finished" && state.TryGetProperty("actions", out var actions)) {
-            recordedActions = actions.Clone();
+            frozenDraft = state.Clone();
             RecordingDraft.IsExpanded = false;
             RecordingActions.Text = "";
             RecordingDraft.Visibility = Visibility.Visible;
+            EditRecordingScript.Visibility = canExecute ? Visibility.Visible : Visibility.Collapsed;
         }
         IsolatedScope.IsEnabled = IsolatedDisplay.IsEnabled = PickIsolatedRegion.IsEnabled = !active;
         StartIsolated.IsEnabled = StartRecording.IsEnabled = !active;
@@ -196,7 +242,7 @@ public sealed partial class RunContextPage : UserControl
     }
     private void ReadRecordingDraft(Expander sender, ExpanderExpandingEventArgs args)
     {
-        RecordingActions.Text = recordedActions?.GetRawText() ?? "";
+        RecordingActions.Text = frozenDraft?.GetProperty("actions").GetRawText() ?? "";
     }
     private void ChangeIsolatedScope(object sender, SelectionChangedEventArgs args)
     {

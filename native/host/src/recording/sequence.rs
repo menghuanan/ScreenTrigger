@@ -102,7 +102,7 @@ pub struct Sequence {
     pub status: Status,
     pub completed: Vec<Recorded>,
     pub interrupted: Vec<Interruption>,
-    mode: ScopeKind,
+    pub(super) mode: ScopeKind,
     rect: MonitorRect,
     bound: Option<isize>,
     owner: Option<isize>,

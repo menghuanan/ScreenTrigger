@@ -53,7 +53,7 @@ impl ActionPolicy {
     }
 
     pub fn validate_kind(&self, kind: &str) -> Result<(), String> {
-        if self.curve.is_some() && !matches!(kind, "move" | "drag" | "click" | "click_anchor") {
+        if self.curve.is_some() && !matches!(kind, "move" | "drag" | "click" | "click_anchor" | "drag_anchor") {
             return Err("action_policy.curve".into());
         }
         if self.offset.is_some() && !matches!(kind, "click" | "click_anchor") {

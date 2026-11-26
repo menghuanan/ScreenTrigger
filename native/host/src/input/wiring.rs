@@ -44,9 +44,15 @@ impl InputPort for SendInputPort {
     fn wheel(&self, delta: i32) -> Result<(), PortError> {
         win32::wheel(delta).map_err(PortError::new)
     }
+    fn raw_wheel(&self, delta: i16) -> Result<(), PortError> {
+        win32::raw_wheel(i32::from(delta)).map_err(PortError::new)
+    }
+    fn key_target(&self) -> Result<(isize, isize), PortError> {
+        win32::key_target().ok_or_else(|| PortError::new("范围内的前台焦点不可用"))
+    }
 
     fn key_event(&self, key: &super::model::Key, down: bool) -> Result<(), PortError> {
-        win32::key(key.vk, key.extended, down).map_err(PortError::new)
+        win32::send_key(key.vk, key.scan_code.unwrap_or(0), key.extended, down).map_err(PortError::new)
     }
 
     fn unicode_text(&self, text: &str) -> Result<(), PortError> {
@@ -63,7 +69,7 @@ impl InputPort for SendInputPort {
             let _ = win32::button(*button, false);
         }
         for key in keys.iter().rev() {
-            let _ = win32::key(key.vk, key.extended, false);
+            let _ = self.key_event(key, false);
         }
     }
 }

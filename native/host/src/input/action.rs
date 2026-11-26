@@ -41,6 +41,7 @@ pub fn parse_action(value: &Value) -> Result<InputAction, IpcError> {
         .and_then(Value::as_str)
         .ok_or_else(|| IpcError::invalid_params("action.kind 必须为字符串"))?;
     match kind {
+        "drag_anchor" | "scroll_anchor" | "recorded_keys" => super::recorded::parse(kind, value),
         "move" => {
             let x = req_i64(obj, "x", "action.x")?;
             let y = req_i64(obj, "y", "action.y")?;
@@ -69,11 +70,12 @@ pub fn parse_action(value: &Value) -> Result<InputAction, IpcError> {
                 }
             };
             if kind == "click_anchor" {
-                if obj.keys().any(|k| !matches!(k.as_str(), "kind" | "anchor" | "button" | "clicks")) {
+                if obj.keys().any(|k| !matches!(k.as_str(), "kind" | "anchor" | "button" | "clicks" | "hold_ms")) {
                     return Err(IpcError::invalid_params("click_anchor 含未知字段"));
                 }
                 let anchor = super::anchor::AnchoredPoint::parse(&value["anchor"])?;
-                Ok(InputAction::ClickAnchor { anchor, button, clicks })
+                let hold_ms = obj.get("hold_ms").map(super::recorded::duration).transpose()?.unwrap_or(0);
+                Ok(InputAction::ClickAnchor { anchor, button, clicks, hold_ms })
             } else {
                 let x = req_i64(obj, "x", "action.x")?;
                 let y = req_i64(obj, "y", "action.y")?;
@@ -166,7 +168,8 @@ pub fn validation_points(action: &InputAction) -> Vec<Point> {
         InputAction::Move { x, y, .. } => vec![Point { x: *x, y: *y }],
         InputAction::Click { x, y, .. } => vec![Point { x: *x, y: *y }],
         InputAction::Drag { from, to, .. } => drag_path(from, to),
-        InputAction::ClickAnchor { .. } | InputAction::Scroll { .. }
+        InputAction::ClickAnchor { .. } | InputAction::Scroll { .. } | InputAction::DragAnchor { .. }
+        | InputAction::ScrollAnchor { .. } | InputAction::RecordedKeys { .. }
         | InputAction::Key { .. }
         | InputAction::Text { .. }
         | InputAction::Hotkey { .. } => Vec::new(),
@@ -194,7 +197,7 @@ pub fn drag_path(from: &Point, to: &Point) -> Vec<Point> {
 pub fn parse_key(name: &str) -> Result<Key, IpcError> {
     let lowered = name.to_ascii_lowercase();
     match lookup_vk(&lowered) {
-        Some((vk, extended)) => Ok(Key { name: lowered, vk, extended }),
+        Some((vk, extended)) => Ok(Key { name: lowered, vk, extended, scan_code: None }),
         None => Err(IpcError::invalid_params(&format!("不支持的键名：{name}"))),
     }
 }
@@ -219,6 +222,9 @@ pub fn lookup_vk(name: &str) -> Option<(u16, bool)> {
         "right" => Some((0x27, false)),
         "enter" => Some((0x0D, false)),
         "space" => Some((0x20, false)),
+        "kana" => Some((0x15, false)),
+        "convert" => Some((0x1c, false)),
+        "nonconvert" => Some((0x1d, false)),
         "tab" => Some((0x09, false)),
         "backspace" => Some((0x08, false)),
         "delete" => Some((0x2E, true)),

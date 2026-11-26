@@ -418,14 +418,14 @@ impl Worker {
         let flag = done.clone();
         let (tx, rx) = mpsc::sync_channel(1);
         let join = thread::spawn(move || unsafe {
+            super::isolated::prepare_non_text_thread();
             super::isolated::trace_lifecycle("worker.begin");
-            let _desktop_guard = match isolated.as_ref().map(|d| d.enter_thread()).transpose() {
-                Ok(guard) => guard,
-                Err(error) => {
+            if let Some(desktop) = &isolated {
+                if let Err(error) = desktop.enter_dedicated_thread() {
                     let _ = tx.send(Err(error));
                     return;
                 }
-            };
+            }
             let _private_claim = match isolated
                 .as_ref()
                 .map(|_| super::desktop::Claim::acquire(super::desktop::Role::Recording))
@@ -704,7 +704,7 @@ impl Worker {
         self.done.store(true, Ordering::Release);
     }
     pub(super) fn finished(&self) -> bool {
-        self.join.as_ref().is_none_or(|thread| thread.is_finished())
+        self.join.as_ref().is_none_or(crate::winmessages::thread_exited)
     }
 }
 impl Drop for Worker {
@@ -719,6 +719,47 @@ impl Drop for Worker {
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
+
+    #[test]
+    fn a_non_text_recording_thread_has_no_default_ime_window() {
+        #[link(name = "imm32")]
+        extern "system" {
+            fn ImmGetDefaultIMEWnd(hwnd: isize) -> isize;
+        }
+        let ime_window = thread::spawn(|| unsafe {
+            super::super::isolated::prepare_non_text_thread();
+            let hwnd = CreateWindowExW(0, wide("STATIC").as_ptr(), wide("").as_ptr(), 0,
+                0, 0, 1, 1, 0, 0, GetModuleHandleW(std::ptr::null()), 0);
+            assert_ne!(hwnd, 0);
+            // Windows can retain a default input context on an opted-out thread.
+            let ime_window = ImmGetDefaultIMEWnd(hwnd);
+            DestroyWindow(hwnd);
+            ime_window
+        }).join().unwrap();
+        assert_eq!(ime_window, 0);
+    }
+
+    #[test]
+    fn retirement_waits_for_windows_thread_detach() {
+        struct OnExit(mpsc::Sender<()>, mpsc::Receiver<()>);
+        impl Drop for OnExit {
+            fn drop(&mut self) {
+                let _ = self.0.send(());
+                let _ = self.1.recv_timeout(Duration::from_secs(5));
+            }
+        }
+        thread_local! { static EXIT: std::cell::RefCell<Option<OnExit>> = const { std::cell::RefCell::new(None) }; }
+        let (detaching, entered) = mpsc::channel();
+        let (resume, release) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            EXIT.with_borrow_mut(|slot| *slot = Some(OnExit(detaching, release)));
+        });
+        entered.recv_timeout(Duration::from_secs(2)).unwrap();
+        let os_exited = crate::winmessages::thread_exited(&worker);
+        resume.send(()).unwrap();
+        worker.join().unwrap();
+        assert!(!os_exited);
+    }
 
     #[test]
     fn reader_shutdown_can_complete_a_synchronous_gui_notification() {

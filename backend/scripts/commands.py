@@ -22,6 +22,7 @@ from ..ipc.dispatcher import DispatcherError
 from ..storage.errors import StorageError
 from ..types.capabilities import TypeValidationError
 from .domain import UNSET
+from .recording import compile_recording
 from .service import (
     PAGE_DEFAULT_LIMIT,
     PAGE_DEFAULT_OFFSET,
@@ -35,6 +36,7 @@ _SCRIPT_COMMAND_PARAMS: Dict[str, Tuple[str, ...]] = {
     "save_script": ("script_id", "expected_revision", "name", "source", "parameters", "action_policy"),
     "delete_script": ("script_id", "expected_revision"),
     "validate_script": ("source",),
+    "compile_recording": ("scope", "actions", "interrupted"),
 }
 
 # list_scripts 分页范围（Q6：limit 1–500；offset ≥0）
@@ -181,3 +183,4 @@ def register_script_commands(dispatcher: Any, service: ScriptService) -> None:
     dispatcher.register("save_script", _wrap("save_script", _cmd_save_script))
     dispatcher.register("delete_script", _wrap("delete_script", _cmd_delete_script))
     dispatcher.register("validate_script", _wrap("validate_script", _cmd_validate_script))
+    dispatcher.register("compile_recording", _wrap("compile_recording", compile_recording))

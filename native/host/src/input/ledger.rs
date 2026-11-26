@@ -33,7 +33,9 @@ impl Ledger {
     pub fn owns_key(&self, execution: &str, key: &Key) -> bool {
         self.keys.get(execution).is_some_and(|keys| keys.contains(key))
     }
-    pub fn key_in_use(&self, key: &Key) -> bool { self.keys.values().any(|keys| keys.contains(key)) }
+    pub fn key_in_use(&self, key: &Key) -> bool {
+        self.keys.values().flatten().any(|held| held.virtual_group() == key.virtual_group())
+    }
     pub fn button_in_use(&self, button: MouseButton) -> bool { self.buttons.values().any(|held| held.contains(&button)) }
 
     /// 记录一次按键按下（**幂等**：同名键重复 down 不重复登记）。

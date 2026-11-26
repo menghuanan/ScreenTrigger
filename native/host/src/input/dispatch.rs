@@ -271,7 +271,8 @@ impl CheckedAction<'_> {
         let count = points.len() as u32;
         for (index, &p) in points.iter().enumerate() {
             let i = index as u32;
-            self.delay(duration * (i + 1) / count - duration * i / count)?;
+            let at = |n| (u64::from(duration) * u64::from(n) / u64::from(count)) as u32;
+            self.delay(at(i + 1) - at(i))?;
             self.send(Some(p), |port| port.move_to(p.x, p.y))?;
         }
         Ok(())
@@ -343,7 +344,7 @@ impl CheckedAction<'_> {
         Ok(())
     }
 
-    fn click(&self, dest: Point, button: MouseButton, clicks: u32, ledger: &std::sync::Mutex<Ledger>) -> Result<(), IpcError> {
+    fn click(&self, dest: Point, button: MouseButton, clicks: u32, hold_ms: u32, ledger: &std::sync::Mutex<Ledger>) -> Result<(), IpcError> {
         self.button_free(button, &ledger.lock().unwrap_or_else(|e| e.into_inner()))?;
         let [dx, dy] = self.policy.offset;
         let overflow = || IpcError::region_limit_violation("偏移坐标溢出");
@@ -353,7 +354,62 @@ impl CheckedAction<'_> {
         self.glide(&points, duration)?;
         for _ in 0..clicks {
             self.button_down(button, ledger)?;
+            if hold_ms != 0 { self.delay(hold_ms)?; }
             self.button_up(button, ledger)?;
+        }
+        Ok(())
+    }
+
+    fn recorded_keys(&self, events: &[super::model::RecordedEdge], ledger: &std::sync::Mutex<Ledger>) -> Result<(), IpcError> {
+        use super::model::RecordedKey;
+        let port = &self.pipeline.input;
+        let target = port.key_target().map_err(|e| IpcError::window_unavailable(&e.message))?;
+        let mut aliases = HashMap::new();
+        let mut keys = Vec::with_capacity(events.len());
+        for event in events {
+            let key = match &event.key {
+                RecordedKey::Named(k) => {
+                    let mut key = k.clone();
+                    if let Some((scan, extended)) = super::win32::vk_scan(target.1, key.vk) {
+                        key.scan_code = Some(scan);
+                        key.extended |= extended;
+                    }
+                    key
+                }
+                RecordedKey::Physical { scan_code, extended } => {
+                    let vk = super::win32::scan_vk(target.1, *scan_code, *extended)
+                        .ok_or_else(|| IpcError::invalid_params("当前目标键盘布局无法映射扫描码"))?;
+                    Key { name: format!("scan-{scan_code}-{extended}"), vk, extended: *extended, scan_code: Some(*scan_code) }
+                }
+            };
+            if let Some(previous) = aliases.insert(key.virtual_group(), &event.key) {
+                if previous != &event.key { return Err(IpcError::invalid_params("键序包含相互冲突的键标识")); }
+            }
+            keys.push(key);
+        }
+        {
+            let held = ledger.lock().unwrap_or_else(|e| e.into_inner());
+            if keys.iter().any(|k| held.key_in_use(k) || port.externally_held(k.vk)) {
+                return Err(IpcError::input_failed("键序含已被持有的键"));
+            }
+        }
+        let start = std::time::Instant::now();
+        for (event, key) in events.iter().zip(&keys) {
+            let elapsed = start.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
+            self.delay(event.offset_ms.saturating_sub(elapsed))?;
+            self.geometry()?;
+            let position = self.current()?;
+            self.path(position, position)?;
+            if port.key_target().ok() != Some(target) { return Err(IpcError::window_unavailable("接收键序的焦点已改变")); }
+            if event.down {
+                if ledger.lock().unwrap_or_else(|e| e.into_inner()).owns_key(self.execution, key) {
+                    self.send(None, |p| p.key_event(key, true))?;
+                } else {
+                    self.key_down(key, ledger)?;
+                }
+            } else {
+                self.key_up(key, ledger)?;
+            }
         }
         Ok(())
     }
@@ -380,11 +436,45 @@ impl CheckedAction<'_> {
         }
         match action {
             InputAction::WithPolicy { .. } => Err(IpcError::invalid_params("嵌套动作策略")),
-            InputAction::ClickAnchor { anchor, button, clicks } => {
+            InputAction::ClickAnchor { anchor, button, clicks, hold_ms } => {
                 let scope = self.pipeline.region.anchor_scope(anchor.scope, self.context)?;
                 let p = anchor.resolve(scope.rect)?;
                 self.anchor.replace(Some((anchor.scope, scope)));
-                self.click(p, *button, *clicks, ledger)
+                self.click(p, *button, *clicks, *hold_ms, ledger)
+            }
+            InputAction::ScrollAnchor { anchor, delta_raw } => {
+                let snapshot = self.pipeline.region.anchor_scope(anchor.scope, self.context)?;
+                let dest = anchor.resolve(snapshot.rect)?;
+                self.anchor.replace(Some((anchor.scope, snapshot)));
+                self.path(origin, dest)?;
+                self.send(Some(dest), |p| p.move_to(dest.x, dest.y))?;
+                self.send(None, |p| p.raw_wheel(*delta_raw))
+            }
+            InputAction::DragAnchor { points, duration_ms } => {
+                self.button_free(MouseButton::Left, &ledger.lock().unwrap_or_else(|e| e.into_inner()))?;
+                let scope = points[0].scope;
+                let snapshot = self.pipeline.region.anchor_scope(scope, self.context)?;
+                let mapped = points.iter().map(|p| p.resolve(snapshot.rect)).collect::<Result<Vec<_>,_>>()?;
+                self.anchor.replace(Some((scope, snapshot)));
+                let first = mapped[0];
+                self.path(origin, first)?;
+                let n = (mapped.len()-1) as u64;
+                let at = |i: usize| (u64::from(*duration_ms) * i as u64 / n) as u32;
+                let mut segments = Vec::with_capacity(mapped.len()-1);
+                for (i, pair) in mapped.windows(2).enumerate() {
+                    let duration = at(i+1) - at(i);
+                    segments.push((self.plan(pair[0], pair[1], duration)?, duration));
+                }
+                self.send(Some(first), |p| p.move_to(first.x, first.y))?;
+                self.button_down(MouseButton::Left, ledger)?;
+                for (path, ms) in segments { self.glide(&path, ms)?; }
+                self.button_up(MouseButton::Left, ledger)
+            }
+            InputAction::RecordedKeys { scope, events } => {
+                let snapshot = self.pipeline.region.anchor_scope(*scope, self.context)?;
+                self.anchor.replace(Some((*scope, snapshot)));
+                self.path(origin, origin)?;
+                self.recorded_keys(events, ledger)
             }
             InputAction::Move { x, y, duration_ms } => {
                 let dest = Point { x: *x, y: *y };
@@ -396,7 +486,7 @@ impl CheckedAction<'_> {
                 y,
                 button,
                 clicks,
-            } => self.click(Point { x: *x, y: *y }, *button, *clicks, ledger),
+            } => self.click(Point { x: *x, y: *y }, *button, *clicks, 0, ledger),
             InputAction::Drag {
                 from,
                 to,

@@ -52,6 +52,8 @@
             <TextBlock Text="请选择本机的图形界面应用（.exe）。应用会在隔离桌面启动。录英文按键前请确认目标应用已切换至英文输入法。停录时会关闭本次启动的应用，请先保存工作，再点击隔离桌面上的停止按钮，返回此页查看草稿。" TextWrapping="Wrap" />
         </StackPanel>
         <TextBlock x:Name="RecordingStatus" AutomationProperties.AutomationId="RecordingStatus" TextWrapping="Wrap" />
+        <Button x:Name="EditRecordingScript" Content="编辑为 Lua 脚本" Visibility="Collapsed" Click="EditRecording"
+                AutomationProperties.AutomationId="EditRecordingScript" />
         <Expander x:Name="RecordingDraft" Header="查看已录动作" Visibility="Collapsed" Expanding="ReadRecordingDraft"
                   AutomationProperties.AutomationId="RecordingDraft" HorizontalAlignment="Stretch">
             <TextBox x:Name="RecordingActions" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="220"

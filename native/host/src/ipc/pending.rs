@@ -62,8 +62,9 @@ impl Clock for SystemClock {
 /// 键序（未启用 preserve_order）→ `to_string` 确定性；分隔符用不可见控制字符
 /// 防拼接歧义。
 pub fn fingerprint(command: &str, params: &Value) -> String {
+    use sha2::{Digest, Sha256};
     let canonical = serde_json::to_string(params).unwrap_or_default();
-    format!("{command}\u{1}{canonical}")
+    format!("{command}\u{1}{:x}", Sha256::digest(canonical.as_bytes()))
 }
 
 /// 请求等待者（per-request oneshot 发送端；同内容在途重复请求共享响应 =
@@ -155,6 +156,23 @@ impl PendingMap {
     /// 当前注入时钟时刻（Router 事件循环计算 recv 超时用）。
     pub fn now(&self) -> Instant {
         self.clock.now()
+    }
+
+    /// A query can return another cached query. Each successful response chain
+    /// has a single leaf, so no lookup or recursion through arbitrary JSON is needed.
+    pub fn forget_recording_drafts(&mut self, keep: Option<&str>) {
+        self.cache.retain(|_, slot| {
+            if !matches!(slot.fingerprint.split('\u{1}').next(),
+                Some("finish_recording" | "start_recording" | "query_request")) { return true; }
+            let Ok(mut value) = slot.result.as_ref() else { return true };
+            while value.get("status").and_then(Value::as_str) == Some("completed") {
+                let Some(inner) = value.get("response") else { break };
+                value = inner;
+            }
+            let Some(id) = value.get("recording_id").and_then(Value::as_str) else { return true };
+            keep == Some(id) || value.get("actions").is_none()
+        });
+        self.cache_order.retain(|id| self.cache.contains_key(id));
     }
 
     // ---- §6.1 去重前置判定 ----
@@ -447,6 +465,36 @@ mod tests {
 
     fn ok(data: Value) -> Result<Value, IpcError> {
         Ok(data)
+    }
+
+    #[test]
+    fn releasing_a_draft_forgets_query_copies_but_preserves_unrelated_replies() {
+        use serde_json::json;
+        let mut map = PendingMap::new();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let draft = json!({"recording_id":"old","actions":[{"seq":0}]});
+        let looked_up = json!({"status":"completed","response":draft});
+        let nested = json!({"status":"completed","response":looked_up});
+        let cases = [
+            ("finish", "finish_recording", draft),
+            ("read", "query_request", looked_up),
+            ("nested", "query_request", nested),
+            ("current", "start_recording", json!({"recording_id":"new","actions":[]})),
+            ("job", "get_job", json!({"status":"completed","result":"unrelated"})),
+        ];
+        for (id, command, result) in &cases {
+            map.admit(id, command, fingerprint(command, &Value::Null), CommandClass::Normal, tx.clone());
+            map.complete(id, &ok(result.clone()));
+        }
+        map.forget_recording_drafts(Some("new"));
+        for (id, command, _) in &cases[..3] {
+            assert!(matches!(map.query(id), RequestState::Unknown));
+            assert!(matches!(map.classify(id, &fingerprint(command, &Value::Null)), Dedup::DuplicateExpired));
+        }
+        assert!(matches!(map.query("current"), RequestState::Completed(_)));
+        map.forget_recording_drafts(None);
+        assert!(matches!(map.query("current"), RequestState::Unknown));
+        assert!(matches!(map.query("job"), RequestState::Completed(_)));
     }
 
     #[test]

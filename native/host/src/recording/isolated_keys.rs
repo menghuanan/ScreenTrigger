@@ -51,10 +51,11 @@ impl ControlKeys {
     pub fn new(desktop: Arc<IsolatedDesktop>) -> Self {
         let (request, requests) = mpsc::sync_channel::<Request>(1);
         let join = thread::spawn(move || {
+            super::isolated::prepare_non_text_thread();
             super::isolated::trace_lifecycle("reader.begin");
-            let Ok(_guard) = desktop.enter_thread() else {
+            if desktop.enter_dedicated_thread().is_err() {
                 return;
-            };
+            }
             // USER creates the reader's queue on first use.
             crate::winmessages::pop(0, 0);
             let reader = unsafe { GetCurrentThreadId() };

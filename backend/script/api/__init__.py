@@ -92,10 +92,21 @@ class ScriptApi:
     def click(self, button=None, clicks=None):
         return self.click_at(*self.pointer(), button, clicks)
 
-    def click_anchor(self, anchor, button=None, clicks=None):
+    def click_anchor(self, anchor, button=None, clicks=None, hold_ms=None):
         AnchoredPoint.parse(anchor)
         return self.dispatch("click_anchor", anchor=anchor, button="left" if button is None else button,
-                             clicks=1 if clicks is None else clicks)
+                             clicks=1 if clicks is None else clicks,
+                             **({} if hold_ms is None else {"hold_ms": integer(hold_ms, "hold_ms")}))
+
+    def drag_anchor(self, points, duration_ms):
+        return self.dispatch("drag_anchor", points=points, duration_ms=integer(duration_ms, "duration_ms"))
+
+    def scroll_anchor(self, anchor, delta_raw):
+        AnchoredPoint.parse(anchor)
+        return self.dispatch("scroll_anchor", anchor=anchor, delta_raw=integer(delta_raw, "delta_raw"))
+
+    def recorded_keys(self, scope, events):
+        return self.dispatch("recorded_keys", scope=scope, events=events)
 
     def drag(self, from_x, from_y, to_x, to_y, duration=None):
         start = {"x": integer(from_x, "from_x"), "y": integer(from_y, "from_y")}
@@ -223,6 +234,7 @@ class ScriptApi:
             "wait_until_target_disappear": lambda id, timeout=None: s.poll("gone", [id], timeout),
             "move_to": self.move_to, "click": self.click, "click_at": self.click_at,
             "click_anchor": self.click_anchor, "drag": self.drag,
+            "drag_anchor": self.drag_anchor, "scroll_anchor": self.scroll_anchor, "recorded_keys": self.recorded_keys,
             "move_to_target": lambda *args: self.target_action("move", *args),
             "click_target": lambda *args: self.target_action("click", *args),
             "scroll": lambda delta: self.dispatch("scroll", delta=integer(delta, "delta")),
@@ -241,7 +253,8 @@ class ScriptApi:
             "call_script": self.root.call,
         }
         input_names = ("move_to","move_to_target","click","click_at","click_anchor","click_target",
-                       "drag","scroll","press_key","key_down","key_up","hotkey","type_text")
+                       "drag","scroll","press_key","key_down","key_up","hotkey","type_text",
+                       "drag_anchor","scroll_anchor","recorded_keys")
         def with_policy(options, name, *args):
             if name not in input_names:
                 fail("api_name","需要已注册的输入动作")

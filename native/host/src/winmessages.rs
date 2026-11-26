@@ -11,6 +11,13 @@ pub struct Message {
     y: i32,
     private: u32,
 }
+/// Rust can finish its closure before USER and other DLLs complete thread detach.
+/// Reap under the registry lock only once the OS join itself can no longer block.
+pub fn thread_exited(join: &std::thread::JoinHandle<()>) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::{Foundation::{HANDLE, WAIT_OBJECT_0}, System::Threading::WaitForSingleObject};
+    unsafe { WaitForSingleObject(HANDLE(join.as_raw_handle()), 0) == WAIT_OBJECT_0 }
+}
 #[link(name = "user32")]
 extern "system" {
     fn PeekMessageW(message: *mut Message, hwnd: isize, min: u32, max: u32, remove: u32) -> i32;

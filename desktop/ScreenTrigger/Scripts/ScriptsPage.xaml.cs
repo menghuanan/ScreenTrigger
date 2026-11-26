@@ -103,6 +103,19 @@ public sealed partial class ScriptsPage : UserControl, IWorkspaceDraft
     Task<bool> IWorkspaceDraft.ResolveChanges() => commands.Guard(CanReplace);
     private Task<bool> CanReplace() => original == Snapshot() ? Task.FromResult(true) :
         commands.ResolveDraft("脚本", SaveDraft, () => Edit(edited, savedSource));
+    internal async Task<bool> CanAcceptRecording(WorkspaceCommands prompts)
+    {
+        await commands.WhenIdle;
+        return original == Snapshot() || await prompts.ResolveDraft("脚本", SaveDraft, () => Edit(edited, savedSource));
+    }
+
+    internal void EditRecordingSource(string source)
+    {
+        Edit(null, "");
+        ScriptName.Text = "录制脚本";
+        Source.Text = source;
+        Source.Focus(FocusState.Programmatic);
+    }
     private void Edit(CatalogItem? item, string source)
     {
         if (edited?.Id != item?.Id || edited?.Revision != item?.Revision) { DebugTools.Content = null; debugger = null; }

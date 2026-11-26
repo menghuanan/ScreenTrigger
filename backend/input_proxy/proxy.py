@@ -87,6 +87,14 @@ class InputProxy:
         duration = action.get("duration_ms", 0)
         if action.get("kind") == "text":
             duration = action.get("interval_ms", 0) * len(action.get("text", ""))
+        elif action.get("kind") == "click_anchor" and isinstance(action.get("hold_ms"), int):
+            clicks = action.get("clicks", 1)
+            duration = action["hold_ms"] * clicks if type(clicks) is int else 0
+        elif action.get("kind") == "recorded_keys":
+            edges = action.get("events")
+            if isinstance(edges, list) and edges and isinstance(edges[-1], dict):
+                offset = edges[-1].get("offset_ms")
+                duration = offset if type(offset) is int and 0 <= offset <= 1800000 else 0
         delay = action.get("policy", {}).get("delay_ms")
         if isinstance(delay, list):
             duration += delay[1]

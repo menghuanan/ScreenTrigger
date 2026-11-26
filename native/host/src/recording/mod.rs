@@ -25,6 +25,7 @@ pub const COMMANDS: &[&str] = &[
     "resume_recording",
     "finish_recording",
     "cancel_recording",
+    "release_recording_draft",
 ];
 pub static ADMISSION: Mutex<()> = Mutex::new(());
 pub const SELF_INPUT: usize = 0x5354494e;
@@ -263,6 +264,18 @@ pub fn command(session: &str, cmd: &str, p: &Value) -> Result<Value, IpcError> {
         return Err(IpcError::invalid_params("录制 ID 不属于本会话"));
     }
     let mut s = r.sequence.lock().unwrap();
+    if cmd == "release_recording_draft" {
+        if !matches!(s.status, Status::Finished | Status::Cancelled) {
+            return Err(IpcError::invalid_state("请先结束或取消录制"));
+        }
+        s.completed.clear();
+        s.interrupted.clear();
+        drop(s);
+        let prior = recordings.current.take().unwrap();
+        prior.worker.stop();
+        recordings.retired.push(RetiredWorker { worker: prior.worker, desktop: prior.isolated });
+        return Ok(json!({"released":true}));
+    }
     match cmd {
         "pause_recording" if s.status == Status::Recording => {
             s.pause(r.start.elapsed().as_millis() as u64, "manual_pause")
@@ -279,7 +292,7 @@ pub fn command(session: &str, cmd: &str, p: &Value) -> Result<Value, IpcError> {
         "start_recording" | "get_recording_state" => (),
         _ => return Err(IpcError::invalid_state("录制已终结或当前状态不允许此操作")),
     }
-    let mut state = json!({"recording_id":r.id.to_string(),"status":s.status,"action_count":s.completed.len(),"interrupted":s.interrupted,
+    let mut state = json!({"recording_id":r.id.to_string(),"scope":s.mode,"status":s.status,"action_count":s.completed.len(),"interrupted":s.interrupted,
         "keyboard_source":if r.isolated_scope.is_some() {"isolated_control_keys"} else if r.worker.native_commands.load(std::sync::atomic::Ordering::Acquire){"foreground_command_keys"}else{"focused_window_messages"},
         "keyboard_available":s.status == Status::Recording && r.worker.keyboard_ready.load(std::sync::atomic::Ordering::Acquire), "receiver":format!("0x{:X}",r.worker.receiver)});
     if let Some(desktop) = &r.isolated {
@@ -312,7 +325,8 @@ fn recording_scope(
     };
     let desktop = desktop.clone();
     std::thread::spawn(move || {
-        let _thread_desktop = desktop.enter_thread()?;
+        isolated::prepare_non_text_thread();
+        desktop.enter_dedicated_thread()?;
         // Window discovery and the stop indicator share the five-second IPC deadline.
         let deadline = Instant::now() + std::time::Duration::from_secs(2);
         while desktop.alive() && Instant::now() < deadline {

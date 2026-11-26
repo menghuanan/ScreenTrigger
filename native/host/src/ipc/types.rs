@@ -251,8 +251,9 @@ const HOST_PYTHON_COMMANDS: [&str; 9] = [
 
 /// **Rust 本地宿主能力**（TASK-008 框选，03：UI 发给宿主的 start_selection_mode 类
 /// 命令由 Rust 处理）：经 [`super::HostCommandHandler`] 在 Rust 内处理并回同样信封。
-const HOST_HANDLED_COMMANDS: [&str; 12] = [
+const HOST_HANDLED_COMMANDS: [&str; 13] = [
     "start_recording", "get_recording_state", "pause_recording", "resume_recording", "finish_recording", "cancel_recording",
+    "release_recording_draft",
     "start_selection_mode",
     "start_point_pick",
     "confirm_point_pick",
@@ -275,7 +276,7 @@ const HOST_COMMANDS: [&str; 6] = [
 
 /// 引擎业务命令（§5.2 第三类；转发 Python → 骨架期 UNKNOWN_COMMAND，
 /// 业务 handler 属 M03–M07）。
-const ENGINE_COMMANDS: [&str; 47] = [
+const ENGINE_COMMANDS: [&str; 48] = [
     "list_ocr_models",
     "preview_ocr_model_change",
     "apply_ocr_model_change",
@@ -307,6 +308,7 @@ const ENGINE_COMMANDS: [&str; 47] = [
     "save_script",
     "delete_script",
     "validate_script",
+    "compile_recording",
     // 运行与调试
     "execute_script",
     "start_monitor",
@@ -465,7 +467,7 @@ mod tests {
             + HOST_HANDLED_COMMANDS.len()
             + HOST_COMMANDS.len()
             + ENGINE_COMMANDS.len();
-        assert_eq!(total, 83);
+        assert_eq!(total, 85);
         for cmd in ["list_execution_history", "clear_execution_logs", "list_catalog_backups",
                     "create_catalog_backup", "preview_catalog_restore", "restore_catalog_backup"] {
             assert!(ENGINE_COMMANDS.contains(&cmd));

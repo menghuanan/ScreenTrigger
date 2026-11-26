@@ -133,6 +133,13 @@ impl Router {
                 // 并回同样信封；不出壳、不转发 Python。
                 self.pending.admit(&id, &command, fp, class, reply);
                 let result = self.host_commands.dispatch(&command, &params);
+                if let Ok(value) = &result {
+                    if command == "release_recording_draft" && value["released"] == true {
+                        self.pending.forget_recording_drafts(None);
+                    } else if command == "start_recording" {
+                        self.pending.forget_recording_drafts(value["recording_id"].as_str());
+                    }
+                }
                 self.pending.complete(&id, &result);
             }
             Route::ForwardPython => {

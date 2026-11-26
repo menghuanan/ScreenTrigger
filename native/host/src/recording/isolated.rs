@@ -12,10 +12,8 @@ use protocol::object_name;
 use return_guard::ReturnGuard;
 use std::{
     ffi::c_void,
-    marker::PhantomData,
     os::windows::io::OwnedHandle,
     ptr,
-    rc::Rc,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
@@ -60,6 +58,19 @@ extern "system" {
 #[link(name = "kernel32")]
 extern "system" {
     fn GetCurrentThreadId() -> u32;
+}
+#[link(name = "imm32")]
+extern "system" {
+    fn ImmDisableIME(thread_id: u32) -> i32;
+}
+
+/// These recorder threads never edit text. Opt out before USER creates a window or
+/// attaches a desktop, so thread detach need not wait for the text service's COM monitor.
+/// Only this helper thread is affected, including when the target itself uses a Chinese IME.
+pub(super) fn prepare_non_text_thread() {
+    if unsafe { ImmDisableIME(GetCurrentThreadId()) } == 0 {
+        trace_lifecycle("helper.ime-opt-out-unavailable");
+    }
 }
 
 pub(super) fn trace_lifecycle(stage: &'static str) {
@@ -163,6 +174,9 @@ impl Session {
     }
     fn restore(&self) -> Result<(), IpcError> {
         let mut state = self.presentation.lock().unwrap();
+        if state.job.is_none() {
+            return Ok(());
+        }
         state.closing = true;
         if state.active {
             let current = self
@@ -207,22 +221,6 @@ pub(super) struct IsolatedDesktop {
     watcher: Option<thread::JoinHandle<()>>,
 }
 
-/// Keep this guard on the recorder worker until its windows and hooks have been removed.
-pub(super) struct ThreadDesktopGuard {
-    original: Desk,
-    _session: Arc<Session>,
-    _thread_only: PhantomData<Rc<()>>,
-}
-impl Drop for ThreadDesktopGuard {
-    fn drop(&mut self) {
-        trace_lifecycle("thread-desktop.restore.begin");
-        unsafe {
-            SetThreadDesktop(self.original);
-        }
-        trace_lifecycle("thread-desktop.restore.end");
-    }
-}
-
 impl IsolatedDesktop {
     pub(super) fn launch(executable: &str) -> Result<Self, IpcError> {
         let original = Desktop::input(READ_OBJECTS | SWITCH)?;
@@ -240,7 +238,10 @@ impl IsolatedDesktop {
         // any launch failure can close its HDESK, and keep the caller on its own desktop.
         let private = thread::Builder::new()
             .name("recording-desktop-create".into())
-            .spawn(move || Desktop::create(&desktop_name))
+            .spawn(move || {
+                prepare_non_text_thread();
+                Desktop::create(&desktop_name)
+            })
             .map_err(|_| unavailable("无法创建隔离桌面线程"))?
             .join()
             .map_err(|_| unavailable("隔离桌面创建线程已退出"))??;
@@ -264,6 +265,7 @@ impl IsolatedDesktop {
         let watcher = thread::Builder::new()
             .name("recording-desktop-return".into())
             .spawn(move || {
+                prepare_non_text_thread();
                 trace_lifecycle("watcher.begin");
                 watched.watch();
                 trace_lifecycle("watcher.end");
@@ -272,16 +274,13 @@ impl IsolatedDesktop {
         Ok(Self { session, watcher: Some(watcher) })
     }
 
-    pub(super) fn enter_thread(&self) -> Result<ThreadDesktopGuard, IpcError> {
-        let original = unsafe { GetThreadDesktop(GetCurrentThreadId()) as Desk };
-        if original == 0 || unsafe { SetThreadDesktop(self.session.private.0) } == 0 {
+    /// Used only on newly spawned, single-purpose threads. The owner retains the desktop
+    /// through their joins. USER releases each thread's desktop association at thread exit.
+    pub(super) fn enter_dedicated_thread(&self) -> Result<(), IpcError> {
+        if unsafe { SetThreadDesktop(self.session.private.0) } == 0 {
             return Err(os_error("录制工作线程无法进入隔离桌面"));
         }
-        Ok(ThreadDesktopGuard {
-            original,
-            _session: Arc::clone(&self.session),
-            _thread_only: PhantomData,
-        })
+        Ok(())
     }
     pub(super) fn name(&self) -> &str {
         &self.session.name
@@ -367,7 +366,7 @@ impl IsolatedDesktop {
         result
     }
     pub(super) fn watcher_finished(&self) -> bool {
-        self.watcher.as_ref().is_none_or(|thread| thread.is_finished())
+        self.watcher.as_ref().is_none_or(crate::winmessages::thread_exited)
     }
 }
 impl Drop for IsolatedDesktop {

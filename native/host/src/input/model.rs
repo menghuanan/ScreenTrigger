@@ -104,6 +104,31 @@ pub struct Key {
     pub name: String,
     pub vk: u16,
     pub extended: bool,
+    pub scan_code: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecordedKey {
+    Named(Key),
+    Physical { scan_code: u16, extended: bool },
+}
+
+impl Key {
+    pub fn virtual_group(&self) -> u16 {
+        match self.vk {
+            0xa0 | 0xa1 => 0x10,
+            0xa2 | 0xa3 => 0x11,
+            0xa4 | 0xa5 => 0x12,
+            other => other,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedEdge {
+    pub key: RecordedKey,
+    pub offset_ms: u32,
+    pub down: bool,
 }
 
 /// 物理屏幕点（`screen_physical`，可负）。
@@ -151,7 +176,10 @@ pub enum InputAction {
     Move { x: i64, y: i64, duration_ms: u32 },
     /// `{x,y,button,clicks}`。
     Click { x: i64, y: i64, button: MouseButton, clicks: u32 },
-    ClickAnchor { anchor: super::anchor::AnchoredPoint, button: MouseButton, clicks: u32 },
+    ClickAnchor { anchor: super::anchor::AnchoredPoint, button: MouseButton, clicks: u32, hold_ms: u32 },
+    DragAnchor { points: Vec<super::anchor::AnchoredPoint>, duration_ms: u32 },
+    ScrollAnchor { anchor: super::anchor::AnchoredPoint, delta_raw: i16 },
+    RecordedKeys { scope: super::anchor::Scope, events: Vec<RecordedEdge> },
     /// `{from:{x,y},to:{x,y},duration_ms}`。
     Drag { from: Point, to: Point, duration_ms: u32 },
     /// `{delta}`。
@@ -172,6 +200,9 @@ impl InputAction {
             InputAction::Move { .. } => "move",
             InputAction::Click { .. } => "click",
             InputAction::ClickAnchor { .. } => "click_anchor",
+            InputAction::DragAnchor { .. } => "drag_anchor",
+            InputAction::ScrollAnchor { .. } => "scroll_anchor",
+            InputAction::RecordedKeys { .. } => "recorded_keys",
             InputAction::Drag { .. } => "drag",
             InputAction::Scroll { .. } => "scroll",
             InputAction::Key { .. } => "key",
@@ -338,6 +369,16 @@ pub trait InputPort: Send + Sync {
 
     /// 滚轮（正数向上，单位格）。
     fn wheel(&self, delta: i32) -> Result<(), PortError>;
+
+    fn raw_wheel(&self, delta: i16) -> Result<(), PortError> {
+        if delta % 120 != 0 { return Err(PortError::new("输入端口不支持高分辨率滚动")); }
+        self.wheel(i32::from(delta) / 120)
+    }
+
+    /// The identity of the focused control receiving this recorded group.
+    fn key_target(&self) -> Result<(isize, isize), PortError> {
+        Err(PortError::new("无法核实接收键序的控件"))
+    }
 
     /// 键盘虚拟键按下/抬起。
     fn key_event(&self, key: &Key, down: bool) -> Result<(), PortError>;

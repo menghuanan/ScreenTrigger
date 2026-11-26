@@ -32,7 +32,7 @@ def validate_policy(value):
 
 def effective_policy(defaults, override, kind):
     applicable = {"delay_ms"}
-    if kind in ("click", "click_anchor", "move", "drag"):
+    if kind in ("click", "click_anchor", "move", "drag", "drag_anchor"):
         applicable.add("curve")
     if kind in ("click", "click_anchor"):
         applicable.add("offset")

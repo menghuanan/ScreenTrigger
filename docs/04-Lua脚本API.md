@@ -1,5 +1,9 @@
 # Lua 脚本 API v1
 
+## 从录制草稿生成 Lua（TASK-034）
+
+运行页结束录制后可选择「编辑为 Lua 脚本」。脚本页沿用语法检查、修订保存和重新打开入口。`wait(seconds)` 表达动作间隔。`click_anchor(anchor,button?,clicks?,hold_ms?)` 保留点击的按住时间。`drag_anchor(points,duration_ms)` 依序经过比例点，`scroll_anchor(anchor,delta_raw)` 在指定位置发送有符号的原始滚轮增量。每个滚轮刻度为 120。`recorded_keys(scope,events)` 接受配对完整的按下和抬起，按各自的 `offset_ms` 执行。中文输入法保留实际键序。回放前在运行页重新选择窗口、选区或单屏。
+
 ## 从脚本草稿取点（TASK-032）
 
 脚本页允许手填物理 X、Y，或从指定显示器取点后回填。点击“插入 click_at”将草稿点写入源码的当前选区。例如物理点 (300,400) 生成 `click_at(300, 400)`，仍使用已有运行租约和前台输入边界。

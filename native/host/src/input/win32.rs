@@ -127,6 +127,10 @@ mod imp {
         fn GetAsyncKeyState(key: i32) -> i16;
         fn GetCursorPos(lppoint: *mut PointRaw) -> i32;
         fn GetForegroundWindow() -> *mut c_void;
+        fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
+        fn GetAncestor(hwnd: isize, flags: u32) -> isize;
+        fn GetKeyboardLayout(thread: u32) -> isize;
+        fn MapVirtualKeyExW(code: u32, kind: u32, layout: isize) -> u32;
         fn EnumDisplayMonitors(
             hdc: *mut c_void,
             clip: *mut RectRaw,
@@ -172,6 +176,33 @@ mod imp {
     }
 
     pub fn key_is_down(vk: u16) -> bool { (unsafe { GetAsyncKeyState(vk as i32) }) < 0 }
+
+    pub fn key_target() -> Option<(isize, isize)> {
+        let top = unsafe { GetForegroundWindow() } as isize;
+        let point = cursor_pos()?;
+        if top == 0 || crate::window::system::window_at(point.x, point.y) != Some(top) { return None; }
+        let thread = unsafe { GetWindowThreadProcessId(top, std::ptr::null_mut()) };
+        let focus = crate::window::system::thread_focus(thread)?;
+        (unsafe { GetAncestor(focus, 2) } == top).then_some((top, focus))
+    }
+
+    pub fn scan_vk(control: isize, scan: u16, extended: bool) -> Option<u16> {
+        let thread = unsafe { GetWindowThreadProcessId(control, std::ptr::null_mut()) };
+        if thread == 0 { return None; }
+        let layout = unsafe { GetKeyboardLayout(thread) };
+        let code = u32::from(scan) | if extended { 0xe000 } else { 0 };
+        let vk = unsafe { MapVirtualKeyExW(code, 3, layout) };
+        (layout != 0 && (1..=254).contains(&vk)).then_some(vk as u16)
+    }
+
+    pub fn vk_scan(control: isize, vk: u16) -> Option<(u16, bool)> {
+        let thread = unsafe { GetWindowThreadProcessId(control, std::ptr::null_mut()) };
+        if thread == 0 { return None; }
+        let layout = unsafe { GetKeyboardLayout(thread) };
+        let scan = unsafe { MapVirtualKeyExW(u32::from(vk), 4, layout) };
+        let base = (scan & 255) as u16;
+        (layout != 0 && (1..=127).contains(&base)).then_some((base, scan >> 8 == 0xe0))
+    }
 
     /// 设置光标位置（绝对，物理像素）。
     pub fn set_cursor_pos(x: i64, y: i64) -> Result<(), String> {
@@ -232,7 +263,11 @@ mod imp {
 
     /// 滚轮（正数向上，单位格 → ×120）。
     pub fn wheel(delta: i32) -> Result<(), String> {
-        let amount = (delta as i64 * WHEEL_DELTA as i64) as u32;
+        raw_wheel(delta * WHEEL_DELTA)
+    }
+
+    pub fn raw_wheel(delta: i32) -> Result<(), String> {
+        let amount = delta as u32;
         let input = Input {
             kind: INPUT_MOUSE,
             u: InputUnion {
@@ -251,7 +286,11 @@ mod imp {
 
     /// 键盘虚拟键按下/抬起。
     pub fn key(vk: u16, extended: bool, down: bool) -> Result<(), String> {
-        let mut flags = 0u32;
+        send_key(vk, 0, extended, down)
+    }
+
+    pub fn send_key(vk: u16, scan: u16, extended: bool, down: bool) -> Result<(), String> {
+        let mut flags = if scan != 0 { 0x0008 } else { 0 };
         if extended {
             flags |= KEYEVENTF_EXTENDEDKEY;
         }
@@ -261,7 +300,7 @@ mod imp {
         let input = Input {
             kind: INPUT_KEYBOARD,
             u: InputUnion {
-                ki: KeybdInput { vk, scan: 0, flags, time: 0, extra: crate::recording::SELF_INPUT },
+                ki: KeybdInput { vk: if scan == 0 { vk } else { 0 }, scan, flags, time: 0, extra: crate::recording::SELF_INPUT },
             },
         };
         send(&[input])
@@ -347,6 +386,11 @@ mod imp {
     }
     pub fn cursor_pos() -> Option<Point> { None }
     pub fn key_is_down(_vk: u16) -> bool { false }
+    pub fn key_target() -> Option<(isize, isize)> { None }
+    pub fn scan_vk(_: isize, _: u16, _: bool) -> Option<u16> { None }
+    pub fn vk_scan(_: isize, _: u16) -> Option<(u16, bool)> { None }
+    pub fn raw_wheel(_: i32) -> Result<(), String> { Err("非 Windows 平台不支持输入".into()) }
+    pub fn send_key(_: u16, _: u16, _: bool, _: bool) -> Result<(), String> { Err("非 Windows 平台不支持输入".into()) }
     pub fn set_cursor_pos(_x: i64, _y: i64) -> Result<(), String> {
         Err("非 Windows 平台不支持输入".to_string())
     }
@@ -375,5 +419,5 @@ mod imp {
 
 pub use imp::{
     button, cursor_pos, key_is_down, enum_monitors, foreground_window, key, move_absolute, set_cursor_pos,
-    unicode_text, virtual_screen, wheel,
+    unicode_text, virtual_screen, wheel, raw_wheel, key_target, scan_vk, vk_scan, send_key,
 };

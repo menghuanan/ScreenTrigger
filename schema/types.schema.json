@@ -51,6 +51,45 @@
         "y": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}
       }
     },
+    "recordingMs": {"type": "integer", "minimum": 0, "maximum": 1800000},
+    "recordedKeyEdge": {
+      "type": "object",
+      "required": ["offset_ms", "down"],
+      "additionalProperties": false,
+      "properties": {
+        "offset_ms": {"$ref": "#/definitions/recordingMs"},
+        "down": {"type": "boolean"},
+        "key": {"type": "string", "pattern": "^([a-z0-9]|f([1-9]|1[0-2])|up|down|left|right|enter|space|tab|backspace|delete|esc|ctrl|shift|alt|win|home|end|pageup|pagedown|insert|printscreen|kana|convert|nonconvert)$"},
+        "scan_code": {"type": "integer", "minimum": 1, "maximum": 127},
+        "extended": {"type": "boolean"}
+      },
+      "oneOf": [
+        {"required": ["key"], "not": {"anyOf": [{"required": ["scan_code"]}, {"required": ["extended"]}]}},
+        {"required": ["scan_code", "extended"], "not": {"required": ["key"]}}
+      ]
+    },
+    "recordedAction": {
+      "type": "object", "required": ["seq", "start_ms", "end_ms", "action"], "additionalProperties": false,
+      "properties": {
+        "seq": {"type": "integer", "minimum": 0, "maximum": 8191},
+        "start_ms": {"$ref": "#/definitions/recordingMs"}, "end_ms": {"$ref": "#/definitions/recordingMs"},
+        "action": {"oneOf": [
+          {"type": "object", "required": ["kind", "point", "button"], "additionalProperties": false,
+           "properties": {"kind": {"const": "click"}, "point": {"$ref": "#/definitions/anchoredPoint"},
+                          "button": {"enum": ["left", "right", "middle"]}}},
+          {"type": "object", "required": ["kind", "from", "path", "to"], "additionalProperties": false,
+           "properties": {"kind": {"const": "drag"}, "from": {"$ref": "#/definitions/anchoredPoint"},
+                          "to": {"$ref": "#/definitions/anchoredPoint"}, "path": {"type": "array", "maxItems": 8192,
+                          "items": {"$ref": "#/definitions/anchoredPoint"}}}},
+          {"type": "object", "required": ["kind", "point", "delta"], "additionalProperties": false,
+           "properties": {"kind": {"const": "scroll"}, "point": {"$ref": "#/definitions/anchoredPoint"},
+                          "delta": {"type": "integer", "minimum": -32768, "maximum": 32767}}},
+          {"type": "object", "required": ["kind", "events"], "additionalProperties": false,
+           "properties": {"kind": {"const": "key_sequence"}, "events": {"type": "array", "minItems": 2,
+                          "maxItems": 8192, "items": {"$ref": "#/definitions/recordedKeyEdge"}}}}
+        ]}
+      }
+    },
     "match": {
       "type": "object",
       "required": ["target_id", "sample_no", "space", "bbox", "center", "confidence", "geometry_revision", "evidence"],
