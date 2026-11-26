@@ -78,6 +78,42 @@ class HistoryTests(unittest.TestCase):
             self.assertEqual(self.read()["items"][0]["message"],"message-1")
         self.assertEqual(len(self.warnings),1)
 
+    def test_close_drains_a_full_queue_and_terminal_state_before_reopen(self):
+        self.read()
+        archive = self.archive
+        archive.queue.maxsize = 1
+        started, release = threading.Event(), threading.Event()
+        append = archive._append
+        def slow_append(*args):
+            started.set()
+            if not release.wait(5):
+                raise AssertionError("fixture did not release the writer")
+            append(*args)
+        with patch.object(archive, "_append", slow_append):
+            self.add(1)
+            self.assertTrue(started.wait(2))
+            self.add(2)
+            self.assertTrue(archive.queue.full())
+            archive.state(dict(self.state, status="cancelled", reason="user_requested"), None)
+            closers = [threading.Thread(target=archive.close) for _ in range(2)]
+            for closer in closers:
+                closer.start()
+            try:
+                # Exceed the previous close deadline while the writer owns the first log.
+                closers[0].join(1.1)
+                self.assertTrue(all(closer.is_alive() for closer in closers))
+            finally:
+                release.set()
+                for closer in closers:
+                    closer.join(3)
+        self.assertFalse(any(closer.is_alive() for closer in closers))
+        self.assertFalse(archive.writer.is_alive())
+        archive.close()
+        self.archive = HistoryStore(self.temp.name, self.warnings.append)
+        state, = self.archive.command("list_execution_history", {})["items"]
+        self.assertEqual((state["status"],state["reason"]), ("cancelled","user_requested"))
+        self.assertEqual([r["message"] for r in self.read()["items"]], ["message-1","message-2"])
+
     def test_locked_summary_retries_the_latest_terminal_when_idle(self):
         self.read()
         path = self.archive.path(self.key + ".json")

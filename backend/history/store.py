@@ -33,6 +33,7 @@ class HistoryStore:
         self.warn = warn
         self.lock = threading.Lock()
         self.queue = queue.Queue(maxsize=2048)
+        self.closing = False
         self.summaries, self.pending, self.fallback = {}, {}, {}
         self.degraded = set()
         self.prune = set()
@@ -85,26 +86,31 @@ class HistoryStore:
         if row["status"] == "cancelled" and row["reason"] not in ("user_requested", "hotkey", "engine_exit", "script_requested"):
             row["reason"] = "script_requested"
         with self.lock:
+            if self.closing:
+                return
             key = row["execution_id"]
             self.summaries[key] = self.pending[key] = row
             if row["status"] in TERMINAL:
                 self._trim()
-        try:
-            self.queue.put_nowait(("wake", None, None))
-        except queue.Full:
-            pass
+            try:
+                self.queue.put_nowait(("wake", None, None))
+            except queue.Full:
+                pass
 
     def log(self, entry, settings):
         if LEVEL.get(entry["level"], 1) < LEVEL.get(settings.get("level"), 1):
             return
         key = entry["execution_id"]
         with self.lock:
+            if self.closing:
+                return
             self.fallback.setdefault(key, deque(maxlen=1000)).append(entry)
-        try:
-            self.queue.put_nowait(("log", (entry, settings), None))
-        except queue.Full:
-            self.degraded.add(key)
-            self.warning("日志写入队列已满，最近日志可从内存查看")
+            try:
+                self.queue.put_nowait(("log", (entry, settings), None))
+                return
+            except queue.Full:
+                self.degraded.add(key)
+        self.warning("日志写入队列已满，最近日志可从内存查看")
 
     def _files(self, key):
         directory = self.path("")
@@ -200,10 +206,10 @@ class HistoryStore:
                 kind, payload, future = self.queue.get(timeout=None if due is None else max(0, due - time.monotonic()))
             except queue.Empty:
                 continue
+            except queue.ShutDown:
+                self._flush_states(force=True)
+                return
             try:
-                if kind == "close":
-                    self._flush_states(force=True)
-                    return
                 if kind == "log":
                     self._append(*payload)
                 elif kind == "read":
@@ -226,6 +232,8 @@ class HistoryStore:
             raise StorageError("INVALID_PARAMS", "存在未声明的参数", field=field)
         offset, limit = page_bounds(params)
         with self.lock:
+            if self.closing:
+                raise StorageError("INVALID_STATE", "历史存储已关闭")
             if name == "list_execution_history":
                 rows = sorted(self.summaries.values(), key=lambda v:(v["updated_at"], v["execution_id"]), reverse=True)
                 return dict(items=rows[offset:offset + limit], total=len(rows))
@@ -239,12 +247,14 @@ class HistoryStore:
             entry = ("read", (key, offset, limit), future) if name == "get_execution_logs" else ("clear", key, future)
             self.queue.put(entry, timeout=.3)
             return future.result(timeout=3)
+        except queue.ShutDown as exc:
+            raise StorageError("INVALID_STATE", "历史存储已关闭") from exc
         except (queue.Full, TimeoutError) as exc:
             raise StorageError("BUSY", "日志存储繁忙，请重新查询", retryable=True) from exc
 
     def close(self):
-        try:
-            self.queue.put(("close", None, None), timeout=.5)
-            self.writer.join(1)
-        except queue.Full:
-            self.warning("日志尚未全部写出")
+        with self.lock:
+            self.closing = True
+            self.queue.shutdown()
+        # The host bounds process shutdown. A normal EOF waits for accepted writes.
+        self.writer.join()
