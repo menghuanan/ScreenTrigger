@@ -45,10 +45,7 @@ public sealed partial class GroupsView : UserControl
         var visible = targets.Where(t => group.Id == All || t.Doc.GetProperty("group_id").GetString() == group.Id).ToList();
         RenameButton.IsEnabled = DeleteButton.IsEnabled = group.Depth >= 0;
         Targets.ItemsSource = visible;
-        Count.Text = $"{group.Name} · {visible.Count} 个目标";
     }
-
-    private void TargetChanged(object sender, SelectionChangedEventArgs e) => MoveButton.IsEnabled = Targets.SelectedItem is Target;
 
     private async Task Edit(bool create)
     {
@@ -86,7 +83,7 @@ public sealed partial class GroupsView : UserControl
         await Reload(All);
     });
     private async void Move(object s, RoutedEventArgs e) => await session.Run(async () => {
-        if (Targets.SelectedItem is not Target target) return;
+        if (((MenuFlyout)Resources["TargetActions"]).Target is not ListViewItem { Content: Target target }) return;
         var picker = new ComboBox { Header = "目标分组", ItemsSource = groups.Skip(1).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch };
         picker.SelectedItem = groups.Find(g => g.Id == target.Doc.GetProperty("group_id").GetString());
         var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "移动目标", Content = picker, PrimaryButtonText = "移动", CloseButtonText = "取消" };

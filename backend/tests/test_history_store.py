@@ -143,6 +143,35 @@ class AuditPrivacy(unittest.TestCase):
     save = fixtures.ExecutionRuntime.save
     await_state = fixtures.ExecutionRuntime.await_state
 
+    def test_running_logs_and_script_name_survive_script_deletion_and_restart(self):
+        archive = HistoryStore(self.boot.data_dir, self.fail)
+        self.addCleanup(archive.close)
+        self.controller.archive = archive
+        script = self.scripts.save_script("窗口巡检", 'log("正在巡检"); wait(30)', [])
+        execution = self.controller.execute(dict(script_id=script["id"], display_id="d"))["execution_id"]
+        try:
+            self.await_state(execution, "running")
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                entries = archive.command("get_execution_logs", dict(execution_id=execution))["items"]
+                if any(entry["message"] == "正在巡检" for entry in entries):
+                    break
+                time.sleep(.02)
+            else:
+                self.fail("运行中的日志未出现")
+            summary, = archive.command("list_execution_history", {})["items"]
+            self.assertEqual((summary["script_id"], summary["script_name"], summary["status"]),
+                             (script["id"], "窗口巡检", "running"))
+        finally:
+            self.controller.stop_all()
+            self.await_state(execution, "cancelled")
+        self.scripts.delete_script(script["id"], script["revision"])
+        archive.close()
+        reopened = HistoryStore(self.boot.data_dir, self.fail)
+        self.addCleanup(reopened.close)
+        summary, = reopened.command("list_execution_history", {})["items"]
+        self.assertEqual((summary["script_name"], summary["status"]), ("窗口巡检", "cancelled"))
+
     def test_new_execution_uses_saved_input_defaults_and_explicit_overrides(self):
         self.controller.settings = lambda: {"input": {"move_duration_ms": 119, "type_interval_ms": 73}}
         script = self.save('move_to(120,85); type_text("one"); type_text("two",0)')

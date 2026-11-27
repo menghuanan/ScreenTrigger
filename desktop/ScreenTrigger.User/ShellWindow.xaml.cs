@@ -20,6 +20,7 @@ public sealed partial class ShellWindow : Window
     private readonly AboutView about;
     private readonly Task connecting;
     private NavigationViewItem current;
+    private int navigationRequest;
     private IDisposable? subscription;
     private bool closing, drained, selecting;
 
@@ -29,13 +30,9 @@ public sealed partial class ShellWindow : Window
         ExtendsContentIntoTitleBar = AppWindowTitleBar.IsCustomizationSupported();
         if (ExtendsContentIntoTitleBar) SetTitleBar(TitleArea);
         AppWindow.Resize(new SizeInt32(1060, 720));
-        Root.SizeChanged += (_, e) => {
-            var mode = e.NewSize.Width < 750 ? NavigationViewPaneDisplayMode.LeftCompact : NavigationViewPaneDisplayMode.Left;
-            if (Navigation.PaneDisplayMode != mode) Navigation.PaneDisplayMode = mode;
-        };
         scripts = new(session, () => (AppWindow.Position, AppWindow.Size));
         groups = new(session);
-        logs = new(session);
+        logs = new(session, scripts.NameForId);
         about = new();
         current = ScriptsNav;
         Navigation.SelectedItem = current;
@@ -65,7 +62,7 @@ public sealed partial class ShellWindow : Window
             });
             subscription = host.Events.Subscribe(Receive);
             host.RecoveryFailed += session.Error;
-            host.RecoveryCompleted += scripts.Recover;
+            host.RecoveryCompleted += Recover;
             host.Events.BeginStart();
             var status = await host.CallAsync(new { op = "start" });
             if (closing) return;
@@ -76,7 +73,7 @@ public sealed partial class ShellWindow : Window
             session.Ready = scripts.IsEnabled = groups.IsEnabled = true;
             session.Log("引擎已就绪");
             if (current == GroupsNav) await groups.Reload();
-            if (current == LogsNav) await logs.Reload();
+            logs.HistoryChanged();
         }
         catch (Exception e) { if (!closing) session.Error(e); }
     }
@@ -85,8 +82,15 @@ public sealed partial class ShellWindow : Window
     {
         if (closing) return;
         if (evt.Name == "script_state_changed") scripts.ApplyState(evt.Payload);
+        if (evt.Name is "script_state_changed" or "monitor_state_changed") logs.HistoryChanged();
         if (evt.Name == "system_error" && evt.Payload.TryGetProperty("error", out var error))
             session.Error(new InvalidOperationException(error.GetProperty("message").GetString()));
+    }
+
+    private void Recover(RecoverySnapshot snapshot)
+    {
+        scripts.Recover(snapshot);
+        logs.HistoryChanged();
     }
 
     private void SelectItem(NavigationViewItem item)
@@ -98,20 +102,23 @@ public sealed partial class ShellWindow : Window
 
     private async void Navigate(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (selecting || current == null || args.SelectedItem is not NavigationViewItem next || next == current) return;
+        if (selecting || current == null || args.SelectedItem is not NavigationViewItem next) return;
+        int request = ++navigationRequest;
+        if (next == current) return;
         SelectItem(current);
-        if (closing) return;
+        // A click can arrive while the host is acknowledging Start, Save, or another page load.
+        while (session.Busy && !closing && request == navigationRequest) await session.WhenIdle;
+        if (closing || request != navigationRequest) return;
         await session.Run(async () => {
-            if (!await scripts.LeaveEditor()) return;
+            if (!await scripts.LeaveEditor() || request != navigationRequest) return;
             current = next;
             SelectItem(next);
             Notice.IsOpen = false;
             PageHost.Content = next.Tag switch {
-                "groups" => groups, "logs" => logs, "about" => about, _ => scripts
+                "groups" => groups, "logs" => logs, "about" => about, "settings" => null, _ => scripts
             };
             if (!session.Ready) return;
             if (next == GroupsNav) await groups.Reload();
-            if (next == LogsNav) await logs.Reload();
             if (next == ScriptsNav) await scripts.Reload();
         });
         SelectItem(current);
@@ -126,7 +133,7 @@ public sealed partial class ShellWindow : Window
         };
         if (key == null || Modified() || VisualTreeHelper.GetOpenPopupsForXamlRoot(Root.XamlRoot).Count != 0) return;
         for (var p = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject; p != null; p = VisualTreeHelper.GetParent(p))
-            if (p is TextBox or PasswordBox or RichEditBox or ComboBox or ContentDialog) return;
+            if (p is TextBox or PasswordBox or RichEditBox or ComboBox or DropDownButton or ContentDialog) return;
         if (scripts.FindKey(key) is not { } row) return;
         e.Handled = true;
         await session.Run(() => scripts.Toggle(row));
@@ -146,12 +153,13 @@ public sealed partial class ShellWindow : Window
         {
             await session.WhenIdle;
             if (!await scripts.LeaveEditor()) { closing = false; return; }
+            logs.StopWatching();
             about.Cancel();
             await connecting;
             subscription?.Dispose();
             if (session.Host is { } host)
             {
-                host.RecoveryCompleted -= scripts.Recover;
+                host.RecoveryCompleted -= Recover;
                 host.RecoveryFailed -= session.Error;
                 await host.DisposeAsync();
             }

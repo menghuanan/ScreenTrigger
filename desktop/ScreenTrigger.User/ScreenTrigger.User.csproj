@@ -20,6 +20,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../ScreenTrigger.Client/ScreenTrigger.Client.csproj" />
+    <Compile Include="../ScreenTrigger/WorkspaceCommands.cs" Link="WorkspaceCommands.cs" />
+    <Compile Include="../ScreenTrigger/Settings/SettingsPage.xaml.cs" Link="SettingsPage.xaml.cs" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.7.0" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" PrivateAssets="all" />
   </ItemGroup>

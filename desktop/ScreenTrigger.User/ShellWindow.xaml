@@ -11,8 +11,9 @@
             </Border>
             <TextBlock Text="ScreenTrigger" FontSize="13" VerticalAlignment="Center"/>
         </StackPanel>
-        <NavigationView x:Name="Navigation" Grid.Row="1" PaneDisplayMode="Left" OpenPaneLength="184"
-            CompactPaneLength="48" IsPaneToggleButtonVisible="False" IsBackButtonVisible="Collapsed"
+        <NavigationView x:Name="Navigation" Grid.Row="1" PaneDisplayMode="Auto" OpenPaneLength="184"
+            CompactModeThresholdWidth="0" ExpandedModeThresholdWidth="750"
+            CompactPaneLength="48" IsPaneToggleButtonVisible="True" IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False" IsTitleBarAutoPaddingEnabled="False" AlwaysShowHeader="False"
             SelectionChanged="Navigate" PaneTitle="">
             <NavigationView.Resources>
@@ -24,6 +25,11 @@
                 <NavigationViewItem x:Name="LogsNav" Tag="logs" Content="日志" AutomationProperties.AutomationId="NavLogs"><NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;"/></NavigationViewItem.Icon></NavigationViewItem>
                 <NavigationViewItem x:Name="AboutNav" Tag="about" Content="关于" AutomationProperties.AutomationId="NavAbout"><NavigationViewItem.Icon><FontIcon Glyph="&#xE946;"/></NavigationViewItem.Icon></NavigationViewItem>
             </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem x:Name="SettingsNav" Tag="settings" Content="设置" AutomationProperties.AutomationId="NavSettings">
+                    <NavigationViewItem.Icon><SymbolIcon Symbol="Setting"/></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
             <Grid Background="{ThemeResource PaperBrush}" Padding="26,22" RowSpacing="8">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                 <InfoBar x:Name="Notice" IsOpen="False" Severity="Error" IsClosable="True"/>

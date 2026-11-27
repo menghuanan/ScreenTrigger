@@ -169,7 +169,7 @@ WinUI 能力面板按此展示真实覆盖；解析失败时必须**回退原样
 | get_script_state | {execution_id:string} | {state:ExecutionState} |
 | query_execution | {execution_id?:string,client_run_id?:string} | {state:ExecutionState}；恰填一项 |
 | get_execution_logs | {execution_id:string,offset?:int=0,limit?:int=100} | {items:RunLog[],total:int}；limit≤500 |
-| list_execution_history | {offset?:int=0,limit?:int=100} | {items:执行历史摘要[],total:int}；limit≤500 |
+| list_execution_history | {offset?:int=0,limit?:int=100} | {items:执行历史摘要[],total:int}；包括活动执行，脚本摘要可附启动时的 script_name，limit≤500 |
 | clear_execution_logs | {execution_id:string} | {ok:true}；仅清除指定终态执行的日志，保留摘要 |
 | add_breakpoint | {script_id:string,source_hash:string,line:int} | {breakpoint:Breakpoint} |
 | remove_breakpoint | {breakpoint_id:string} | {ok:true} |

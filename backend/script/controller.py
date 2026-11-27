@@ -115,7 +115,7 @@ class Root:
         # Caller holds the root condition shared by control and completion.
         self.status, self.reason, self.updated_at = status, reason, stamp()
         if self.controller.archive:
-            self.controller.archive.state(self.state(), self.sample_no)
+            self.controller.archive.state(self.state(), self.sample_no, self.scripts.get(self.script_id))
         log_reason = reason
         if status in ("stopping", "cancelled") and reason not in ("hotkey", "user_requested", "engine_exit", "script_requested"):
             log_reason = self.error["code"] if self.error else "script_requested"

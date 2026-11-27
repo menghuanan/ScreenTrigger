@@ -12,7 +12,8 @@ public sealed class ScriptRow(JsonElement document) : INotifyPropertyChanged
     public override string ToString() => Name;
     public long Revision => Document.GetProperty("revision").GetInt64();
     internal const string Unbound = "未绑定";
-    public string Key => Document.TryGetProperty("hotkey", out var key) ? key.GetString()! : Unbound;
+    public string Key => Document.TryGetProperty("hotkey", out var key) && key.GetString() is string bound ? bound : Unbound;
+    public string KeyLabel => $"脚本热键，{Key}";
     public IReadOnlyList<string> Keys => Choices;
     private static readonly string[] Choices = [Unbound, .. "ABCDEFGHIJKLMNOPQRSTUVWXYZ".Select(c => c.ToString()), .. Enumerable.Range(1, 12).Select(n => $"F{n}")];
     public string RunId => $"Run_{Id}";

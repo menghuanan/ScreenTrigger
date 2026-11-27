@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using ScreenTrigger.Host;
 using Windows.Graphics;
+using Windows.System;
 
 namespace ScreenTrigger.User;
 
@@ -14,7 +16,6 @@ public sealed partial class ScriptsView : UserControl
     private readonly Dictionary<string, string> attempts = [];
     private ScriptRow? editing;
     private string originalName = "", originalText = "", loadedSource = "";
-    private bool updating;
 
     internal ScriptsView(UserSession session, Func<(PointInt32, SizeInt32)> bounds)
     {
@@ -27,23 +28,19 @@ public sealed partial class ScriptsView : UserControl
     {
         var documents = await session.List("list_scripts");
         var previous = rows.ToDictionary(row => row.Id);
-        updating = true;
-        try
-        {
-            rows = documents.Select(doc => {
-                var row = previous.GetValueOrDefault(doc.GetProperty("id").GetString()!) ?? new ScriptRow(doc);
-                row.Update(doc);
-                row.ShowEdit(EditMode.IsChecked == true);
-                return row;
-            }).ToList();
-            ScriptList.ItemsSource = rows;
-            EditMode.Visibility = rows.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-            if (rows.Count == 0) { EditMode.IsChecked = false; EditMode.Content = "编辑"; }
-        }
-        finally { updating = false; }
+        rows = documents.Select(doc => {
+            var row = previous.GetValueOrDefault(doc.GetProperty("id").GetString()!) ?? new ScriptRow(doc);
+            row.Update(doc);
+            row.ShowEdit(EditMode.IsChecked == true);
+            return row;
+        }).ToList();
+        ScriptList.ItemsSource = rows;
+        EditMode.Visibility = rows.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (rows.Count == 0) { EditMode.IsChecked = false; EditMode.Content = "编辑"; }
     }
 
     internal ScriptRow? FindKey(string key) => rows.Find(r => r.Key == key);
+    internal string? NameForId(string id) => rows.Find(r => r.Id == id)?.Name;
 
     private void ChangeMode(object sender, RoutedEventArgs e)
     {
@@ -144,20 +141,41 @@ public sealed partial class ScriptsView : UserControl
         });
     }
 
-    private async void SetKey(object sender, SelectionChangedEventArgs e)
+    private void OpenKeyList(object sender, KeyRoutedEventArgs e)
     {
-        var combo = (ComboBox)sender;
-        if (updating || !combo.IsLoaded || combo.DataContext is not ScriptRow row ||
-            combo.SelectedItem is not string selected || selected == row.Key) return;
-        if (session.Busy) { combo.SelectedItem = row.Key; return; }
+        if (e.Key != VirtualKey.F4 && !(e.Key == VirtualKey.Down && e.KeyStatus.IsMenuKeyDown)) return;
+        var button = (DropDownButton)sender;
+        if (!button.Flyout.IsOpen) button.Flyout.ShowAt(button);
+        e.Handled = true;
+    }
+
+    private void PrepareKeys(object sender, object e)
+    {
+        var flyout = (Flyout)sender;
+        if (flyout.Target?.DataContext is not ScriptRow row) return;
+        var choices = (ListView)flyout.Content;
+        choices.ItemsSource = row.Keys;
+        choices.SelectedItem = row.Key;
+    }
+
+    private void FocusKey(object sender, object e)
+    {
+        var choices = (ListView)((Flyout)sender).Content;
+        choices.ScrollIntoView(choices.SelectedItem);
+        choices.UpdateLayout();
+        (choices.ContainerFromItem(choices.SelectedItem) as ListViewItem)?.Focus(FocusState.Programmatic);
+    }
+
+    private async void SetKey(object sender, ItemClickEventArgs e)
+    {
+        var flyout = (Flyout)Resources["HotkeyFlyout"];
+        if (flyout.Target?.DataContext is not ScriptRow row || e.ClickedItem is not string selected) return;
+        flyout.Hide();
+        if (selected == row.Key) return;
         await session.Run(async () => {
-            try
-            {
-                var result = await session.Call("set_script_hotkey", new { script_id = row.Id, expected_revision = row.Revision,
-                    hotkey = selected == ScriptRow.Unbound ? null : selected });
-                row.Update(result.GetProperty("script"));
-            }
-            finally { combo.SelectedItem = row.Key; }
+            var result = await session.Call("set_script_hotkey", new { script_id = row.Id, expected_revision = row.Revision,
+                hotkey = selected == ScriptRow.Unbound ? null : selected });
+            row.Update(result.GetProperty("script"));
         });
     }
 

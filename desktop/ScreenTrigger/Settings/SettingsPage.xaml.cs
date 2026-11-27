@@ -30,7 +30,7 @@ public sealed partial class SettingsPage : UserControl, IWorkspaceDraft
     {
         InitializeComponent(); commands = new(host, this, Feedback); applyDisplayConfig = apply;
         this.owner = owner;
-        using var stream = typeof(SettingsPage).Assembly.GetManifestResourceStream("ScreenTrigger.config.json")!;
+        using var stream = typeof(HostClient).Assembly.GetManifestResourceStream("ScreenTrigger.config.json")!;
         using var schema = JsonDocument.Parse(stream);
         definitions = schema.RootElement.GetProperty("definitions").Clone();
         Loaded += FirstLoad;

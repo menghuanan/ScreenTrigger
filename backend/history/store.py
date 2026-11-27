@@ -79,9 +79,11 @@ class HistoryStore:
             self.degraded.discard(key)
             self.prune.add(key)
 
-    def state(self, state, sample_no):
+    def state(self, state, sample_no, root_script=None):
         row = {name: state[name] for name in SUMMARY_FIELDS}
         row.update(sample_no=sample_no, error_code=(state["error"] or {}).get("code"))
+        if root_script is not None:
+            row.update(script_id=root_script["id"], script_name=root_script["name"])
         # Script-supplied stop text may hold arguments. Persist only engine-defined reasons.
         if row["status"] == "cancelled" and row["reason"] not in ("user_requested", "hotkey", "engine_exit", "script_requested"):
             row["reason"] = "script_requested"
