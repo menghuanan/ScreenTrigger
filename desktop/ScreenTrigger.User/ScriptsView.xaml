@@ -40,7 +40,7 @@
             </Border>
         </Grid>
         <Grid x:Name="Editor" Visibility="Collapsed" RowSpacing="12" SizeChanged="EditorSized">
-            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <TextBlock x:Name="EditorTitle" Style="{StaticResource PageTitle}"/>
             <Grid Grid.Row="1" x:Name="Toolbar" ColumnSpacing="8" RowSpacing="6">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -67,6 +67,12 @@
                 <TextBox Grid.Row="1" x:Name="Source" TextChanged="SourceChanged" AcceptsReturn="True" TextWrapping="Wrap" Padding="14"
                     FontFamily="Consolas" FontSize="14" VerticalContentAlignment="Top" IsSpellCheckEnabled="False"
                     IsTextPredictionEnabled="False" ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Lua 脚本内容" AutomationProperties.AutomationId="ScriptSource"/>
+            </Grid>
+            <Grid Grid.Row="3" x:Name="ExportOptions" Visibility="Collapsed" ColumnSpacing="10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Button Content="选择 TXT 保存位置…" Click="ChooseExportFile" AutomationProperties.AutomationId="PickEditorOutput"/>
+                <TextBlock Grid.Column="1" x:Name="ExportPath" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="EditorOutputPath"/>
             </Grid>
         </Grid>
     </Grid>

@@ -18,6 +18,10 @@ public sealed partial class WorkView : UserControl
     private string? selectedId, execution, runName, status;
     private Dictionary<string, object?>? pending;
     private bool filling;
+    private sealed record OutputFile(string Token, string Path, string Mode, string Session, long SelectedAt);
+    private readonly Dictionary<string,OutputFile> destinations = [];
+    private (string Script, string Path)? lastOutput;
+    private string OutputWriteMode => OutputMode.SelectedIndex == 2 ? "overwrite" : "append";
 
     internal WorkView(UserSession session, WorkspaceSurface surface)
     {
@@ -81,6 +85,7 @@ public sealed partial class WorkView : UserControl
         StartButton.Content = execution != null ? "停止" : pending != null ? "核对启动结果" : "开始";
         ResumeButton.Visibility = execution != null && status == "paused" ? Visibility.Visible : Visibility.Collapsed;
         Count.IsEnabled = Mode.SelectedIndex == 1;
+        RefreshOutput();
     }
 
     private async void RefreshWindows(object s, RoutedEventArgs e) => await session.Run(LoadAreas);
@@ -110,6 +115,33 @@ public sealed partial class WorkView : UserControl
         }
         finally { await session.Call("release_image", new { image_id = picked.Value.GetProperty("image").GetProperty("image_id").GetString() }); }
     });
+
+    internal async Task<(int X, int Y)?> PickPoint(RecordingPoint? anchor)
+    {
+        if (areas.Count == 0) await LoadAreas();
+        var area = Scope.SelectedItem as Area ?? areas.FirstOrDefault(a => !a.Window);
+        if (area == null) throw new InvalidOperationException("找不到取点显示器。");
+        var bounds = area.Window ? WorkspaceSurface.Rect((await WindowInfo(area)).GetProperty("client_rect")) : area.Bounds;
+        var display = area.Window ? areas.Where(a => !a.Window).MaxBy(a => Intersection(a.Bounds,bounds)) : area;
+        if (display == null) throw new InvalidOperationException("找不到取点显示器。");
+        var frame = bounds;
+        if (anchor?.Scope == "display") frame = display.Bounds;
+        if (anchor?.Scope == "window" && !area.Window) throw new InvalidOperationException("请在开始工作页选择此次取点使用的窗口。");
+        if (anchor?.Scope == "region")
+        {
+            if (selection is not { } region) throw new InvalidOperationException("请先在开始工作页框选此次取点使用的选区。");
+            frame = region;
+            if (area.Window) { frame.X += bounds.X; frame.Y += bounds.Y; }
+        }
+        var result = await surface.Select(display.Id, point: true);
+        if (result == null) return null;
+        if (area.Window && anchor?.Scope is "window" or "region"
+            && !WorkspaceSurface.Rect((await WindowInfo(area)).GetProperty("client_rect")).Equals(bounds))
+            throw new InvalidOperationException("窗口位置或尺寸已变化，请重新取点。");
+        var point = result.Value.GetProperty("point");
+        int x = point.GetProperty("x").GetInt32(), y = point.GetProperty("y").GetInt32();
+        return anchor == null ? (x,y) : anchor.FromScreen(x,y,frame.X,frame.Y,frame.Width,frame.Height);
+    }
 
     private async Task<JsonElement> WindowInfo(Area area) =>
         (await session.Call("get_window_info", new { window_id = area.Id })).GetProperty("window");
@@ -156,7 +188,9 @@ public sealed partial class WorkView : UserControl
         var dialog = new ContentDialog { XamlRoot = root, Title = "录制脚本", Content = panel,
             PrimaryButtonText = "开始录制", CloseButtonText = "取消" };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary || picker.SelectedItem is not Area area) return null;
-        return await Context(area, false, useRegion.IsChecked == true ? selection : null);
+        bool useSelection = useRegion.IsChecked == true;
+        Scope.SelectedItem = area;
+        return await Context(area, false, useSelection ? selection : null);
     }
 
     private async Task<bool> ChooseOcrModel(long revision)
@@ -175,6 +209,56 @@ public sealed partial class WorkView : UserControl
         return true;
     }
 
+    private OutputFile? Destination(string key) =>
+        destinations.TryGetValue(key, out var file) && file.Session == session.Host?.Events.Session ? file : null;
+    internal string? OutputPathFor(string key) => Destination(key)?.Path;
+    private void RefreshOutput()
+    {
+        if (OutputPath == null) return;
+        var script = Script.SelectedItem as ScriptRow;
+        PickOutputButton.IsEnabled = script != null;
+        var file = script == null ? null : Destination(script.Id);
+        ClearOutputButton.Visibility = file == null ? Visibility.Collapsed : Visibility.Visible;
+        OutputPath.Text = file?.Mode == OutputWriteMode ? file.Path : file != null ? "请为当前写入方式重新选择文件"
+            : lastOutput is { } last && last.Script == script?.Id ? "上次运行选择的文件　" + last.Path : "尚未选择文件";
+        ToolTipService.SetToolTip(OutputPath, OutputPath.Text);
+    }
+    private async Task DiscardFile(OutputFile file)
+    {
+        var host = session.Host;
+        if (host?.Events.Session == file.Session)
+            await host.CallAsync(new { op = "discard_text_output", session_id = file.Session, output_token = file.Token });
+    }
+    internal async Task DiscardOutput(string key)
+    {
+        if (destinations.Remove(key, out var prior)) await DiscardFile(prior);
+    }
+    internal async Task AssignOutput(string draft, string script)
+    {
+        if (!destinations.Remove(draft, out var file)) return;
+        await DiscardOutput(script);
+        destinations[script] = file;
+        RefreshOutput();
+    }
+    internal async Task<string?> ChooseOutput(string key, string? mode = null)
+    {
+        string writeMode = mode ?? OutputWriteMode;
+        var choice = await surface.PickOutput(writeMode);
+        if (choice == null) return null;
+        var file = new OutputFile(choice.Value.Token, choice.Value.Path, writeMode, session.Host!.Events.Session!, Environment.TickCount64);
+        var prior = Destination(key);
+        destinations[key] = file;
+        if (prior != null) await DiscardFile(prior);
+        RefreshOutput();
+        return file.Path;
+    }
+    private async void PickOutputLocation(object s, RoutedEventArgs e) => await session.Run(async () => {
+        if (Script.SelectedItem is ScriptRow script) await ChooseOutput(script.Id);
+    });
+    private async void ClearOutputLocation(object s, RoutedEventArgs e) => await session.Run(async () => {
+        if (Script.SelectedItem is ScriptRow script) { await DiscardOutput(script.Id); RefreshOutput(); }
+    });
+
     private async Task<Dictionary<string, object?>?> MakeRequest()
     {
         if (Scope.SelectedItem is not Area area || Script.SelectedItem is not ScriptRow script)
@@ -187,9 +271,8 @@ public sealed partial class WorkView : UserControl
         var request = await Context(area, BackgroundMode.IsChecked == true, selection);
         var source = (await session.Call("load_script", new { script_id = script.Id })).GetProperty("source").GetString()!;
         var cfg = await session.Host!.GetConfigAsync();
-        var steps = ScriptAssembly.Read(source);
-        bool export = steps.Any(step => step.Source == ScriptAssembly.ExportSource);
-        if (cfg.Recognition.OcrModelId == null && (export || steps.Any(step => step.Source == ScriptAssembly.ReadOcrSource))
+        var usage = ScriptAssembly.OcrUsage(source);
+        if (cfg.Recognition.OcrModelId == null && usage.NeedsModel
             && !await ChooseOcrModel(cfg.Revision)) { RunStatus.Text = "已取消选择 OCR 模型。"; return null; }
         request["script_id"] = script.Id;
         request["args"] = args;
@@ -199,13 +282,18 @@ public sealed partial class WorkView : UserControl
         request["frequency_hz"] = cfg.Recognition.DefaultFrequencyHz;
         request["total_timeout_ms"] = cfg.Execution.TotalTimeoutMs;
         request["client_run_id"] = Guid.NewGuid().ToString();
-        if (OutputMode.SelectedIndex > 0 || export)
+        var file = Destination(script.Id);
+        if (OutputMode.SelectedIndex > 0 || usage.Export || file != null)
         {
-            var picked = await session.Host.CallAsync(new { op = "pick_text_output", session_id = session.Host.Events.Session,
-                mode = OutputMode.SelectedIndex == 2 ? "overwrite" : "append" });
-            var token = picked.GetProperty("output_token").GetString();
-            if (token == null) { RunStatus.Text = "已取消选择 TXT 文件。"; return null; }
-            request["output_token"] = token;
+            if (file == null || file.Mode != OutputWriteMode || Environment.TickCount64-file.SelectedAt > 295000)
+            {
+                if (await ChooseOutput(script.Id) == null) { RunStatus.Text = "已取消选择 TXT 文件。"; return null; }
+                file = Destination(script.Id)!;
+            }
+            request["output_token"] = file.Token;
+            lastOutput = (script.Id, file.Path);
+            destinations.Remove(script.Id);
+            RefreshOutput();
         }
         runName = script.Name;
         return request;
@@ -261,7 +349,7 @@ public sealed partial class WorkView : UserControl
     internal void Reset()
     {
         execution = runName = status = selectedId = null;
-        pending = null; RunStatus.Text = ""; ClearSelection(); BackgroundMode.IsChecked = false;
+        pending = null; destinations.Clear(); lastOutput = null; RunStatus.Text = ""; ClearSelection(); BackgroundMode.IsChecked = false;
         UpdateControls();
     }
 }

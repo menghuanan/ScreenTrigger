@@ -158,6 +158,16 @@ class ScriptService:
 
     # -- 写命令 --------------------------------------------------------------
 
+    @staticmethod
+    def _recording_name(scripts):
+        occupied = {row["name"] for row in scripts}
+        names = [f"录制脚本{number:02d}" for number in range(1, 100)]
+        next_slot = max((i + 1 for i, name in enumerate(names) if name in occupied), default=0)
+        return next((name for name in names[next_slot:] + names[:next_slot] if name not in occupied), None)
+
+    def suggested_recording_name(self):
+        return self._recording_name(domain.scripts_from_snapshot(self._repository.read_snapshot()))
+
     def save_script(
         self,
         name: Any,
@@ -167,6 +177,7 @@ class ScriptService:
         script_id: Any = UNSET,
         expected_revision: Any = UNSET,
         action_policy: Any = UNSET,
+        number_recording: bool = False,
     ) -> Dict[str, Any]:
         """新建或更新脚本元数据 + 落源码（**不编译、不执行**，Q2）。
 
@@ -190,6 +201,12 @@ class ScriptService:
 
         snapshot = self._repository.read_snapshot()
         scripts = domain.scripts_from_snapshot(snapshot)
+        if type(number_recording) is not bool or (number_recording and has_id):
+            raise invalid_params("number_recording", "自动编号仅适用于新建的录制脚本")
+        if number_recording:
+            name = self._recording_name(scripts)
+            if name is None:
+                raise invalid_params("name", "录制编号 01–99 已用完，请为本次录制填写名称")
         normalized_name, source_bytes, normalized_params = domain.validate_script_input(
             name, source, parameters
         )

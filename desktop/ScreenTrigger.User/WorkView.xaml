@@ -29,13 +29,20 @@
                             </ComboBox>
                             <NumberBox x:Name="Count" Grid.Column="2" Header="次数" Minimum="1" Maximum="2147483647" Value="1" SmallChange="1" IsEnabled="False" AutomationProperties.AutomationId="WorkCount"/>
                         </Grid>
-                        <Expander Header="脚本参数与 OCR 导出" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                            <StackPanel Spacing="10">
-                                <TextBox x:Name="Arguments" Header="脚本参数（JSON 对象）" Text="{}"/>
-                                <ComboBox x:Name="OutputMode" Header="TXT 输出" SelectedIndex="0">
-                                    <ComboBoxItem Content="按脚本需要选择文件"/><ComboBoxItem Content="追加到 TXT"/><ComboBoxItem Content="覆盖 TXT"/>
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="TXT 输出" FontWeight="SemiBold"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ComboBox x:Name="OutputMode" SelectedIndex="0" SelectionChanged="OptionsChanged" AutomationProperties.Name="TXT 输出方式" AutomationProperties.AutomationId="OutputMode">
+                                    <ComboBoxItem Content="按脚本需要"/><ComboBoxItem Content="追加到 TXT"/><ComboBoxItem Content="覆盖 TXT"/>
                                 </ComboBox>
+                                <Button x:Name="PickOutputButton" Content="选择保存位置…" Click="PickOutputLocation" AutomationProperties.AutomationId="PickWorkOutput"/>
+                                <Button x:Name="ClearOutputButton" Content="清除" Click="ClearOutputLocation" Visibility="Collapsed" AutomationProperties.Name="清除 TXT 保存位置"/>
                             </StackPanel>
+                            <TextBlock x:Name="OutputPath" Text="尚未选择文件" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="WorkOutputPath"/>
+                        </StackPanel>
+                        <Expander Header="脚本参数" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <TextBox x:Name="Arguments" Header="脚本参数（JSON 对象）" Text="{}"/>
                         </Expander>
                     </StackPanel>
                 </Border>

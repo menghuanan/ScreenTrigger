@@ -9,7 +9,9 @@ using System.Runtime.InteropServices;
 public static class UserShellProbe {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool SetPhysicalCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hwnd, uint command);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wparam, IntPtr lparam);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out int id);
@@ -151,6 +153,64 @@ function Confirm-FixtureSelection($fixture) {
     Click-Control $ok
     return [PSCustomObject]@{ X=$x; Y=$y; Width=$width; Height=$height; Readout=$readout }
 }
+function Set-LuaMode([bool]$enable) {
+    $null = Wait-For {
+        $control = Find-Control 'ScriptMode'
+        if (-not $control -or -not $control.Current.IsEnabled) { return }
+        try {
+            $toggle = $control.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+            if (($toggle.Current.ToggleState -eq 'On') -eq $enable) { return $true }
+            $toggle.Toggle()
+        } catch [Windows.Automation.ElementNotAvailableException] {} catch [Windows.Automation.ElementNotEnabledException] {}
+    } 'editor mode switch completed'
+}
+function Test-StepPoints {
+    $previous = [Windows.Forms.Cursor]::Position
+    try {
+        foreach ($name in '鼠标点击','鼠标移动','鼠标拖拽') {
+            Click-Id "AddStep_$name"
+            $picks = if ($name -eq '鼠标拖拽') { 'StepPickStart','StepPickEnd' } else { 'StepPickXY' }
+            foreach ($pick in $picks) {
+                Click-Id $pick
+                $overlay = Wait-For {
+                    $ae::RootElement.FindAll([Windows.Automation.TreeScope]::Children,[Windows.Automation.PropertyCondition]::new($ae::ProcessIdProperty,$app.Id)) |
+                        Where-Object { $_.Current.Name -eq 'ScreenTrigger · 取点' } | Select-Object -First 1
+                } 'owned physical point overlay'
+                $rect = $overlay.Current.BoundingRectangle
+                $idx = if ($pick -eq 'StepPickEnd') { 2 } else { 0 }
+                $x = [int]($rect.Left + $rect.Width / 3) + 11*$idx
+                $y = [int]($rect.Top + $rect.Height / 3) + 7*$idx
+                [void][UserShellProbe]::SetPhysicalCursorPos($x,$y)
+                $hwnd = [IntPtr]$overlay.Current.NativeWindowHandle
+                $null = Wait-For {
+                    $hit = [UserShellProbe]::GetAncestor([UserShellProbe]::At($x,$y),2)
+                    [UserShellProbe]::GetWindow($hit,4) -eq $hwnd -and [UserShellProbe]::GetForegroundWindow() -eq $hwnd
+                } 'overlay exclusively owns sample point'
+                [UserShellProbe]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+                try { Start-Sleep -Milliseconds 120 } finally { [UserShellProbe]::mouse_event(4,0,0,0,[UIntPtr]::Zero) }
+                $null = Wait-For { (Read-Value "StepParameter$idx") -eq "$x" -and (Read-Value "StepParameter$($idx+1)") -eq "$y" } "$name captured $x,$y"
+            }
+            if ($name -eq '鼠标点击') {
+                Click-Id 'StepPickXY'
+                $escOverlay = Wait-For {
+                    $ae::RootElement.FindAll([Windows.Automation.TreeScope]::Children,[Windows.Automation.PropertyCondition]::new($ae::ProcessIdProperty,$app.Id)) |
+                        Where-Object { $_.Current.Name -eq 'ScreenTrigger · 取点' -and [IntPtr]$_.Current.NativeWindowHandle -eq [UserShellProbe]::GetForegroundWindow() } | Select-Object -First 1
+                } 'owned point overlay has keyboard focus'
+                [Windows.Forms.SendKeys]::SendWait('{ESC}')
+                $null = Wait-For { (Control 'StepPickXY').Current.IsEnabled -and (Read-Value 'StepParameter0') -eq "$x" -and (Read-Value 'StepParameter1') -eq "$y" } 'Escape preserves existing coordinates'
+            }
+            if ($name -eq '鼠标拖拽') { Screenshot 'drag-points' }
+            Click-Name '添加步骤'
+            $null = Wait-For { Find-Control '1 步' -ByName } 'picked step committed'
+            Set-LuaMode $true
+            if ((Read-Value 'ScriptSource') -notmatch "$x, $y") { throw "Picked point missing from $name Lua" }
+            Set-LuaMode $false
+            Click-Id 'RemoveStep'
+            $null = Wait-For { Find-Control '0 步' -ByName } 'next picker case'
+        }
+        Observe 'Physical point picking filled click, move and both drag endpoints and emitted the observed screen pixels to Lua.'
+    } finally { [Windows.Forms.Cursor]::Position = $previous }
+}
 function Test-RegionRecording($dataRoot,$scriptId) {
     $cursor = [Windows.Forms.Cursor]::Position
     $state = [hashtable]::Synchronized(@{})
@@ -202,30 +262,70 @@ function Test-RegionRecording($dataRoot,$scriptId) {
                 }
         } 'completed one background run in the selected window region'
         Navigate-To 'NavScripts'
-        Click-Id 'RecordScript'
-        Click-Name '开始录制'
-        $null = Wait-For { (Control 'FinishRecording').Current.IsEnabled } 'recording armed'
-        $inside = $fixture.PointToScreen([Drawing.Point]::new(($x + [int]($width / 2)),($y + [int]($height / 2))))
-        $null = Wait-For {
-            [void][UserShellProbe]::SetWindowPos($fixture.Handle,[IntPtr](-1),0,0,0,0,0x43)
-            [void][UserShellProbe]::SetForegroundWindow($fixture.Handle)
-            [UserShellProbe]::GetAncestor([UserShellProbe]::At($inside.X,$inside.Y),2) -eq $fixture.Handle
-        } 'recording fixture visible after the scope dialog closed'
-        [Windows.Forms.Cursor]::Position = $inside
-        Start-Sleep -Milliseconds 150
-        if ([UserShellProbe]::GetAncestor([UserShellProbe]::At($inside.X,$inside.Y),2) -ne $fixture.Handle) { throw 'Fixture moved before recording' }
-        [UserShellProbe]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
-        try {
-            $null = Wait-For { [UserShellProbe]::GetForegroundWindow() -eq $fixture.Handle } 'verified fixture gained foreground on click'
-            Start-Sleep -Milliseconds 100
-        } finally { [UserShellProbe]::mouse_event(4,0,0,0,[UIntPtr]::Zero) }
-        [Windows.Forms.Application]::DoEvents()
-        $null = Wait-For { Find-Control '正在录制 · 1 个动作' -ByName } 'one recorded fixture click'
-        Click-Id 'FinishRecording'
-        $null = Wait-For { (Read-Value 'ScriptSource') -match 'click_anchor' } 'recorded click compiled to editable Lua'
-        Screenshot 'recording'
-        Click-Id 'BackScripts'
-        Click-Name '放弃修改'
+        foreach ($number in '01','02') {
+            Click-Id 'RecordScript'
+            Click-Name '开始录制'
+            $null = Wait-For { (Control 'FinishRecording').Current.IsEnabled } 'recording armed'
+            $inside = $fixture.PointToScreen([Drawing.Point]::new(($x + [int]($width / 2)),($y + [int]($height / 2))))
+            $null = Wait-For {
+                [void][UserShellProbe]::SetWindowPos($fixture.Handle,[IntPtr](-1),0,0,0,0,0x43)
+                [void][UserShellProbe]::SetForegroundWindow($fixture.Handle)
+                [UserShellProbe]::GetAncestor([UserShellProbe]::At($inside.X,$inside.Y),2) -eq $fixture.Handle
+            } 'recording fixture visible after the scope dialog closed'
+            [Windows.Forms.Cursor]::Position = $inside
+            Start-Sleep -Milliseconds 150
+            if ([UserShellProbe]::GetAncestor([UserShellProbe]::At($inside.X,$inside.Y),2) -ne $fixture.Handle) { throw 'Fixture moved before recording' }
+            [UserShellProbe]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+            try {
+                $null = Wait-For { [UserShellProbe]::GetForegroundWindow() -eq $fixture.Handle } 'verified fixture gained foreground on click'
+                if ($number -eq '02') {
+                    $end = $fixture.PointToScreen([Drawing.Point]::new(($x + [int]($width / 2) + 12),($y + [int]($height / 2) + 8)))
+                    if ([UserShellProbe]::GetAncestor([UserShellProbe]::At($end.X,$end.Y),2) -ne $fixture.Handle) { throw 'Drag destination left fixture' }
+                    [Windows.Forms.Cursor]::Position = $end
+                }
+                Start-Sleep -Milliseconds 100
+            } finally { [UserShellProbe]::mouse_event(4,0,0,0,[UIntPtr]::Zero) }
+            [Windows.Forms.Application]::DoEvents()
+            $null = Wait-For { Find-Control '正在录制 · 1 个动作' -ByName } 'one recorded fixture click'
+            Click-Id 'FinishRecording'
+            $action = if ($number -eq '01') { '录制点击' } else { '录制拖拽' }
+            $null = Wait-For { (Read-Value 'ScriptName') -eq "录制脚本$number" -and (Find-Control $action -ByName) } 'numbered recording opens in assembly'
+            if ((Control 'ScriptMode').GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne 'Off') { throw 'Recording opened in Lua' }
+            if ($number -eq '01') {
+                Screenshot 'recording'
+                $step = (Control 'AssemblySteps').FindAll($scope,[Windows.Automation.PropertyCondition]::new($ae::ControlTypeProperty,[Windows.Automation.ControlType]::ListItem)) |
+                    Where-Object { $_.Current.Name -match '录制点击' } | Select-Object -First 1
+                $step.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
+                Click-Id 'EditStep'
+                Set-Value 'StepParameter8' '73'
+                Click-Name '应用'
+                $null = Wait-For {
+                    $entry = Find-Control 'AssemblySteps'
+                    $entry -and $entry.Current.IsEnabled -and ($entry.FindAll($scope,[Windows.Automation.Condition]::TrueCondition) |
+                        Where-Object { $_.Current.Name -match '按住时长（ms） 73' } | Select-Object -First 1)
+                } 'recorded hold edit committed'
+            }
+            if ($number -eq '02') {
+                $dragRow = (Control 'AssemblySteps').FindAll($scope,[Windows.Automation.PropertyCondition]::new($ae::ControlTypeProperty,[Windows.Automation.ControlType]::ListItem)) |
+                    Where-Object { $_.Current.Name.Contains('录制拖拽') } | Select-Object -First 1
+                $dragRow.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
+                Click-Id 'EditStep'
+                $pathRows = (Read-Value 'StepParameter0').ReplaceLineEndings([string][char]10).Split([char]10)
+                if ($pathRows.Count -lt 2 -or $pathRows[-1] -notmatch 'region relative') { throw 'The recording editor truncated a multi-point path' }
+                Click-Name '应用'
+            }
+            Set-LuaMode $true
+            $recordedSource = Read-Value 'ScriptSource'
+            $call = if ($number -eq '01') { 'click_anchor' } else { 'drag_anchor' }
+            if ($recordedSource -notmatch $call -or $recordedSource -notmatch 'reference_width=') { throw 'Recording lost anchor' }
+            if ($number -eq '01' -and $recordedSource -notmatch ',73\)') { throw 'Visual edit did not change the recorded hold time in Lua' }
+            Set-LuaMode $false
+            Set-LuaMode $true
+            if ((Read-Value 'ScriptSource') -cne $recordedSource) { throw 'Recorded source changed during switching' }
+            Click-Id 'SaveScript'
+            $null = Wait-For { Find-Control "录制脚本$number" -ByName } 'saved unique recording'
+        }
+        Observe 'Two real recordings opened in assembly as 01 and 02, retained anchored Lua on both switches and were saved under distinct names.'
         Navigate-To 'NavWork'
         Select-Option 'WorkScope' '显示器'
         Navigate-To 'NavGroups'
@@ -363,6 +463,7 @@ try {
     Click-Id 'NewScript'
     Set-Value 'ScriptName' '窗口测试'
     foreach ($label in '鼠标点击','鼠标移动','鼠标拖拽','鼠标滚动','键盘按键','输入文本','等待','等待目标','目标识别','点击目标','颜色识别','OCR 识别','OCR 导出') { $null = Control "AddStep_$label" }
+    Test-StepPoints
     Click-Id 'AddStep_等待'
     Set-Value 'StepParameter0' '125'
     Click-Name '添加步骤'
@@ -398,6 +499,10 @@ try {
     $null = Wait-For { (Selected-Name 'ExecutionRuns') -match '窗口测试 · 运行中' -and
                         (Control 'LogEntries').Current.Name -match 'user-shell' } 'named live run'
     $null = Wait-For { (Control 'LogEntries').Current.Name -match 'still-running' } 'updated live log'
+    $categoryBounds = (Control 'Category').Current.BoundingRectangle
+    $runsBounds = (Control 'ExecutionRuns').Current.BoundingRectangle
+    if ([Math]::Abs($categoryBounds.Top - $runsBounds.Top) -gt 3*$scale -or $runsBounds.Left -lt $categoryBounds.Right -or $runsBounds.Left-$categoryBounds.Right -gt 20*$scale) { throw 'Execution picker is not beside log category' }
+    Observe 'The execution selector is on the same toolbar row immediately to the right of the log category.'
     Screenshot 'logs-running'
     Navigate-To 'NavWork'
     Click-Id 'StartWork'
@@ -405,11 +510,13 @@ try {
     Observe 'Started a saved Lua script from Work, followed its live log and stopped it after returning from Logs.'
     Navigate-To 'NavScripts'
     Click-Id "Edit_$rowId"
+    Set-LuaMode $true
     $null = Wait-For { (Read-Value 'ScriptSource') -eq $custom } 'loaded source'
     Set-Value 'ScriptSource' 'return 77'
     Click-Id 'BackScripts'
     Click-Name '放弃修改'
     Click-Id "Edit_$rowId"
+    Set-LuaMode $true
     if ((Read-Value 'ScriptSource') -ne $custom) { throw 'Discard modified stored source' }
     Set-Value 'ScriptSource' 'return 42'
     Click-Id 'SaveScript'

@@ -33,6 +33,7 @@ public sealed partial class LogsView : UserControl
         if (History == null) return;
         bool history = Category.SelectedIndex == 0;
         History.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
+        Runs.Visibility = History.Visibility;
         AppLog.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
         if (history && IsLoaded) StartWatching(); else StopWatching();
     }

@@ -33,11 +33,11 @@ from .service import (
 _SCRIPT_COMMAND_PARAMS: Dict[str, Tuple[str, ...]] = {
     "list_scripts": ("offset", "limit"),
     "load_script": ("script_id",),
-    "save_script": ("script_id", "expected_revision", "name", "source", "parameters", "action_policy"),
+    "save_script": ("script_id", "expected_revision", "name", "source", "parameters", "action_policy", "number_recording"),
     "delete_script": ("script_id", "expected_revision"),
     "set_script_hotkey": ("script_id", "expected_revision", "hotkey"),
     "validate_script": ("source",),
-    "compile_recording": ("scope", "actions", "interrupted"),
+    "compile_recording": ("scope", "actions", "interrupted", "suggest_name"),
 }
 
 # list_scripts 分页范围（Q6：limit 1–500；offset ≥0）
@@ -166,6 +166,7 @@ def register_script_commands(dispatcher: Any, service: ScriptService) -> None:
                 script_id=script_id,
                 expected_revision=expected_revision,
                 **({"action_policy": params["action_policy"]} if "action_policy" in params else {}),
+                **({"number_recording": params["number_recording"]} if "number_recording" in params else {}),
             )
         }
 
@@ -190,4 +191,12 @@ def register_script_commands(dispatcher: Any, service: ScriptService) -> None:
     dispatcher.register("set_script_hotkey", _wrap("set_script_hotkey", _cmd_set_hotkey))
     dispatcher.register("delete_script", _wrap("delete_script", _cmd_delete_script))
     dispatcher.register("validate_script", _wrap("validate_script", _cmd_validate_script))
-    dispatcher.register("compile_recording", _wrap("compile_recording", compile_recording))
+    def _cmd_compile_recording(params):
+        if "suggest_name" in params and type(params["suggest_name"]) is not bool:
+            raise StorageError("INVALID_PARAMS", "suggest_name 必须为布尔值", field="suggest_name")
+        result = compile_recording(params)
+        if params.get("suggest_name") is True:
+            result["suggested_name"] = service.suggested_recording_name()
+        return result
+
+    dispatcher.register("compile_recording", _wrap("compile_recording", _cmd_compile_recording))

@@ -115,6 +115,29 @@ class CommandShapeTest(_CommandFixture):
         )
         self.assertEqual(script["revision"], 1)
 
+    def test_recording_draft_number_and_save_recheck(self):
+        request = {"scope": "display", "actions": [], "interrupted": []}
+        original = self._request("compile_recording", request)["data"]
+        self.assertNotIn("suggested_name", original)
+        suggestion = self._request("compile_recording", dict(request, suggest_name=True))["data"]["suggested_name"]
+        self.assertEqual(suggestion, "录制脚本01")
+        self.assertEqual(self._save(name=suggestion, number_recording=True)["data"]["script"]["name"], suggestion)
+        second = self._save(name=suggestion, number_recording=True)["data"]["script"]
+        self.assertEqual(second["name"], "录制脚本02")
+        renamed = self._save(name="自定义", script_id=second["id"], expected_revision=1)
+        self.assertTrue(renamed["success"])
+        self.assertEqual(self.svc.suggested_recording_name(), "录制脚本02")
+        self.assertFalse(self._request("compile_recording", dict(request, suggest_name=1))["success"])
+        self.assertFalse(self._save(number_recording="yes")["success"])
+        self.assertFalse(self._save(script_id=second["id"], expected_revision=2, number_recording=True)["success"])
+
+    def test_number_range_wraps_and_never_overwrites(self):
+        occupied = [{"name": f"录制脚本{n:02d}"} for n in range(1, 100)]
+        self.assertIsNone(self.svc._recording_name(occupied))
+        del occupied[41]
+        self.assertEqual(self.svc._recording_name(occupied), "录制脚本42")
+        self.assertEqual(self.svc._recording_name([{"name": "录制脚本"}, {"name": "录制脚本00"}]), "录制脚本01")
+
     def test_save_script_update(self):
         created = self._save()["data"]["script"]
         updated = self._save(

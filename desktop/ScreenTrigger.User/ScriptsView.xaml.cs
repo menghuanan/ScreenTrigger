@@ -14,6 +14,7 @@ public sealed partial class ScriptsView : UserControl
     private string originalName = "", originalSource = "", luaSource = "", displayedLua = "";
     private bool loading, recordingDraft;
     private string? recording;
+    private string outputDraft = "";
     private readonly DispatcherTimer recordingTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool pollingRecording;
     internal IReadOnlyList<ScriptRow> Rows { get; private set; } = [];
@@ -25,7 +26,8 @@ public sealed partial class ScriptsView : UserControl
         recordingTimer.Tick += PollRecording;
         Assembly.Run = session.Run;
         Assembly.Filter = () => (GroupFilter.SelectedItem as CatalogItem)?.Id;
-        Assembly.OpenLua = () => ModeSwitch.IsOn = true;
+        Assembly.PickPoint = work.PickPoint;
+        Assembly.Changed += RefreshExport;
     }
 
     internal async Task Reload()
@@ -36,7 +38,7 @@ public sealed partial class ScriptsView : UserControl
     }
     internal string? NameForId(string id) => Rows.FirstOrDefault(s => s.Id == id)?.Name;
 
-    private async Task OpenEditor(ScriptRow? row, string text, bool recorded = false)
+    private async Task OpenEditor(ScriptRow? row, string text, bool recorded = false, string? suggestedName = null)
     {
         var library = (await session.Call("list_groups", new { })).GetProperty("groups");
         var groups = new List<CatalogItem> { new("*", "全部分组"), new(null, "未分组") };
@@ -49,12 +51,14 @@ public sealed partial class ScriptsView : UserControl
         {
             GroupFilter.ItemsSource = groups; GroupFilter.SelectedIndex = 0;
             editing = row;
+            outputDraft = Guid.NewGuid().ToString();
             recordingDraft = recorded;
-            ScriptName.Text = originalName = row?.Name ?? (recorded ? "录制脚本" : "");
+            ScriptName.Text = originalName = row?.Name ?? suggestedName ?? "";
+            ScriptName.PlaceholderText = recorded && suggestedName == null ? "编号 01–99 已用完，请输入名称" : "脚本名称";
             originalSource = text;
             Assembly.LoadSource(text, targets);
             SetLua(text);
-            ModeSwitch.IsOn = recorded || Assembly.HasCustomLua;
+            ModeSwitch.IsOn = !recorded && Assembly.OnlyCustomLua;
             ShowMode();
             EditorTitle.Text = row == null ? "新建脚本" : "编辑脚本";
             Library.Visibility = Visibility.Collapsed; Editor.Visibility = Visibility.Visible;
@@ -88,7 +92,19 @@ public sealed partial class ScriptsView : UserControl
     {
         LuaPanel.Visibility = ModeSwitch.IsOn ? Visibility.Visible : Visibility.Collapsed;
         Assembly.Visibility = ModeSwitch.IsOn ? Visibility.Collapsed : Visibility.Visible;
+        RefreshExport();
     }
+    private void RefreshExport()
+    {
+        if (ExportOptions == null || work == null) return;
+        ExportOptions.Visibility = ScriptAssembly.OcrUsage(Draft).Export ? Visibility.Visible : Visibility.Collapsed;
+        ExportPath.Text = work.OutputPathFor(outputDraft) ?? (editing == null ? null : work.OutputPathFor(editing.Id)) ?? "可在开始工作时选择";
+        ToolTipService.SetToolTip(ExportPath, ExportPath.Text);
+    }
+    private async void ChooseExportFile(object s, RoutedEventArgs e) => await session.Run(async () => {
+        await work.ChooseOutput(outputDraft);
+        RefreshExport();
+    });
     private async void CheckSyntax(object s, RoutedEventArgs e) => await session.Run(async () => {
         var result = await session.Call("validate_script", new { source = LuaText });
         var diagnostics = result.GetProperty("diagnostics").EnumerateArray().ToList();
@@ -111,7 +127,8 @@ public sealed partial class ScriptsView : UserControl
         }
         if (menu.Items.Count == 0) menu.Items.Add(new MenuFlyoutItem { Text = "所选分组暂无目标", IsEnabled = false });
     }
-    private void SourceChanged(object s, TextChangedEventArgs e) { if (SyntaxResult != null) SyntaxResult.Text = ""; }
+    private void SourceChanged(object s, TextChangedEventArgs e) { if (SyntaxResult != null) SyntaxResult.Text = "";
+        if (!loading && ModeSwitch?.IsOn == true) RefreshExport(); }
     private async void NewScript(object s, RoutedEventArgs e) => await session.Run(() => OpenEditor(null, ""));
     private async void EditScript(object s, RoutedEventArgs e)
     {
@@ -136,9 +153,12 @@ public sealed partial class ScriptsView : UserControl
         var draft = new Dictionary<string, object?> { ["name"] = ScriptName.Text.Trim(), ["source"] = source,
             ["parameters"] = editing == null ? Array.Empty<object>() : editing.Document.GetProperty("parameters") };
         if (editing != null) { draft["script_id"] = editing.Id; draft["expected_revision"] = editing.Revision; }
+        else if (recordingDraft && originalName == ScriptName.Text) draft["number_recording"] = true;
         var result = await session.Call("save_script", draft);
         editing = new(result.GetProperty("script")); originalName = ScriptName.Text; originalSource = source;
         recordingDraft = false;
+        if (ScriptAssembly.OcrUsage(source).Export) await work.AssignOutput(outputDraft, editing.Id);
+        else { await work.DiscardOutput(outputDraft); await work.DiscardOutput(editing.Id); }
         session.Log($"已保存脚本「{editing.Name}」");
         await Reload();
     }
@@ -162,6 +182,7 @@ public sealed partial class ScriptsView : UserControl
             if (choice == ContentDialogResult.None) return false;
             if (choice == ContentDialogResult.Primary) await SaveDraft();
         }
+        await work.DiscardOutput(outputDraft);
         ShowLibrary();
         return true;
     }
@@ -170,6 +191,7 @@ public sealed partial class ScriptsView : UserControl
         if (((Button)s).DataContext is not ScriptRow row) return;
         await session.Run(async () => {
             await session.Call("delete_script", new { script_id = row.Id, expected_revision = row.Revision });
+            await work.DiscardOutput(row.Id);
             session.Log($"已删除脚本「{row.Name}」"); await Reload();
         });
     }
@@ -222,7 +244,7 @@ public sealed partial class ScriptsView : UserControl
         if (recording is not string id) return;
         var draft = await session.Call("finish_recording", new { recording_id = id });
         var compiled = await session.Call("compile_recording", new { scope = draft.GetProperty("scope"), actions = draft.GetProperty("actions"),
-            interrupted = draft.GetProperty("interrupted") });
+            interrupted = draft.GetProperty("interrupted"), suggest_name = true });
         int count = compiled.GetProperty("action_count").GetInt32(), omitted = compiled.GetProperty("omitted").GetArrayLength();
         if (count == 0)
         {
@@ -235,7 +257,8 @@ public sealed partial class ScriptsView : UserControl
                 Content = $"已录到 {count} 个完整动作，有 {omitted} 处中止。", PrimaryButtonText = "编辑完整动作", CloseButtonText = "放弃录制" };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) { await ReleaseRecording(id); return; }
         }
-        await OpenEditor(null, compiled.GetProperty("source").GetString()!, recorded: true);
+        await OpenEditor(null, compiled.GetProperty("source").GetString()!, recorded: true,
+            suggestedName: compiled.GetProperty("suggested_name").GetString());
         await ReleaseRecording(id);
     });
     private async void CancelRecording(object s, RoutedEventArgs e) => await session.Run(DiscardRecording);

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using ScreenTrigger.Contracts;
 using ScreenTrigger.Host;
+using ScreenTrigger.User;
 
 internal static class Program
 {
@@ -64,12 +65,40 @@ internal static class Program
                 return Task.FromResult<object?>(new { step.Source });
             });
         await Check("assembly/custom-source", () => {
-            const string raw = "local text = [[\r\nwait(1)\r\n]]\r\nreturn text\r\n";
-            var steps = ScreenTrigger.User.ScriptAssembly.Read("wait(0.001)\r\n" + raw);
-            Require(steps.Count == 2 && steps[1].Action == null && steps[1].Source == raw, "Lost custom source");
-            var invalid = ScreenTrigger.User.ScriptAssembly.Read("wait(1e3)\ntype_text(\"x\")");
-            Require(invalid.Count == 1 && invalid[0].Action == null, "Unexpected conversion");
-            return Task.FromResult<object?>(new { steps = steps.Count, retained = steps[1].Source });
+            const string raw = "-- before\r\nlocal text = [=[\r\nwait(666)\r\n]=]\r\nlocal function run(x)\r\n  if x then wait ( 1e-3 ); else type_text('yes') end\r\nend\r\nclick_at(-10, 12); return text -- after\r\n";
+            var steps = ScriptAssembly.Read(raw, out var tail);
+            Require(ScriptAssembly.Write(steps,tail) == raw && steps.Count(s => s.Action != null) == 3, "Mixed Lua lost content or actions");
+            int i = steps.FindIndex(s => s.Title == "等待");
+            Require(steps[i].Depth == 2 && steps[i].Values[0] == "1", "Nested timing");
+            var prior = steps[i];
+            steps[i] = prior.Action!.Create(["25"], prior);
+            Require(ScriptAssembly.Write(steps,tail) == raw.Replace("1e-3","0.025"), "Edited adjacent code");
+            var expression = ScriptAssembly.Read("click_at(x, y); wait(.25); type_text [=[two\nlines]=]");
+            Require(expression.Count == 3 && expression[0].Action == null && expression[1].Values[0] == "250" && expression[2].Source.Contains("two"), "Expression boundary");
+            return Task.FromResult<object?>(new { steps = steps.Select(s => s.Title) });
+        });
+        await Check("assembly/recording-four-actions", () => {
+            const string pt = "{version=1,scope=\"region\",strategy=\"relative\",reference_width=800,reference_height=600,x=199,y=150}";
+            const string path = "{" + pt + "," + pt + "," + pt + "}";
+            const string keys = "{{offset_ms=0,down=true,key=\"ctrl\"},{offset_ms=20,down=true,scan_code=30,extended=false},{offset_ms=53,down=false,scan_code=30,extended=false},{offset_ms=61,down=false,key=\"ctrl\"}}";
+            const string raw = "wait(0.000)\nclick_anchor("+pt+",\"left\",1,72)\ndrag_anchor("+path+",301)\nscroll_anchor("+pt+",-120)\nrecorded_keys(\"region\","+keys+")\n";
+            var steps = ScriptAssembly.Read(raw, out var tail);
+            Require(steps.Count == 5 && steps.All(s => s.Action != null) && ScriptAssembly.Write(steps,tail) == raw, "Recording did not translate");
+            var drag = steps[2]; var values = (string[])drag.Values.Clone();
+            values[0] = values[0].Replace("199 150","299 250"); steps[2] = drag.Action!.Create(values,drag);
+            var key = steps[4]; values = (string[])key.Values.Clone(); values[1] = values[1].Replace("53 抬起", "55 抬起");
+            steps[4] = key.Action!.Create(values,key);
+            Require(ScriptAssembly.Write(steps,tail) == raw.Replace(path,path.Replace("x=199,y=150","x=299,y=250")).Replace("offset_ms=53","offset_ms=55"), "Recording edits changed other fields");
+            var point = RecordingPoint.Parse("region relative 101 51 0 0");
+            Require(point.FromScreen(-100,75,-200,25,201,101) == (50,25), "Scaled point with negative desktop origin");
+            return Task.FromResult<object?>(new { titles = steps.Select(s => s.Title), path = drag.Values[0], keys = key.Values[1] });
+        });
+        await Check("assembly/ocr-output-detection", () => {
+            Require(ScriptAssembly.OcrUsage("-- ocr(nil,nil,nil,true)\nlog('ocr(nil,nil,nil,true)')") == (false,false), "Read OCR from comment or string");
+            Require(ScriptAssembly.OcrUsage("local b = ocr(nil, nil, nil, false)") == (true,false), "Read-only OCR");
+            Require(ScriptAssembly.OcrUsage("if yes then local b=ocr(image(),{x=3,y=4},nil, true ) end") == (true,true), "Nested export");
+            Require(ScriptAssembly.OcrUsage("ocr(nil,nil,'chosen-model',true)") == (false,true), "Explicit model prompted for a default");
+            return Task.FromResult<object?>(new { matches = 4 });
         });
     }
 
