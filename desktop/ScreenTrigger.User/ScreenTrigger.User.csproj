@@ -22,6 +22,11 @@
     <ProjectReference Include="../ScreenTrigger.Client/ScreenTrigger.Client.csproj" />
     <Compile Include="../ScreenTrigger/WorkspaceCommands.cs" Link="WorkspaceCommands.cs" />
     <Compile Include="../ScreenTrigger/Settings/SettingsPage.xaml.cs" Link="SettingsPage.xaml.cs" />
+    <Page Include="../ScreenTrigger/Selection/OverlayWindow.xaml" Link="Selection/OverlayWindow.xaml" />
+    <Compile Include="../ScreenTrigger/Selection/*.cs" Link="Selection/%(Filename)%(Extension)" />
+    <Compile Include="../ScreenTrigger/Import/ImagePicker.cs;../ScreenTrigger/Import/TextOutputPicker.cs" Link="Import/%(Filename)%(Extension)" />
+    <Compile Include="../../tools/probes/windows/SelectionProbe/SelectionGeometry.cs;../../tools/probes/windows/SelectionProbe/ProbeDesktop.cs" Link="Selection/%(Filename)%(Extension)" />
+    <PackageReference Include="WinUIEx" Version="2.9.3" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.7.0" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" PrivateAssets="all" />
   </ItemGroup>

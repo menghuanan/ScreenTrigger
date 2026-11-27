@@ -1,125 +1,163 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using ScreenTrigger.Host;
-using Windows.Graphics;
-using Windows.System;
 
 namespace ScreenTrigger.User;
 
 public sealed partial class ScriptsView : UserControl
 {
     private readonly UserSession session;
-    private readonly Func<(PointInt32 position, SizeInt32 size)> windowBounds;
-    private List<ScriptRow> rows = [];
-    private readonly Dictionary<string, string> attempts = [];
+    private readonly WorkView work;
     private ScriptRow? editing;
-    private string originalName = "", originalText = "", loadedSource = "";
+    private List<CatalogItem> targets = [];
+    private string originalName = "", originalSource = "", luaSource = "", displayedLua = "";
+    private bool loading, recordingDraft;
+    private string? recording;
+    private readonly DispatcherTimer recordingTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private bool pollingRecording;
+    internal IReadOnlyList<ScriptRow> Rows { get; private set; } = [];
 
-    internal ScriptsView(UserSession session, Func<(PointInt32, SizeInt32)> bounds)
+    internal ScriptsView(UserSession session, WorkView work)
     {
         InitializeComponent();
-        this.session = session;
-        windowBounds = bounds;
+        this.session = session; this.work = work;
+        recordingTimer.Tick += PollRecording;
+        Assembly.Run = session.Run;
+        Assembly.Filter = () => (GroupFilter.SelectedItem as CatalogItem)?.Id;
+        Assembly.OpenLua = () => ModeSwitch.IsOn = true;
     }
 
     internal async Task Reload()
     {
-        var documents = await session.List("list_scripts");
-        var previous = rows.ToDictionary(row => row.Id);
-        rows = documents.Select(doc => {
-            var row = previous.GetValueOrDefault(doc.GetProperty("id").GetString()!) ?? new ScriptRow(doc);
-            row.Update(doc);
-            row.ShowEdit(EditMode.IsChecked == true);
-            return row;
-        }).ToList();
-        ScriptList.ItemsSource = rows;
-        EditMode.Visibility = rows.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-        if (rows.Count == 0) { EditMode.IsChecked = false; EditMode.Content = "编辑"; }
+        Rows = (await session.List("list_scripts")).Select(doc => new ScriptRow(doc)).ToList();
+        ScriptList.ItemsSource = Rows;
+        EmptyLibrary.Visibility = Rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+    internal string? NameForId(string id) => Rows.FirstOrDefault(s => s.Id == id)?.Name;
+
+    private async Task OpenEditor(ScriptRow? row, string text, bool recorded = false)
+    {
+        var library = (await session.Call("list_groups", new { })).GetProperty("groups");
+        var groups = new List<CatalogItem> { new("*", "全部分组"), new(null, "未分组") };
+        groups.AddRange(library.EnumerateArray().Select(g => new CatalogItem(g.GetProperty("id").GetString(),
+            new string('　', g.GetProperty("depth").GetInt32()) + g.GetProperty("name").GetString())));
+        targets = (await session.List("list_targets")).Select(t => new CatalogItem(t.GetProperty("id").GetString(),
+            $"#{t.GetProperty("sample_no")}　{t.GetProperty("name")}", t)).ToList();
+        loading = true;
+        try
+        {
+            GroupFilter.ItemsSource = groups; GroupFilter.SelectedIndex = 0;
+            editing = row;
+            recordingDraft = recorded;
+            ScriptName.Text = originalName = row?.Name ?? (recorded ? "录制脚本" : "");
+            originalSource = text;
+            Assembly.LoadSource(text, targets);
+            SetLua(text);
+            ModeSwitch.IsOn = recorded || Assembly.HasCustomLua;
+            ShowMode();
+            EditorTitle.Text = row == null ? "新建脚本" : "编辑脚本";
+            Library.Visibility = Visibility.Collapsed; Editor.Visibility = Visibility.Visible;
+        }
+        finally { loading = false; }
+        DispatcherQueue.TryEnqueue(() => ScriptName.Focus(FocusState.Programmatic));
     }
 
-    internal ScriptRow? FindKey(string key) => rows.Find(r => r.Key == key);
-    internal string? NameForId(string id) => rows.Find(r => r.Id == id)?.Name;
-
-    private void ChangeMode(object sender, RoutedEventArgs e)
+    private void EditorSized(object sender, SizeChangedEventArgs e)
     {
-        bool edit = EditMode.IsChecked == true;
-        EditMode.Content = edit ? "完成" : "编辑";
-        foreach (var row in rows) row.ShowEdit(edit);
+        bool narrow = e.NewSize.Width < 680;
+        Grid.SetColumnSpan(ScriptName, narrow ? 3 : 1);
+        Grid.SetRow(ModeSwitch, narrow ? 1 : 0); Grid.SetColumn(ModeSwitch, narrow ? 0 : 1);
+        Grid.SetRow(LibraryPicker, narrow ? 1 : 0); Grid.SetColumn(LibraryPicker, narrow ? 1 : 2);
+        ModeSwitch.HorizontalAlignment = HorizontalAlignment.Left;
     }
 
-    private void OpenEditor(ScriptRow? row, string text)
+    private void SetLua(string value)
     {
-        editing = row;
-        ScriptName.Text = originalName = row?.Name ?? "";
-        Source.Text = loadedSource = text;
-        originalText = Source.Text;
-        EditorTitle.Text = row == null ? "新建脚本" : "编辑脚本";
-        Library.Visibility = Visibility.Collapsed;
-        Editor.Visibility = Visibility.Visible;
-        ScriptName.Focus(FocusState.Programmatic);
+        luaSource = value; Source.Text = value; displayedLua = Source.Text;
     }
-
-    private void NewScript(object sender, RoutedEventArgs e)
+    private string LuaText => Source.Text == displayedLua ? luaSource : Source.Text.ReplaceLineEndings("\n");
+    private string Draft => ModeSwitch.IsOn ? LuaText : Assembly.Source;
+    private void SwitchMode(object s, RoutedEventArgs e)
     {
-        if (!session.Busy) OpenEditor(null, "");
+        if (loading || Assembly == null) return;
+        if (ModeSwitch.IsOn) SetLua(Assembly.Source); else Assembly.LoadSource(LuaText, targets);
+        ShowMode();
     }
-
-    private async void EditScript(object sender, RoutedEventArgs e)
+    private void ShowMode()
     {
-        if (((Button)sender).DataContext is not ScriptRow row) return;
+        LuaPanel.Visibility = ModeSwitch.IsOn ? Visibility.Visible : Visibility.Collapsed;
+        Assembly.Visibility = ModeSwitch.IsOn ? Visibility.Collapsed : Visibility.Visible;
+    }
+    private async void CheckSyntax(object s, RoutedEventArgs e) => await session.Run(async () => {
+        var result = await session.Call("validate_script", new { source = LuaText });
+        var diagnostics = result.GetProperty("diagnostics").EnumerateArray().ToList();
+        SyntaxResult.Text = diagnostics.Count == 0 ? "语法检查通过" : string.Join("\n",
+            diagnostics.Select(d => $"第 {d.GetProperty("line")} 行 · {d.GetProperty("message")}"));
+    });
+    private void ListLuaTargets(object sender, object e)
+    {
+        var menu = (MenuFlyout)sender;
+        menu.Items.Clear();
+        string? group = Assembly.Filter();
+        foreach (var target in targets.Where(t => group == "*" || t.Document.GetProperty("group_id").GetString() == group))
+        {
+            var item = new MenuFlyoutItem { Text = target.Label };
+            item.Click += (_, _) => {
+                Source.SelectedText = new StepField("目标", FieldKind.Target).Literal(target.Id!);
+                Source.Focus(FocusState.Programmatic);
+            };
+            menu.Items.Add(item);
+        }
+        if (menu.Items.Count == 0) menu.Items.Add(new MenuFlyoutItem { Text = "所选分组暂无目标", IsEnabled = false });
+    }
+    private void SourceChanged(object s, TextChangedEventArgs e) { if (SyntaxResult != null) SyntaxResult.Text = ""; }
+    private async void NewScript(object s, RoutedEventArgs e) => await session.Run(() => OpenEditor(null, ""));
+    private async void EditScript(object s, RoutedEventArgs e)
+    {
+        if (((Button)s).DataContext is not ScriptRow row) return;
         await session.Run(async () => {
             var loaded = await session.Call("load_script", new { script_id = row.Id });
-            OpenEditor(new ScriptRow(loaded.GetProperty("script")), loaded.GetProperty("source").GetString()!);
+            await OpenEditor(new(loaded.GetProperty("script")), loaded.GetProperty("source").GetString()!);
         });
     }
 
     private void ShowLibrary()
     {
-        editing = null;
-        Editor.Visibility = Visibility.Collapsed;
-        Library.Visibility = Visibility.Visible;
+        editing = null; recordingDraft = false;
+        Editor.Visibility = Visibility.Collapsed; Library.Visibility = Visibility.Visible;
         DispatcherQueue.TryEnqueue(() => { if (IsLoaded && Library.Visibility == Visibility.Visible) NewButton.Focus(FocusState.Programmatic); });
     }
 
     private async Task SaveDraft()
     {
-        if (string.IsNullOrWhiteSpace(ScriptName.Text))
-        {
-            ScriptName.Focus(FocusState.Programmatic);
-            throw new InvalidOperationException("请填写脚本名称。");
-        }
-        ScriptName.IsReadOnly = Source.IsReadOnly = true;
-        try
-        {
-            var draft = new Dictionary<string, object?> {
-                ["name"] = ScriptName.Text.Trim(), ["source"] = Source.Text == originalText ? loadedSource : Source.Text.ReplaceLineEndings("\n"),
-                ["parameters"] = editing == null ? Array.Empty<object>() : editing.Document.GetProperty("parameters")
-            };
-            if (editing != null) { draft["script_id"] = editing.Id; draft["expected_revision"] = editing.Revision; }
-            var data = await session.Call("save_script", draft);
-            editing = new ScriptRow(data.GetProperty("script"));
-            originalText = Source.Text;
-            originalName = ScriptName.Text;
-            loadedSource = (string)draft["source"]!;
-            session.Log($"已保存脚本「{editing.Name}」");
-            await Reload();
-        }
-        finally { ScriptName.IsReadOnly = Source.IsReadOnly = false; }
+        if (string.IsNullOrWhiteSpace(ScriptName.Text)) throw new InvalidOperationException("请填写脚本名称。");
+        string source = Draft;
+        var draft = new Dictionary<string, object?> { ["name"] = ScriptName.Text.Trim(), ["source"] = source,
+            ["parameters"] = editing == null ? Array.Empty<object>() : editing.Document.GetProperty("parameters") };
+        if (editing != null) { draft["script_id"] = editing.Id; draft["expected_revision"] = editing.Revision; }
+        var result = await session.Call("save_script", draft);
+        editing = new(result.GetProperty("script")); originalName = ScriptName.Text; originalSource = source;
+        recordingDraft = false;
+        session.Log($"已保存脚本「{editing.Name}」");
+        await Reload();
     }
-
-    private async void Save(object sender, RoutedEventArgs e) =>
-        await session.Run(async () => { await SaveDraft(); ShowLibrary(); });
+    private async void Save(object s, RoutedEventArgs e) => await session.Run(async () => { await SaveDraft(); ShowLibrary(); });
+    private async void Back(object s, RoutedEventArgs e) => await session.Run(async () => { await LeaveEditor(); });
 
     internal async Task<bool> LeaveEditor()
     {
-        if (Editor.Visibility != Visibility.Visible) return true;
-        if (originalName != ScriptName.Text || originalText != Source.Text)
+        if (recording != null)
         {
-            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "是否保存并退出？",
-                Content = "脚本有尚未保存的修改。", PrimaryButtonText = "保存并退出", SecondaryButtonText = "放弃修改",
-                CloseButtonText = "继续编辑", DefaultButton = ContentDialogButton.Primary };
+            var prompt = new ContentDialog { XamlRoot = XamlRoot, Title = "取消本次录制？", PrimaryButtonText = "取消录制并离开", CloseButtonText = "留在此页" };
+            if (await prompt.ShowAsync() != ContentDialogResult.Primary) return false;
+            await DiscardRecording();
+        }
+        if (Editor.Visibility != Visibility.Visible) return true;
+        if (recordingDraft || originalName != ScriptName.Text || originalSource != Draft)
+        {
+            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "是否保存并退出？", Content = "脚本有尚未保存的修改。",
+                PrimaryButtonText = "保存并退出", SecondaryButtonText = "放弃修改", CloseButtonText = "继续编辑", DefaultButton = ContentDialogButton.Primary };
             var choice = await dialog.ShowAsync();
             if (choice == ContentDialogResult.None) return false;
             if (choice == ContentDialogResult.Primary) await SaveDraft();
@@ -127,117 +165,92 @@ public sealed partial class ScriptsView : UserControl
         ShowLibrary();
         return true;
     }
-
-    private async void Back(object sender, RoutedEventArgs e) => await session.Run(async () => { await LeaveEditor(); });
-
-    private async void DeleteScript(object sender, RoutedEventArgs e)
+    private async void DeleteScript(object s, RoutedEventArgs e)
     {
-        if (((Button)sender).DataContext is not ScriptRow row) return;
+        if (((Button)s).DataContext is not ScriptRow row) return;
         await session.Run(async () => {
             await session.Call("delete_script", new { script_id = row.Id, expected_revision = row.Revision });
-            attempts.Remove(row.Id);
-            session.Log($"已删除脚本「{row.Name}」");
-            await Reload();
+            session.Log($"已删除脚本「{row.Name}」"); await Reload();
         });
     }
 
-    private void OpenKeyList(object sender, KeyRoutedEventArgs e)
+    private void ShowRecording(bool active)
     {
-        if (e.Key != VirtualKey.F4 && !(e.Key == VirtualKey.Down && e.KeyStatus.IsMenuKeyDown)) return;
-        var button = (DropDownButton)sender;
-        if (!button.Flyout.IsOpen) button.Flyout.ShowAt(button);
-        e.Handled = true;
+        RecordButton.IsEnabled = NewButton.IsEnabled = ScriptList.IsEnabled = !active;
+        RecordingPanel.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        ContinueRecording.Visibility = Visibility.Collapsed;
+        if (active) recordingTimer.Start(); else recordingTimer.Stop();
     }
-
-    private void PrepareKeys(object sender, object e)
+    private async void PollRecording(object? sender, object args)
     {
-        var flyout = (Flyout)sender;
-        if (flyout.Target?.DataContext is not ScriptRow row) return;
-        var choices = (ListView)flyout.Content;
-        choices.ItemsSource = row.Keys;
-        choices.SelectedItem = row.Key;
-    }
-
-    private void FocusKey(object sender, object e)
-    {
-        var choices = (ListView)((Flyout)sender).Content;
-        choices.ScrollIntoView(choices.SelectedItem);
-        choices.UpdateLayout();
-        (choices.ContainerFromItem(choices.SelectedItem) as ListViewItem)?.Focus(FocusState.Programmatic);
-    }
-
-    private async void SetKey(object sender, ItemClickEventArgs e)
-    {
-        var flyout = (Flyout)Resources["HotkeyFlyout"];
-        if (flyout.Target?.DataContext is not ScriptRow row || e.ClickedItem is not string selected) return;
-        flyout.Hide();
-        if (selected == row.Key) return;
-        await session.Run(async () => {
-            var result = await session.Call("set_script_hotkey", new { script_id = row.Id, expected_revision = row.Revision,
-                hotkey = selected == ScriptRow.Unbound ? null : selected });
-            row.Update(result.GetProperty("script"));
-        });
-    }
-
-    private async void ToggleScript(object sender, RoutedEventArgs e)
-    {
-        if (((Button)sender).DataContext is ScriptRow row) await session.Run(() => Toggle(row));
-    }
-
-    internal async Task Toggle(ScriptRow row)
-    {
-        if (row.Execution is string running)
-        {
-            await session.Call("stop_script", new { execution_id = running });
-            return;
-        }
-        var displays = (await session.Call("get_display_list", new { })).GetProperty("displays");
-        var (p, size) = windowBounds();
-        long Overlap(JsonElement display)
-        {
-            var rect = display.GetProperty("rect");
-            int x = rect.GetProperty("x").GetInt32(), y = rect.GetProperty("y").GetInt32();
-            return (long)Math.Max(0, Math.Min(p.X + size.Width, x + rect.GetProperty("width").GetInt32()) - Math.Max(p.X, x)) *
-                Math.Max(0, Math.Min(p.Y + size.Height, y + rect.GetProperty("height").GetInt32()) - Math.Max(p.Y, y));
-        }
-        if (displays.GetArrayLength() == 0) throw new InvalidOperationException("找不到可用的显示器。");
-        var id = displays.EnumerateArray().MaxBy(Overlap).GetProperty("id").GetString();
-        var cfg = await session.Host!.GetConfigAsync();
-        if (!attempts.TryGetValue(row.Id, out var attempt)) attempts[row.Id] = attempt = Guid.NewGuid().ToString();
-        JsonElement accepted;
+        if (recording is not string id || pollingRecording || session.Busy) return;
+        pollingRecording = true;
         try
         {
-            accepted = await session.Call("execute_script", new { script_id = row.Id, args = new { }, mode = "once",
-                debug = false, display_id = id, allow_exit = false, frequency_hz = cfg.Recognition.DefaultFrequencyHz,
-                total_timeout_ms = cfg.Execution.TotalTimeoutMs, client_run_id = attempt });
+            var state = await session.Call("get_recording_state", new { recording_id = id });
+            if (recording != id || session.Busy) return;
+            var status = state.GetProperty("status").GetString();
+            ContinueRecording.Visibility = status == "paused" ? Visibility.Visible : Visibility.Collapsed;
+            var label = status switch { "paused" => "已暂停", "finished" => "录制已结束", _ => "正在录制" };
+            RecordingStatus.Text = $"{label} · {state.GetProperty("action_count")} 个动作";
         }
-        catch (HostException ex) when (ex.Error.Code != "INTERNAL_ERROR") { attempts.Remove(row.Id); throw; }
-        attempts.Remove(row.Id);
-        row.Execution = accepted.GetProperty("execution_id").GetString();
-        row.RunStatus = "starting";
-        row.Refresh();
-        session.Log($"已启动脚本「{row.Name}」");
-        // A short script can finish before its start acknowledgement reaches the window.
-        var state = await session.Call("get_script_state", new { execution_id = row.Execution });
-        ApplyState(state.GetProperty("state"));
-    }
-
-    internal void ApplyState(JsonElement state)
-    {
-        var id = state.GetProperty("execution_id").GetString();
-        if (id == null || rows.Find(r => r.Execution == id) is not { } row) return;
-        var status = state.GetProperty("status").GetString();
-        row.RunStatus = status;
-        if (status is "completed" or "cancelled" or "failed")
+        catch (HostException ex) when (ex.Error.Code is "INVALID_STATE" or "INVALID_PARAMS")
         {
-            row.Execution = null;
-            session.Log($"「{row.Name}」{ScriptRow.StatusText(status)}");
+            if (recording == id && !session.Busy) { EndEngineSession(); session.Error(ex); }
         }
-        row.Refresh();
+        catch (Exception e) { if (recording == id) RecordingStatus.Text = e.Message; }
+        finally { pollingRecording = false; }
     }
-
-    internal void Recover(RecoverySnapshot snapshot)
+    private async void ResumeRecording(object s, RoutedEventArgs e) => await session.Run(async () => {
+        if (recording != null) await session.Call("resume_recording", new { recording_id = recording });
+    });
+    private async void StartRecording(object s, RoutedEventArgs e) => await session.Run(async () => {
+        var context = await work.RecordingContext(XamlRoot);
+        if (context == null) return;
+        recording = Guid.NewGuid().ToString();
+        try
+        {
+            await session.Call("start_recording", new { recording_id = recording, context });
+            RecordingStatus.Text = "正在录制";
+        }
+        catch (HostException ex) when (ex.Error.Code == "INTERNAL_ERROR")
+        { RecordingStatus.Text = "启动结果待核对，请结束或取消本次录制。"; }
+        catch { recording = null; throw; }
+        ShowRecording(true);
+    });
+    private async void FinishRecording(object s, RoutedEventArgs e) => await session.Run(async () => {
+        if (recording is not string id) return;
+        var draft = await session.Call("finish_recording", new { recording_id = id });
+        var compiled = await session.Call("compile_recording", new { scope = draft.GetProperty("scope"), actions = draft.GetProperty("actions"),
+            interrupted = draft.GetProperty("interrupted") });
+        int count = compiled.GetProperty("action_count").GetInt32(), omitted = compiled.GetProperty("omitted").GetArrayLength();
+        if (count == 0)
+        {
+            await ReleaseRecording(id);
+            throw new InvalidOperationException($"本次录制没有完整动作（{omitted} 处中止）。");
+        }
+        if (omitted > 0)
+        {
+            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "录制包含中止的动作",
+                Content = $"已录到 {count} 个完整动作，有 {omitted} 处中止。", PrimaryButtonText = "编辑完整动作", CloseButtonText = "放弃录制" };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) { await ReleaseRecording(id); return; }
+        }
+        await OpenEditor(null, compiled.GetProperty("source").GetString()!, recorded: true);
+        await ReleaseRecording(id);
+    });
+    private async void CancelRecording(object s, RoutedEventArgs e) => await session.Run(DiscardRecording);
+    private async Task DiscardRecording()
     {
-        foreach (var state in snapshot.Executions.Values) ApplyState(state);
+        if (recording is not string id) return;
+        var state = await session.Call("get_recording_state", new { recording_id = id });
+        if (state.GetProperty("status").GetString() is "recording" or "paused")
+            await session.Call("cancel_recording", new { recording_id = id });
+        await ReleaseRecording(id);
     }
+    private async Task ReleaseRecording(string id)
+    {
+        await session.Call("release_recording_draft", new { recording_id = id });
+        recording = null; ShowRecording(false);
+    }
+    internal void EndEngineSession() { recording = null; ShowRecording(false); }
 }

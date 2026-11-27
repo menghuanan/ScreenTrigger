@@ -36,6 +36,7 @@ def user_publish_files(ui):
         raise ValueError("请选择 ScreenTrigger.User 的 Offline 发布目录")
     allowed_pages = {p.relative_to(ROOT / "desktop/ScreenTrigger.User").with_suffix(".xbf").as_posix().lower()
                      for p in (ROOT / "desktop/ScreenTrigger.User").rglob("*.xaml")}
+    allowed_pages.add("selection/overlaywindow.xbf")
     selected = {}
     for line in inventory.read_text(encoding="utf-8-sig").splitlines():
         relative, sha = line.rsplit("|", 1)

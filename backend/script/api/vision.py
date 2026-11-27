@@ -181,7 +181,12 @@ class ScreenApi:
         finally:
             self.capture.release_image(ref.image_id)
 
-    def ocr(self, image=None, region=None, model_id=None):
+    def ocr(self, image=None, region=None, model_id=None, export=None):
+        if export is not None and not isinstance(export, bool):
+            fail("export", "OCR 导出选项必须为布尔值")
+        authorized = getattr(self.root, "export_enabled", False)
+        if export is True and not authorized:
+            fail("output_token", "请在开始工作时选择 OCR 导出的 TXT 文件。")
         entered_ns = time.perf_counter_ns() if startup_timing.enabled() else None
         if model_id is None:
             model_id = self.root.settings.get("recognition", {}).get("ocr_model_id")
@@ -192,7 +197,7 @@ class ScreenApi:
             startup_timing.mark("lua_ocr_request", qpc_ns=entered_ns, **timing)
         with self.ocr_image(image, region) as (image_id, space, x, y, revision):
             blocks = self.infer("recognize_text", image_id, model_id=model_id, timing=timing)["blocks"]
-            if getattr(self.root, "export_enabled", False):
+            if authorized and export is not False:
                 binding = self.root.config.binding_id
                 if binding and revision is not None:
                     snapshot = self.root.controller.input.window_snapshot(binding)

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import itertools
 import os
@@ -23,6 +24,7 @@ if _REPO_ROOT not in sys.path:
 
 from backend.capture.ports import RawImage  # noqa: E402
 from backend.image.store import SessionImageStore  # noqa: E402
+from backend.image.png_decode import decode_png_to_rgb
 from backend.ipc.dispatcher import Dispatcher  # noqa: E402
 from backend.storage import DataRoot  # noqa: E402
 from backend.storage.imagestore import ImageStore  # noqa: E402
@@ -116,6 +118,21 @@ class CommandShapeTest(_CommandFixture):
         self.assertFalse(missing["success"])
         self.assertEqual(missing["error"]["code"], "TARGET_NOT_FOUND")
         self.assertEqual(missing["error"]["details"]["field"], "target_id")
+
+    def test_saved_preview_after_session_image_is_released(self):
+        target = self._request("create_target", {"draft": self._draft()})["data"]["target"]
+        self.session.release(self.ref.image_id)
+        params = {"target_id": target["id"]}
+        self.assertNotIn("preview", self._request("get_target", params, "plain")["data"])
+        response = self._request("get_target", dict(params, preview_max_edge=2), "preview")
+        self.assertEqual(response["data"]["target"]["revision"], target["revision"])
+        image = response["data"]["preview"]
+        self.assertEqual(image["mime"], "image/png")
+        self.assertEqual(decode_png_to_rgb(base64.b64decode(image["base64"])), (2, 2, bytes([7, 8, 9]) * 4))
+        for invalid in (0, 801, True):
+            with self.subTest(edge=invalid):
+                bad = self._request("get_target", dict(params, preview_max_edge=invalid), f"bad-{invalid}")
+                self.assertEqual(bad["error"]["details"]["field"], "preview_max_edge")
 
     def test_list_targets_pagination_and_group_filter(self):
         group = self._request("create_group", {"name": "A"}, "g1")["data"]["group"]

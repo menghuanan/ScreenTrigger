@@ -11,16 +11,20 @@
 
 from __future__ import annotations
 
+import base64
 import os
 from dataclasses import dataclass
 from typing import Callable, Optional, Tuple
 
 from backend.image.formats import FORMAT_EXTENSIONS
+from backend.capture.errors import CaptureError
+from backend.image.decode_common import decode_image_to_bgr
+from backend.image.png import render_preview_png
 from backend.image.store import SessionImageStore, StoredImage
 from backend.types.region import ImageAsset, ImageRef
 
 from . import fsops
-from .errors import data_corrupt, invalid_params
+from .errors import StorageError, data_corrupt, invalid_params
 from .generation import sha256_hex
 from .paths import DataRoot, join_relative
 
@@ -121,12 +125,25 @@ class ImageStore:
 
     def verify(self, asset: ImageAsset) -> None:
         """校验资产存在且 hash 与声明一致（F5：hash 不符 → DATA_CORRUPT）。"""
+        self._read_verified(asset)
+
+    def _read_verified(self, asset: ImageAsset) -> bytes:
         absolute = self._root.resolve(asset.path)
         if not os.path.isfile(absolute):
             raise data_corrupt("图像资产缺失: %s" % asset.path, field="image.path")
-        actual = sha256_hex(fsops.read_bytes(absolute))
-        if actual != asset.sha256:
+        data = fsops.read_bytes(absolute)
+        if sha256_hex(data) != asset.sha256:
             raise data_corrupt("图像资产 hash 不符: %s" % asset.path, field="image.sha256")
+        return data
+
+    def asset_preview(self, asset: ImageAsset, max_edge: int) -> dict:
+        data = self._read_verified(asset)
+        try:
+            pixels, width, height = decode_image_to_bgr(data, asset.format)
+        except CaptureError as exc:
+            raise StorageError(exc.code, exc.message, details=exc.details) from exc
+        png, _, _ = render_preview_png(pixels, width, height, max_edge)
+        return {"mime": "image/png", "base64": base64.b64encode(png).decode("ascii")}
 
     def remove_asset(self, asset: ImageAsset) -> None:
         """best-effort 删除资产（Q11：仅显式调用，不自动 GC）。"""

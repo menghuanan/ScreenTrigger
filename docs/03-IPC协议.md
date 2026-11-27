@@ -121,7 +121,7 @@ TargetDraft 为 `{name,group_id?,image_id,anchor_condition_id,conditions,storage
 | command | params | data |
 |---|---|---|
 | create_target | {draft:TargetDraft} | {target:Target} |
-| get_target | {target_id:string} | {target:Target} |
+| get_target | {target_id:string,preview_max_edge?:int(1–800)} | {target:Target,preview?:{mime,base64}}。指定边长时，从同一目标修订的已校验资产生成等比 PNG 预览。 |
 | list_targets | {group_id?:string\|null,query?:string,offset?:int=0,limit?:int=100} | {items:Target[],total:int} |
 | update_target | {target_id:string,expected_revision:int,patch:object} | {target:Target} |
 | delete_target | {target_id:string,expected_revision:int} | {ok:true} |

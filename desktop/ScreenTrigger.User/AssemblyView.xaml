@@ -1,0 +1,46 @@
+<UserControl x:Class="ScreenTrigger.User.AssemblyView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:ScreenTrigger.User">
+    <Grid ColumnSpacing="12">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}" Padding="12">
+            <Grid RowSpacing="8">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Grid>
+                    <TextBlock Text="脚本步骤" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <TextBlock x:Name="StepCount" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Grid>
+                <Grid Grid.Row="1">
+                    <ListView x:Name="Steps" AutomationProperties.AutomationId="AssemblySteps" AutomationProperties.Name="脚本步骤" SelectionChanged="SelectionChanged">
+                        <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="6,2"/></Style></ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate><DataTemplate x:DataType="local:AssemblyRow">
+                            <Grid ColumnSpacing="10" MinHeight="48" Padding="2,6" BorderThickness="0,0,0,1" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind Number}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{x:Bind Detail}" Visibility="{x:Bind DetailVisibility}" TextTrimming="CharacterEllipsis" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate></ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock x:Name="Empty" Text="从右侧装配台添加第一步" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                </Grid>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4">
+                    <Button x:Name="EditStep" Content="编辑" Click="Edit" AutomationProperties.AutomationId="EditStep"/>
+                    <Button x:Name="Up" Click="Move" AutomationProperties.Name="上移" ToolTipService.ToolTip="上移"><SymbolIcon Symbol="Up"/></Button>
+                    <Button x:Name="Down" Click="Move" AutomationProperties.Name="下移" ToolTipService.ToolTip="下移"><FontIcon Glyph="&#xE74B;" FontSize="16"/></Button>
+                    <Button x:Name="RemoveStep" Click="Remove" AutomationProperties.Name="删除步骤" ToolTipService.ToolTip="删除步骤"><SymbolIcon Symbol="Delete"/></Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Padding="12">
+            <Grid RowSpacing="8">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <TextBlock Text="装配台" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="Palette" Spacing="4" Padding="0,0,4,0"/>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

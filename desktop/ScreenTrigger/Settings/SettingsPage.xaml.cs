@@ -45,6 +45,7 @@ public sealed partial class SettingsPage : UserControl, IWorkspaceDraft
     {
         var data = await commands.Call("get_config", new { });
         Recovery.Text = data.TryGetProperty("recovery", out var r) ? $"配置损坏，已从备份自动恢复至修订 {r.GetProperty("revision")}。" : "";
+        Recovery.Visibility = Recovery.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         Location.Text = data.TryGetProperty("data_root", out var path) ? $"数据目录　{path.GetString()}" : "";
         Display(data.GetProperty("config"));
         await ReadBackups();

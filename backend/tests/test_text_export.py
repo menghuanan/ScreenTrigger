@@ -53,6 +53,18 @@ class ScriptDelivery(unittest.TestCase):
         self.assertEqual(writes, [dict(execution_id=root, action_id=c.kwargs['action_id'],
                                        bytes_written=5, block_confidences=[.2, .9]) for c in (first, second)])
 
+    def test_explicit_ocr_read_and_export_are_independent(self):
+        self.vision.run_sync.return_value = {"blocks": [block("文字", 0, 0)]}
+        dispatch = self.controller.text_output = Mock(side_effect=[{}, {"bytes_written": 8}, {}])
+        script = self.save('for _, b in ipairs(ocr(nil,nil,nil,false)) do log(b.text) end\nocr(nil,nil,nil,true)')
+        self.await_state(self.start(script, output_token="fixture"), "completed")
+        self.assertEqual([c.args[0] for c in dispatch.call_args_list], ["bind", "commit", "close"])
+        self.assertEqual(dispatch.call_args_list[1].kwargs["text"], "文字\r\n")
+        self.vision.run_sync.reset_mock()
+        state = self.await_state(self.start(self.save("ocr(nil,nil,nil,true)")), "failed")
+        self.assertEqual(state["error"]["code"], "INVALID_PARAMS")
+        self.vision.run_sync.assert_not_called()
+
     def test_write_error_terminates_root_without_replaying(self):
         self.vision.run_sync.return_value = {'blocks': [block('B', 0, 0)]}
         dispatch = self.controller.text_output = Mock(side_effect=[{}, StorageError('STORAGE_ERROR', 'disk full'), {}])

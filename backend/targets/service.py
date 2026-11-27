@@ -25,7 +25,7 @@ from ..capture.errors import CaptureError
 from ..image.png import encode_png_bgr
 from ..storage.errors import StorageError, in_use, invalid_params
 from ..storage.imagestore import AssetWrite
-from ..types.region import ImageAsset
+from ..types.region import ImageAsset, validate_image_asset
 from . import domain
 from .domain import UNSET
 from .emitter import CatalogEmitter, NullCatalogEmitter
@@ -149,6 +149,10 @@ class TargetService:
         )
         asset = store.persist(write)
         return write, _asset_to_dict(asset)
+
+    def preview_image(self, target: dict, max_edge: int) -> dict:
+        asset = validate_image_asset(target["image"])
+        return self._repository.image_store.asset_preview(asset, max_edge)
 
     # -- 目标 ----------------------------------------------------------------
 

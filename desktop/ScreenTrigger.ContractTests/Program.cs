@@ -17,7 +17,7 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
         if (args.Length > 1 && Path.GetFileName(args[0]) == "main.py") return FaultPeer.Run(args);
-        if (args.Length != 2 || args[0] is not ("types" or "config" or "protocol" or "faults" or "points" or "updates")) return 2;
+        if (args.Length != 2 || args[0] is not ("types" or "config" or "protocol" or "faults" or "points" or "updates" or "assembly")) return 2;
         output = Path.GetFullPath(args[1]);
         if (Directory.Exists(output)) throw new IOException("证据目录已存在。");
         Directory.CreateDirectory(output);
@@ -25,6 +25,7 @@ internal static class Program
         cases = source.RootElement.GetProperty("cases");
         if (args[0] == "types") await TypeCases();
         if (args[0] == "updates") await ReleaseCases();
+        if (args[0] == "assembly") await AssemblyCases();
         if (args[0] == "points")
         {
             foreach (double scale in new[] { 1, 1.25, 1.5, 2, 3 })
@@ -47,6 +48,29 @@ internal static class Program
         File.WriteAllText(Path.Combine(output,"results.json"),JsonSerializer.Serialize(results,reportJson));
         Console.WriteLine($"{results.Count - failures}/{results.Count} passed");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static async Task AssemblyCases()
+    {
+        const string sample = "中文ñ🙂\n\"\\\t\u0001\"); stop_script() --";
+        foreach (var action in ScreenTrigger.User.ScriptAssembly.Actions)
+            await Check("assembly/" + action.Name, () => {
+                var values = action.Fields.Select(f => f.Kind switch {
+                    ScreenTrigger.User.FieldKind.Text => sample, ScreenTrigger.User.FieldKind.Target => "fixture-id",
+                    ScreenTrigger.User.FieldKind.Milliseconds => "0.01", _ => f.Initial }).ToArray();
+                var step = action.Create(values);
+                var restored = ScreenTrigger.User.ScriptAssembly.Read(step.Source).Single();
+                Require(restored.Action == action && restored.Values.SequenceEqual(values), step.Source);
+                return Task.FromResult<object?>(new { step.Source });
+            });
+        await Check("assembly/custom-source", () => {
+            const string raw = "local text = [[\r\nwait(1)\r\n]]\r\nreturn text\r\n";
+            var steps = ScreenTrigger.User.ScriptAssembly.Read("wait(0.001)\r\n" + raw);
+            Require(steps.Count == 2 && steps[1].Action == null && steps[1].Source == raw, "Lost custom source");
+            var invalid = ScreenTrigger.User.ScriptAssembly.Read("wait(1e3)\ntype_text(\"x\")");
+            Require(invalid.Count == 1 && invalid[0].Action == null, "Unexpected conversion");
+            return Task.FromResult<object?>(new { steps = steps.Count, retained = steps[1].Source });
+        });
     }
 
     private sealed class ReleaseFeed(string[] tags, System.Net.HttpStatusCode status, string? atom = null) : HttpMessageHandler

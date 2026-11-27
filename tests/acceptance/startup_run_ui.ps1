@@ -25,15 +25,18 @@ function Measure-StartupUi($process, $record, [string]$manifest) {
     $record.window_qpc = & $now
     $nav = Await-Startup {
         $legacy = Find-StartupControl $window 'NavRun'
-        if ($legacy) { $legacy } else { Find-StartupControl $window 'NavScripts' }
+        if ($legacy) { $legacy }
+        elseif ($work = Find-StartupControl $window 'NavWork') { $work }
+        else { Find-StartupControl $window 'NavScripts' }
     } 'script navigation'
-    $userClient = $nav.Current.AutomationId -eq 'NavScripts'
+    $workPage = $nav.Current.AutomationId -eq 'NavWork'
+    $userClient = $workPage -or $nav.Current.AutomationId -eq 'NavScripts'
     $record.nav_qpc = & $now
     $nav.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
     $readyLabel=[regex]::Unescape('\u5f15\u64ce\u5c31\u7eea')
     $null = Await-Startup {
         if ($userClient) {
-            $newScript = Find-StartupControl $window 'NewScript'
+            $newScript = Find-StartupControl $window $(if ($workPage) { 'RefreshWindows' } else { 'NewScript' })
             return $newScript -and $newScript.Current.IsEnabled
         }
         $health = Find-StartupControl $window 'ServiceStatus'
@@ -41,13 +44,13 @@ function Measure-StartupUi($process, $record, [string]$manifest) {
     } 'engine ready'
     $record.ready_seen_qpc = & $now
     $go = Await-Startup {
-        if ($userClient) {
+        if ($userClient -and -not $workPage) {
             $row = Find-StartupControl $window ("Run_" + $scenario.script_id)
             if ($row -and $row.Current.IsEnabled) { return $row }
             return
         }
-        $button = Find-StartupControl $window 'ExecuteScript'
-        $picker = Find-StartupControl $window 'RunScriptPicker'
+        $button = Find-StartupControl $window $(if ($workPage) { 'StartWork' } else { 'ExecuteScript' })
+        $picker = Find-StartupControl $window $(if ($workPage) { 'WorkScript' } else { 'RunScriptPicker' })
         if ($button -and $picker -and $button.Current.IsEnabled) {
             $selection = $picker.GetCurrentPattern([Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
             if ($selection.Count -eq 1 -and $selection[0].Current.Name -eq $scenario.name) { $button }
@@ -68,7 +71,7 @@ function Measure-StartupUi($process, $record, [string]$manifest) {
             if ($workerProcess.Path -ne $scenario.worker_executable -or $workerProcess.HasExited) { throw 'The model worker exited or changed before the warm request' }
             $warmWorker=[ordered]@{pid=$workerProcess.Id;created=$workerProcess.StartTime.ToUniversalTime().ToString('o');qpc=(& $now)}
         }
-        $null = Await-Startup { $go.Current.IsEnabled } 'enabled ExecuteScript'
+        $null = Await-Startup { $go.Current.IsEnabled -and (-not $workPage -or $go.Current.Name -eq '开始') } 'enabled ExecuteScript'
         $begin = & $now
         $attempt=[ordered]@{index=$i;status='invoking';invoke_qpc=$begin;warm_worker=$warmWorker}
         $record.runs += $attempt

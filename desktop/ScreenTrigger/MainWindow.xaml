@@ -1,7 +1,7 @@
 <Window x:Class="ScreenTrigger.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:ScreenTrigger" Title="ScreenTrigger">
+    xmlns:host="using:ScreenTrigger.Host" Title="ScreenTrigger">
     <NavigationView x:Name="Navigation" PaneDisplayMode="Top" IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False" IsPaneToggleButtonVisible="False" SelectionChanged="Navigate">
         <NavigationView.MenuItems>
@@ -46,7 +46,7 @@
                        AutomationProperties.AutomationId="InstalledModels" AutomationProperties.LiveSetting="Polite" />
             <ItemsControl x:Name="Capabilities" AutomationProperties.AutomationId="EngineCapabilities">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="local:CapabilityRow">
+                    <DataTemplate x:DataType="host:CapabilityRow">
                         <StackPanel Margin="0,0,0,12" Spacing="3">
                             <TextBlock Text="{x:Bind Summary}" FontWeight="SemiBold" AutomationProperties.AutomationId="{x:Bind AutomationId}" />
                             <TextBlock Text="{x:Bind Reason}" TextWrapping="Wrap" IsTextSelectionEnabled="True"

@@ -71,7 +71,7 @@ Match 含 target_id、sample_no、space、bbox、center、confidence、geometry_
 |---|---|---|
 | `capture_screen(region?)` | nil 当前识别区 | ImageRef table；不可写文件 |
 | `release_image(image)` | 当前执行拥有的 ImageRef | 无返回，幂等释放 |
-| `ocr(image?,region?,model_id?)` | image=nil 则捕获；model_id=nil 使用配置 | TextBlock[]；无文字空数组；缺模型抛错 |
+| `ocr(image?,region?,model_id?,export?)` | image=nil 则捕获，model_id=nil 使用配置。export 缺省沿用本次运行的 TXT 授权，false 仅读取，true 要求已授权 TXT | TextBlock[]；无文字空数组；缺模型抛错 |
 | `find_text(text,match_mode?,region?)` | 非空字符串，match_mode=exact，可 contains/fuzzy | found:boolean, TextBlock[]；使用配置模型及 02 默认匹配阈值 |
 | `find_color(params,region?)` | params 为 02 ColorParams | found:boolean,Candidate[] |
 | `get_pixel_color(x,y)` | 识别区内屏幕物理 Point | `{r,g,b}`；单像素读取不要求 10×10 |
@@ -168,4 +168,4 @@ return {clicked = click_target(hit.target_id)}
 
 在运行设置中绑定窗口并选择后台读取后，`capture_screen`、`get_pixel_color`、OCR 和目标监控从所选窗口的客户区取像。客户区 ROI 继续使用绑定坐标，`get_pixel_color(x,y)` 继续接收屏幕物理坐标。运行使用启动时选定的模式。最小化会暂停执行，还原后由用户恢复。
 显式选择绑定窗口后台模式时，点击、左拖、滚轮、常规按键和组合键沿用现有 Lua 调用。鼠标位置及无参数位置查询来自该租约的虚拟指针。后台动作仅对目标声明并支持的消息类型派发，保留焦点和真实指针。
-用户端脚本热键通过窗口触发既有执行控制。脚本接收的参数、运行范围及 Lua API 沿用本契约。
+用户端从「开始工作」指定范围和脚本并启动执行。「编辑脚本」的装配台生成普通 Lua，手写代码和录制草稿均可在 Lua 模式维护。

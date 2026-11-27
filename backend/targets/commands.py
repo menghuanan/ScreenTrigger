@@ -29,7 +29,7 @@ from .service import PAGE_DEFAULT_LIMIT, PAGE_DEFAULT_OFFSET, TargetService
 # 各命令允许的 params 键集（白名单外 → INVALID_PARAMS，定位多余字段）
 _TARGET_COMMAND_PARAMS: Dict[str, Tuple[str, ...]] = {
     "create_target": ("draft",),
-    "get_target": ("target_id",),
+    "get_target": ("target_id", "preview_max_edge"),
     "list_targets": ("group_id", "query", "offset", "limit"),
     "update_target": ("target_id", "expected_revision", "patch"),
     "delete_target": ("target_id", "expected_revision"),
@@ -129,7 +129,12 @@ def register_target_commands(dispatcher: Any, service: TargetService) -> None:
 
     def _cmd_get_target(params: Dict[str, Any]) -> Dict[str, Any]:
         target_id = _require_str(params, "target_id")
-        return {"target": service.get_target(target_id)}
+        target = service.get_target(target_id)
+        result = {"target": target}
+        if "preview_max_edge" in params:
+            edge = _optional_int(params, "preview_max_edge", 400, 1, 800)
+            result["preview"] = service.preview_image(target, edge)
+        return result
 
     def _cmd_list_targets(params: Dict[str, Any]) -> Dict[str, Any]:
         group_id: Any = params["group_id"] if "group_id" in params else UNSET

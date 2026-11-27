@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../ScreenTrigger.Client/ScreenTrigger.Client.csproj" />
     <Compile Include="../ScreenTrigger.User/ReleaseChecker.cs" Link="ReleaseChecker.cs" />
+    <Compile Include="../ScreenTrigger.User/ScriptAssembly.cs" Link="ScriptAssembly.cs" />
   </ItemGroup>
   <Import Project="..\NativeHost.targets" />
 </Project>

@@ -2,7 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="ScreenTrigger">
-    <Grid x:Name="Root" Background="{ThemeResource ShellBrush}" PreviewKeyDown="OnShortcut">
+    <Grid x:Name="Root" Background="{ThemeResource ShellBrush}">
         <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <StackPanel x:Name="TitleArea" Orientation="Horizontal" Spacing="10" Padding="16,0" VerticalAlignment="Stretch">
             <Border Width="21" Height="21" Background="#336CAD" CornerRadius="5" VerticalAlignment="Center">
@@ -20,8 +20,9 @@
                 <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent"/>
             </NavigationView.Resources>
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="ScriptsNav" Tag="scripts" Content="编写脚本" AutomationProperties.AutomationId="NavScripts"><NavigationViewItem.Icon><FontIcon Glyph="&#xE943;"/></NavigationViewItem.Icon></NavigationViewItem>
-                <NavigationViewItem x:Name="GroupsNav" Tag="groups" Content="目标分组" AutomationProperties.AutomationId="NavGroups"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;"/></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem x:Name="WorkNav" Tag="work" Content="开始工作" AutomationProperties.AutomationId="NavWork"><NavigationViewItem.Icon><FontIcon Glyph="&#xE768;"/></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem x:Name="ScriptsNav" Tag="scripts" Content="编辑脚本" AutomationProperties.AutomationId="NavScripts"><NavigationViewItem.Icon><FontIcon Glyph="&#xE943;"/></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem x:Name="GroupsNav" Tag="groups" Content="目标库" AutomationProperties.AutomationId="NavGroups"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;"/></NavigationViewItem.Icon></NavigationViewItem>
                 <NavigationViewItem x:Name="LogsNav" Tag="logs" Content="日志" AutomationProperties.AutomationId="NavLogs"><NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;"/></NavigationViewItem.Icon></NavigationViewItem>
                 <NavigationViewItem x:Name="AboutNav" Tag="about" Content="关于" AutomationProperties.AutomationId="NavAbout"><NavigationViewItem.Icon><FontIcon Glyph="&#xE946;"/></NavigationViewItem.Icon></NavigationViewItem>
             </NavigationView.MenuItems>
