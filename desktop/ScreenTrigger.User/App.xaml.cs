@@ -11,6 +11,7 @@ public partial class App : Application
 
     public App()
     {
+        Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = "zh-CN";
         var queue = DispatcherQueue.GetForCurrentThread();
         opening = Task.Run(() => new HostClient(action => queue.TryEnqueue(() => action())));
         InitializeComponent();

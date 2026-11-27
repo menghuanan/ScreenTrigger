@@ -5,7 +5,16 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import sys
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/packaging"))
+from portable_layout import CORE, MARKER, UI, host_path, metadata_dir
+
+
+def marker_for_host(dll):
+    root = dll.parents[2] if dll.parent.parts[-2:] == UI.parts else dll.parent
+    return metadata_dir(root) / MARKER
 
 
 def sha(path):
@@ -43,9 +52,11 @@ def extract(archive,folder):
             seen.add(item.filename.casefold())
             target.parent.mkdir(exist_ok=True,parents=True)
             with kit.open(item) as src,target.open("xb") as dst: shutil.copyfileobj(src,dst)
-    marker=json.loads((folder/"ScreenTrigger.portable.json").read_bytes())
-    assert marker["core_sha256"]==sha(folder/"portable-core.json")
-    core=json.loads((folder/"portable-core.json").read_bytes())
+    metadata=metadata_dir(folder)
+    marker=json.loads((metadata/MARKER).read_bytes())
+    assert marker["format"] == (1 if metadata == folder else 2)
+    assert marker["core_sha256"]==sha(metadata/CORE)
+    core=json.loads((metadata/CORE).read_bytes())
     models=json.loads((folder/"resources/manifest/factory-models.json").read_bytes())
     checked=set()
     def verify(path,count,expected):
@@ -55,7 +66,12 @@ def extract(archive,folder):
     for model in models["models"]:
         for e in model["files"]:
             verify(folder/"resources/weights"/model["model_id"]/e["name"],e["bytes"],e["sha256"])
-    assert checked|{"portable-core.json","ScreenTrigger.portable.json"}=={p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file()}
+    manifests={(metadata/file).relative_to(folder).as_posix() for file in (CORE,MARKER)}
+    assert checked|manifests=={p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file()}
+    if metadata != folder:
+        assert {p.name for p in folder.iterdir()} == {"ScreenTrigger.exe", "resources", "便携版使用说明.txt"}
+        assert {p.parent.name.lower() for p in (folder/UI).rglob("*.mui")} == {"zh-cn"}
+        assert (folder/UI/"resources.pri").is_file()
     assert not (folder/"data-root.txt").exists()
     assert set(marker["factory"])=={e["recognition_model"] for e in models["engines"]}
     disk=logical=0
@@ -70,14 +86,17 @@ def extract(archive,folder):
 
 def attach(app):
     # The application and its manifest remain byte-for-byte intact in this disposable root.
-    marker = json.loads((app / "ScreenTrigger.portable.json").read_bytes())
-    inventory = app / "portable-core.json"
+    metadata = metadata_dir(app)
+    marker = json.loads((metadata / MARKER).read_bytes())
+    inventory = metadata / CORE
     if sha(inventory) != marker["core_sha256"]:
         raise ValueError("Portable core inventory hash mismatch")
     files = {item["path"]: item["sha256"] for item in json.loads(inventory.read_bytes())}
-    native = ["screen_trigger_lib.dll"]
-    if "recording-desktop-return.exe" in files:
-        native.append("recording-desktop-return.exe")
+    host = host_path(app).relative_to(app)
+    native = [host.as_posix()]
+    companion = host.with_name("recording-desktop-return.exe").as_posix()
+    if companion in files:
+        native.append(companion)
     for name in native:
         if not (app / name).is_file() or sha(app / name) != files[name]:
             raise ValueError(f"Missing or damaged packaged native binary: {name}")

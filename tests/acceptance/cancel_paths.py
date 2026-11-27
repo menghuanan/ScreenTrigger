@@ -14,6 +14,7 @@ fixture_directory = Path(__file__).resolve().parent
 windows_probes = fixture_directory.parents[1] / "tools/probes/windows"
 sys.path[:0] = [str(fixture_directory), str(windows_probes)]
 from window_edges import fixture
+from portable_media import MARKER, host_path, metadata_dir
 from verify_p1_runtime import Host, chord, common, user, wait
 
 
@@ -36,7 +37,7 @@ def exercise(output):
         assert pipe.poll(3)
         return pipe.recv()
     try:
-        host=Host(Path(sys.executable).parent/"screen_trigger_lib.dll",output)
+        host=Host(host_path(Path(sys.executable).parent),output)
         host.session=host.call("start")["session_id"]
         window=next(w for w in host.request("list_windows")["windows"] if w["title"]==title)
         assert window["pid"]==child.pid
@@ -104,7 +105,7 @@ def exercise(output):
         eid=start('key_down("f6")\nlog("entering OCR")\nlocal b=ocr(nil,nil,"korean_PP-OCRv5_mobile_rec")\nlog("OCR finished")\ntype_text("late",0)')
         history = output / "data/history"
         app = Path(sys.executable).resolve().parent
-        portable_manifest = app / "ScreenTrigger.portable.json"
+        portable_manifest = metadata_dir(app) / MARKER
         if portable_manifest.is_file():
             layout = json.loads(portable_manifest.read_bytes())
             if (layout.get("format"), layout.get("mode"), layout.get("data")) == (1, "portable", "data"):

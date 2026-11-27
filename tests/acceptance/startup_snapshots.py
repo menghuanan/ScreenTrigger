@@ -22,6 +22,8 @@ def main(out, display):
     from backend.config.defaults import default_config
     from backend.image.store import SessionImageStore
     import backend.main
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/packaging"))
+    from portable_layout import MARKER, metadata_dir
     app = Path(sys.executable).resolve().parents[2]
     assert Path(backend.main.__file__).resolve().is_relative_to(app / "resources/backend")
     assert not ctypes.windll.shell32.IsUserAnAdmin()
@@ -78,7 +80,7 @@ def main(out, display):
         groups[kind] = dict(name=name, script_id=frozen["id"], source_sha256=frozen["source_sha256"],
                             expected=expected, images=images, model_id=table[kind]["model"] if kind != "lua" else None,
                             snapshot={f.relative_to(data).as_posix():sha(f) for f in sorted(data.rglob("*")) if f.is_file()})
-    save(out / "snapshots.json", dict(groups=groups, archive_source=json.loads((app/"ScreenTrigger.portable.json").read_bytes())["source_sha256"],
+    save(out / "snapshots.json", dict(groups=groups, archive_source=json.loads((metadata_dir(app)/MARKER).read_bytes())["source_sha256"],
          executable=str(sys.executable), fixture=sha(suite/"fixtures/ocr.json"), display=display))
 
 

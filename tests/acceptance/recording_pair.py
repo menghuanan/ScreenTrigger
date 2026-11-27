@@ -13,6 +13,7 @@ from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from recording_ime import Host, common, editor, user, wait
+from portable_media import marker_for_host
 
 
 def digest(path):
@@ -205,7 +206,7 @@ def main():
     dll = opts.dll.resolve()
     report = dict(dll=str(dll), dll_sha256=digest(dll), interpreter=sys.executable,
                   environment=common.base_environment(common.set_per_monitor_v2()), cases=[])
-    marker = dll.parent / "ScreenTrigger.portable.json"
+    marker = marker_for_host(dll)
     if marker.is_file():
         report["portable_marker"] = json.loads(marker.read_bytes())
     for mode in (("ordinary", "consenting") if opts.mode == "both" else (opts.mode,)):

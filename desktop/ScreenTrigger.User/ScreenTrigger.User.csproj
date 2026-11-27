@@ -24,6 +24,24 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" PrivateAssets="all" />
   </ItemGroup>
   <Import Project="../NativeHost.targets" />
+  <Target Name="CreatePortableEntry" BeforeTargets="WriteUserPublishInventory" Condition="'$(ScreenTriggerPortable)' == 'true'"
+          DependsOnTargets="_GetAppHostPaths;AddMicrosoftWindowsAppSDKPayloadFilesFromComponents">
+    <PropertyGroup>
+      <_PortableEntry>$(PublishDir)/portable/ScreenTrigger.exe</_PortableEntry>
+      <_PortableManifest>$(IntermediateOutputPath)Manifests/portable-sdk.manifest</_PortableManifest>
+    </PropertyGroup>
+    <MakeDir Directories="$(PublishDir)/portable"/>
+    <!-- Use the SDK apphost so the window, arguments and exit code belong to the root EXE. -->
+    <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)" AppHostDestinationPath="$(_PortableEntry)"
+                   AppBinaryName="resources/ui/ScreenTrigger.dll" DotNetSearchLocations="AppLocal"
+                   IntermediateAssembly="@(IntermediateAssembly->'%(FullPath)')" WindowsGraphicalUserInterface="true"/>
+    <GenerateAppManifestFromAppxFragments RedirectDlls="true" FrameworkDlls="@(MicrosoftWindowsAppSDKDllFiles)"
+                                          AppxFragments="@(MicrosoftWindowsAppSDKAppxFragmentFiles)" OutAppManifest="$(_PortableManifest)"/>
+    <Exec Command="&quot;$(ManifestTool)&quot; -nologo -manifest &quot;$(_PortableManifest)&quot; &quot;$(MSBuildProjectDirectory)/app.manifest&quot; -outputresource:&quot;$(_PortableEntry);#1&quot;"/>
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(_PortableEntry)" RelativePath="portable/ScreenTrigger.exe" />
+    </ItemGroup>
+  </Target>
   <Target Name="WriteUserPublishInventory" AfterTargets="Publish">
     <GetFileHash Files="@(ResolvedFileToPublish)" Algorithm="SHA256">
       <Output TaskParameter="Items" ItemName="_UserPublishFile" />

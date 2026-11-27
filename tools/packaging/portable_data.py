@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from inspect_root import inspect
+from portable_layout import MARKER, metadata_dir
 from backend.storage.lock import DataRootLock, engine_session
 from backend.storage.paths import DataRoot
 from backend.vision.model_library import ModelLibrary, local_path
@@ -28,7 +29,7 @@ def inventory(root):
 def migrate(source, app):
     source = local_path(Path(os.path.abspath(source)))
     app = local_path(Path(os.path.abspath(app)))
-    marker = json.loads((app/"ScreenTrigger.portable.json").read_bytes())
+    marker = json.loads((metadata_dir(app)/MARKER).read_bytes())
     if marker.get("mode") != "portable" or marker.get("version") != "automation-v2" or marker.get("data") != "data":
         raise ValueError("目标不是受支持的便携解压目录")
     dest = local_path(app/"data")

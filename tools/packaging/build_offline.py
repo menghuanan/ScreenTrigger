@@ -9,6 +9,9 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from portable_layout import CORE, MARKER, METADATA, UI
+from portable_payload import prune_wheels, stage_ui, unused_cpython
+from portable_pri import makepri_tool
 
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON_SHA256 = "9ac15cfa6cab1115c83d48f2af55c554efa4d1bb044bbc4ab1c9d17ad426e16c"
@@ -66,6 +69,8 @@ def prepare_engine(stage, args, pipelines=None):
                 continue
             if parts[1].lower() in ("include", "libs", "scripts") or "site-packages" in parts:
                 continue
+            if pipelines is not None and unused_cpython(parts[1:]):
+                continue
             destination = python.joinpath(*parts[1:])
             destination.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(info) as src, destination.open("wb") as dst:
@@ -81,6 +86,8 @@ def prepare_engine(stage, args, pipelines=None):
     headers = python / "Lib/site-packages/paddle/include"
     if headers.is_dir():
         shutil.rmtree(headers)
+    if pipelines is not None:
+        prune_wheels(python / "Lib/site-packages")
     # _pth also controls multiprocessing children, even when launched without -I.
     (python / "python313._pth").write_text("Lib\nDLLs\n.\nLib/site-packages\n..\nimport site\n", encoding="ascii")
     for project in ("backend", "schema", "models"):
@@ -103,15 +110,19 @@ def prepare_engine(stage, args, pipelines=None):
                 if src.stat().st_size != item["bytes"] or digest(src) != item["sha256"]:
                     raise ValueError(f"model hash mismatch: {rel}")
                 copy(src, resources / "weights" / rel)
+    ui_dir = stage if pipelines is None else stage / UI
     for dll in args.crt.glob("*.dll"):
-        copy(dll, stage / dll.name)
+        copy(dll, ui_dir / dll.name)
         copy(dll, python / dll.name)
     for name in ("msvcp140.dll", "vcruntime140_1.dll"):
-        if not (stage / name).is_file():
+        if not (ui_dir / name).is_file():
             raise ValueError(f"missing app-local x64 VC runtime: {name}")
-    copy(args.crt.parent.parent / "vc_redist.x64.exe", resources / "licenses/VC/vc_redist.x64.exe")
-    # The redistributable includes Microsoft's VC runtime terms. Preserve wheel
-    # dist-info, model cards and the .NET/NuGet and statically linked crate notices.
+    if pipelines is None:
+        copy(args.crt.parent.parent / "vc_redist.x64.exe", resources / "licenses/VC/vc_redist.x64.exe")
+    else:
+        license_doc = ROOT / "tools/packaging/licenses/Visual-C-V14-License-Redistributable_and_Runtime_ENU.docx"
+        copy(license_doc, resources / "licenses/VC" / license_doc.name)
+    # Preserve wheel dist-info, model cards, .NET/NuGet and statically linked crate notices.
     components = json.loads((ROOT / "desktop/ScreenTrigger.User/packages.lock.json").read_text("utf-8-sig"))
     packages = next(iter(components["dependencies"].values()))
     for name, ver in [(n, v["resolved"]) for n, v in packages.items() if v["type"] != "Project"] + [("Microsoft.NETCore.App.Runtime.win-x64", RUNTIME)]:
@@ -137,6 +148,7 @@ def prepare_engine(stage, args, pipelines=None):
         copy(ROOT / "tools/packaging/SetupPaths.ps1", stage / "SetupPaths.ps1")
     else:
         copy(ROOT / "tools/packaging/portable_data.py", resources / "portable_data.py")
+        copy(ROOT / "tools/packaging/portable_layout.py", resources / "portable_layout.py")
         copy(ROOT / "tools/packaging/便携版使用说明.txt", stage / "便携版使用说明.txt")
         factory = {"format": 1, "engines": engines,
                    "models": [m for m in catalog["models"] if m["model_id"] in required]}
@@ -195,8 +207,14 @@ def main():
             p.error("unknown or duplicate factory selection")
     with tempfile.TemporaryDirectory(dir=out.parent, prefix="build-") as tmp:
         stage = Path(tmp) / "app"
-        for relative in user_publish_files(args.ui):
-            copy(args.ui / relative, stage / relative)
+        ui_files = user_publish_files(args.ui)
+        if args.portable:
+            makepri = makepri_tool(args.nuget, ROOT / "desktop/ScreenTrigger.User/packages.lock.json")
+            stage_ui(args.ui, ui_files, stage, makepri)
+        else:
+            for relative in ui_files:
+                if relative.parts[0] != "portable":
+                    copy(args.ui / relative, stage / relative)
         prepare_engine(stage, args, selected if args.portable else None)
         files = sorted(path for path in stage.rglob("*") if path.is_file())
         entries = [{"path": path.relative_to(stage).as_posix(), "bytes": path.stat().st_size,
@@ -209,11 +227,11 @@ def main():
             if args.portable:
                 core = [e for e in entries if not e["path"].startswith("resources/weights/")]
                 inventory = json.dumps(core, separators=(",", ":")).encode()
-                marker = dict(format=1, version="automation-v2", mode="portable", data="data",
+                marker = dict(format=2, version="automation-v2", mode="portable", data="data",
                               source_sha256=source_hash, core_sha256=hashlib.sha256(inventory).hexdigest(),
                               factory=selected)
-                archive.writestr("ScreenTrigger.portable.json", json.dumps(marker))
-                archive.writestr("portable-core.json", inventory)
+                archive.writestr((METADATA / MARKER).as_posix(), json.dumps(marker))
+                archive.writestr((METADATA / CORE).as_posix(), inventory)
             else:
                 archive.writestr("package.json", raw)
                 archive.write(ROOT / "tools/packaging/Install.ps1", "Install.ps1")

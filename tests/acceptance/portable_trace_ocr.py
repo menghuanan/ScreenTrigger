@@ -10,6 +10,8 @@ import psutil
 from PIL import Image
 
 root=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(root/"tools/packaging"))
+from portable_layout import host_path
 sys.path.insert(0,str(root/"tools/probes/windows"))
 from verify_p1_runtime import Host,Window
 app=Path(sys.executable).resolve().parent
@@ -36,7 +38,7 @@ def sample():
     while not stop.is_set():
         rss();stop.wait(.05)
 t=threading.Thread(target=sample,daemon=True);t.start()
-h=Host(app/"screen_trigger_lib.dll",out)
+h=Host(host_path(app),out)
 rows=[]
 try:
     h.window=Window(picker);assert h.dll.st_host_attach_window(h.ptr,h.window)==0

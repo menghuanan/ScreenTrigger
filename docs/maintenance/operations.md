@@ -64,6 +64,10 @@ $candidate = 'dist/automation-v2/ScreenTrigger-automation-v2-' + (Get-Date -Form
 
 完整解压后运行根目录的 `ScreenTrigger.exe`。首次启动检查核心清单，将数据保存在同目录的 `data`。退出后整体移动或复制。旧安装数据和便携版升级的选择、核验及恢复步骤见随包的[便携版使用说明](../../tools/packaging/便携版使用说明.txt)。
 
+标准便携包顶层只交付启动程序、`resources` 和使用说明。入口内嵌 WinUI 激活清单，在同一进程加载 `resources/ui` 中的 .NET、WinUI 和 Rust 宿主。出厂模型放在 `resources/weights`，Python 引擎在 `resources/python`。便携标记与核心哈希清单位于 `resources/manifest`。检验旧包和迁移数据时仍支持原有的平铺布局。
+
+便携端使用简体中文。打包器只取 `zh-CN` 的 MUI，用锁定的 Windows SDK 重建界面资源索引，逐项比对中性资源、中文字符串及嵌入的 XAML 页面。构建期剔除未接入的 UI 组件、调试工具、依赖包测试、开发头文件和备用 Lua 实现，保留 Lua 5.4、四种 OCR 识别语言和第三方许可。VC 运行库的完整许可位于 `resources/licenses/VC`。[微软 VC v14 许可来源](https://visualstudio.microsoft.com/license-terms/vs2026-ga-visualcpp-v14-redist-runtime/) · [Windows SDK 资源索引器](https://learn.microsoft.com/en-us/windows/uwp/app-resources/makepri-exe-format-specific-indexers)
+
 普通 Win32 编辑框的录制从运行页的“选择应用并在隔离桌面录制”进入。停止窗显示目标线程的输入布局。验英文按键时应同时核对英文布局、IME 状态和控件收到的按下及抬起。普通控件的键状态来自新启动应用的获焦线程；一次按下及抬起若全部落在两次采样之间，草稿可能漏掉这一键。无法判断多个边沿先后时，草稿会显示该动作中止。接入录制协议的控件可以逐条报告物理键消息。
 
 隔离录制启动前，宿主会与同目录的 `recording-desktop-return.exe` 完成握手。宿主异常退出时，这个进程只在本次录制桌面仍可见时恢复原桌面。复核此路径可使用 `tests/acceptance/recording_desktop_exit.py --fault host`，同时核对原桌面自动恢复、目标终止和观察器未实施救援。

@@ -16,10 +16,10 @@ import traceback
 import zipfile
 
 import psutil
+from portable_media import CORE, MARKER, metadata_dir
 
 SUITE = Path(__file__).resolve().parent
 KINDS = ("lua", "zh", "ko")
-MARKER = "ScreenTrigger.portable.json"
 
 
 def digest(path):
@@ -249,26 +249,27 @@ def main():
     assert not (app/"data").exists() and not ctypes.windll.shell32.IsUserAnAdmin()
     output.mkdir(parents=True,exist_ok=False)
     opts = read(snapshots/"snapshots.json")
+    metadata = metadata_dir(app)
+    marker_file = metadata / MARKER
     with zipfile.ZipFile(archive) as package:
-        marker = next(n for n in package.namelist() if n.rsplit("/",1)[-1] == MARKER)
-        assert package.read(marker) == (app/MARKER).read_bytes()
-        exename = marker[:-len(MARKER)]+"ScreenTrigger.exe"
-        assert package.read(exename) == (app/"ScreenTrigger.exe").read_bytes()
-    state = read(app/MARKER)
+        assert package.read(marker_file.relative_to(app).as_posix()) == marker_file.read_bytes()
+        assert package.read("ScreenTrigger.exe") == (app/"ScreenTrigger.exe").read_bytes()
+    state = read(marker_file)
     assert opts["archive_source"] == state["source_sha256"] and set(state["factory"]) == {v["model_id"] for v in opts["groups"].values() if v["model_id"]}
     factory=app/'resources/manifest/factory-models.json'
     assert {x['recognition_model'] for x in read(factory)['engines']}==set(state['factory'])
-    assert digest(app/'portable-core.json')==state['core_sha256']
+    assert digest(metadata/CORE)==state['core_sha256']
     if not ctypes.windll.user32.GetShellWindow() or not any((p.info['name'] or '').lower()=='explorer.exe' for p in psutil.process_iter(['name'])):
         raise RuntimeError('A normal interactive Windows shell and its visible process table are required')
     shutil.copy2(factory,output/'factory-models.json')
     shutil.copyfile(snapshots/"snapshots.json",output/"snapshots.json")
     drivers=output/'drivers'
     drivers.mkdir()
-    for name in ('startup_measure.py','startup_results.py','startup_snapshots.py','show_fixture.py','portable_window.ps1','startup_run_ui.ps1'):
+    for name in ('startup_measure.py','startup_results.py','startup_snapshots.py','show_fixture.py','portable_window.ps1','startup_run_ui.ps1','portable_media.py'):
         shutil.copy2(SUITE/name,drivers/name)
+    shutil.copy2(SUITE.parents[1]/"tools/packaging/portable_layout.py", drivers/"portable_layout.py")
     write(output/"plan.json",dict(archive=str(archive),sha256=digest(archive),marker=state,
-                                   marker_sha256=digest(app/MARKER),executable_sha256=digest(app/"ScreenTrigger.exe"),
+                                   marker_sha256=digest(marker_file),executable_sha256=digest(app/"ScreenTrigger.exe"),
                                    factory_manifest_sha256=digest(factory),model_directory=str(app/'resources/weights'),
                                    normal_entry=str(app/"ScreenTrigger.exe"),mode=args.mode,environment=environment(app),
                                    entries={path.name:digest(path) for path in drivers.iterdir()},

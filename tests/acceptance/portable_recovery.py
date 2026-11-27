@@ -11,7 +11,7 @@ import threading
 import time
 from uuid import uuid4
 
-from portable_media import attach, sha
+from portable_media import MARKER, attach, metadata_dir, sha
 
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -23,7 +23,7 @@ def exercise(archive, clean, raw, previous_app=None, previous_zip=None):
     raw=raw.resolve()
     report={"package":str(archive),"sha256":sha(archive),"steps":[],"work":str(scratch)}
     prepared=clean.resolve()
-    assert (prepared/"ScreenTrigger.portable.json").is_file() and not (prepared/"data").exists()
+    assert (metadata_dir(prepared)/MARKER).is_file() and not (prepared/"data").exists()
     def command(name,args,ok=True,env=None):
         started=time.monotonic()
         with (raw/(name+".log")).open("xb") as stream:
@@ -98,9 +98,10 @@ def exercise(archive, clean, raw, previous_app=None, previous_zip=None):
         if previous_app is not None:
             import zipfile
             with zipfile.ZipFile(previous_zip) as previous:
-                marker=previous.read("ScreenTrigger.portable.json")
-            assert marker==(previous_app/"ScreenTrigger.portable.json").read_bytes()
-            assert marker!=(prepared/"ScreenTrigger.portable.json").read_bytes()
+                old_marker=metadata_dir(previous_app)/MARKER
+                marker=previous.read(old_marker.relative_to(previous_app).as_posix())
+            assert marker==old_marker.read_bytes()
+            assert marker!=(metadata_dir(prepared)/MARKER).read_bytes()
             report["previous_zip"]={"path":str(previous_zip),"sha256":sha(previous_zip)}
             source_folder=previous_app
         def contents(data):

@@ -19,12 +19,14 @@ def digest(path):
 
 
 def exercise(repo, archive, raw):
+    sys.path.insert(0, str(repo / "tools/packaging"))
+    from portable_layout import MARKER, host_path, metadata_dir
     sys.path.insert(0, str(repo / "tools/probes/windows"))
     from verify_p1_runtime import Host, Window
 
     app = Path(sys.executable).resolve().parent
     assert app.is_relative_to(repo / "dist/automation-work") and sys.executable.lower().endswith("portable-abi-test.exe")
-    marker = json.loads((app / "ScreenTrigger.portable.json").read_bytes())
+    marker = json.loads((metadata_dir(app) / MARKER).read_bytes())
     weights = app / "resources/weights"
     raw.mkdir(parents=True, exist_ok=False)
     table = json.loads((repo / "tests/acceptance/fixtures/ocr.json").read_bytes())
@@ -71,7 +73,7 @@ def exercise(repo, archive, raw):
         ctypes.memmove(dest, data, len(data))
         return len(data)
     def launch():
-        host = Host(app / "screen_trigger_lib.dll", raw)
+        host = Host(host_path(app), raw)
         host.window = Window(picker)
         assert host.dll.st_host_attach_window(host.ptr, host.window) == 0
         host.session = host.call("start")["session_id"]

@@ -17,6 +17,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from recording_pair import Host, common, digest, verify_draft, wait
+from portable_media import marker_for_host
 
 user = ct.WinDLL("user32", use_last_error=True)
 kernel = ct.WinDLL("kernel32", use_last_error=True)
@@ -363,7 +364,7 @@ def main():
     opts.output.mkdir(parents=True, exist_ok=False)
     report = dict(argv=sys.argv, dll_sha256=digest(dll), fixture_sha256=digest(exe),
                   test_sha256=digest(Path(__file__)), environment=common.base_environment(common.set_per_monitor_v2()), cases=[])
-    marker = dll.parent / "ScreenTrigger.portable.json"
+    marker = marker_for_host(dll)
     if marker.is_file():
         report["portable_marker"] = json.loads(marker.read_bytes())
     for scope in ("window", "region", "display"):

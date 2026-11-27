@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import time
 from uuid import uuid4
+from portable_media import host_path
 
 HERE=Path(__file__).resolve().parent
 
@@ -98,7 +99,7 @@ def measure(app,output,result,operation,fixture):
         for item in (row['sample'],row['scene']):
             with (data/item['file']).open('rb') as stream:assert hashlib.file_digest(stream,'sha256').hexdigest()==item['sha256']
         folder=app/'qa-logs/orb'
-        run(result,'bound-orb',app,[exe,'-I','-B','-X','utf8',HERE/'orb_window.py',app/'screen_trigger_lib.dll',data,folder])
+        run(result,'bound-orb',app,[exe,'-I','-B','-X','utf8',HERE/'orb_window.py',host_path(app),data,folder])
         shutil.copyfile(folder/'result.json',output/'bound-orb-result.json')
         shutil.copyfile(app/'qa-logs/bound-orb.log',output/'bound-orb.log')
     elif operation=='fixed_ocr':

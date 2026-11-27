@@ -23,7 +23,8 @@ $ae = [Windows.Automation.AutomationElement]
 $scope = [Windows.Automation.TreeScope]::Descendants
 $exeFile = Get-Item -LiteralPath $Exe
 $folder = New-Item -ItemType Directory -Path $Output
-if (Test-Path (Join-Path $exeFile.DirectoryName 'ScreenTrigger.portable.json')) {
+if ((Test-Path (Join-Path $exeFile.DirectoryName 'resources/manifest/ScreenTrigger.portable.json')) -or
+    (Test-Path (Join-Path $exeFile.DirectoryName 'ScreenTrigger.portable.json'))) {
     if (Test-Path (Join-Path $exeFile.DirectoryName 'data')) { throw 'Use a fresh extraction.' }
 } else {
     $env:SIDECAR_DATA_DIR = Join-Path $folder.FullName 'test-data'

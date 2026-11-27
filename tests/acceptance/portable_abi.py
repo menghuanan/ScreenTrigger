@@ -7,16 +7,18 @@ import sys
 import time
 
 REPO=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(REPO/"tools/packaging"))
+from portable_layout import MARKER, host_path, metadata_dir
 sys.path.insert(0,str(REPO/"tools/probes/windows"))
 from verify_p1_runtime import Host
 
 
 def run(folder,op,label):
     app=Path(sys.executable).resolve().parent
-    if not (app/"ScreenTrigger.portable.json").is_file():
+    if not (metadata_dir(app)/MARKER).is_file():
         raise ValueError("Launch with the test driver adjacent to the actual portable EXE")
     folder.mkdir(parents=True,exist_ok=False)
-    host=Host(app/"screen_trigger_lib.dll",folder)
+    host=Host(host_path(app),folder)
     report={"exe":sys.executable,"app":str(app),"operation":op,"label":label}
     try:
         host.session=host.call("start")["session_id"]

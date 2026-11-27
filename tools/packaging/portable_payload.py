@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 
 from portable_layout import ENTRY, UI
+from portable_pri import compact_pri
 
 # These features have no entry in ScreenTrigger.User. Framework, networking, text
 # editing, accessibility, native recording, and system-browser activation stay intact.
@@ -35,7 +36,7 @@ def unused_ui(relative):
             or (name.startswith("mscordaccore") and name.endswith(".dll")))
 
 
-def stage_ui(publish, files, stage):
+def stage_ui(publish, files, stage, makepri):
     files = set(files)
     portable_entry = Path("portable") / ENTRY
     if portable_entry not in files:
@@ -48,7 +49,9 @@ def stage_ui(publish, files, stage):
             # MRTCore's unpackaged base-directory mode looks for resources.pri.
             dest = stage / UI / "resources.pri"
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if source.name == "ScreenTrigger.deps.json":
+        if source.suffix.lower() == ".pri":
+            compact_pri(makepri, publish / source, dest)
+        elif source.name == "ScreenTrigger.deps.json":
             deps = json.loads((publish / source).read_bytes())
             for target in deps["targets"].values():
                 for library in target.values():
@@ -78,6 +81,8 @@ def prune_wheels(site):
                 directories.remove(name)
         for name in filenames:
             file = parent / name
+            if name.lower().startswith(("license", "licence", "copying", "notice")):
+                continue
             if (file.suffix.lower() in SDK_EXTENSIONS
                     or (relative == ("lupa",) and file.suffix == ".pyd" and not name.startswith("lua54."))):
                 file.unlink()

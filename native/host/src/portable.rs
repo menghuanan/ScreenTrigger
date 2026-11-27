@@ -8,6 +8,8 @@ use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 pub const MARKER: &str = "ScreenTrigger.portable.json";
+const COMPACT_METADATA: &str = "resources/manifest";
+const COMPACT_HOST: &str = "resources/ui/screen_trigger_lib.dll";
 const LAYOUT: &[u8] = b"{\"format\":1,\"data\":\"data\"}";
 
 #[derive(Deserialize)]
@@ -75,13 +77,13 @@ fn check_files<'a>(root: &Path, entries: impl Iterator<Item = &'a Entry>) -> Res
     Ok(())
 }
 
-fn verify(root: &Path, marker: &Marker) -> Result<(), String> {
-    let inventory = root.join("portable-core.json");
+fn verify(root: &Path, metadata: &Path, marker: &Marker, native_host: &str) -> Result<(), String> {
+    let inventory = metadata.join("portable-core.json");
     regular(&inventory)?;
     let raw = fs::read(inventory).map_err(|e| e.to_string())?;
     if format!("{:x}",Sha256::digest(&raw)) != marker.core_sha256 { return Err("便携核心文件清单哈希不符".into()); }
     let entries: Vec<Entry> = serde_json::from_slice(&raw).map_err(|e| e.to_string())?;
-    for required in ["ScreenTrigger.exe","screen_trigger_lib.dll","resources/python/python.exe","resources/backend/main.py"] {
+    for required in ["ScreenTrigger.exe",native_host,"resources/python/python.exe","resources/backend/main.py"] {
         if !entries.iter().any(|e|e.path == required) { return Err(format!("核心清单缺少 {required}")); }
     }
     std::thread::scope(|scope| {
@@ -152,8 +154,12 @@ fn local_volume(path: &Path) -> Result<(), String> {
 }
 
 pub fn data_root(exe_root: &Path) -> Result<(PathBuf,bool), String> {
-    let marker_file = exe_root.join(MARKER);
-    if !marker_file.try_exists().map_err(|e|e.to_string())? {
+    let compact_metadata = exe_root.join(COMPACT_METADATA);
+    let compact = compact_metadata.join(MARKER).try_exists().map_err(|e|e.to_string())?
+        || exe_root.join("resources/ui").try_exists().map_err(|e|e.to_string())?;
+    let metadata = if compact { compact_metadata.as_path() } else { exe_root };
+    let marker_file = metadata.join(MARKER);
+    if !compact && !marker_file.try_exists().map_err(|e|e.to_string())? {
         let installed = fs::read_to_string(exe_root.join("data-root.txt"))
             .map_err(|_| "缺少便携清单或安装数据绑定，请重新完整解压或修复安装。".to_string())?;
         let path=PathBuf::from(installed.trim());
@@ -162,14 +168,15 @@ pub fn data_root(exe_root: &Path) -> Result<(PathBuf,bool), String> {
     }
     #[cfg(windows)]
     local_volume(exe_root)?;
-    plain_parents(exe_root, &mut HashSet::new())?;
+    plain_parents(metadata, &mut HashSet::new())?;
     regular(&marker_file)?;
     let marker: Marker = serde_json::from_slice(&fs::read(marker_file).map_err(|e|e.to_string())?)
         .map_err(|e|format!("便携清单损坏：{e}"))?;
-    if marker.format != 1 || marker.version != "automation-v2" || marker.data != "data" || marker.mode != "portable" {
+    let (format, native_host) = if compact { (2, COMPACT_HOST) } else { (1, "screen_trigger_lib.dll") };
+    if marker.format != format || marker.version != "automation-v2" || marker.data != "data" || marker.mode != "portable" {
         return Err("便携清单版本或路径不匹配".into());
     }
-    verify(exe_root,&marker)?;
+    verify(exe_root,metadata,&marker,native_host)?;
     writable(exe_root)?;
     let data = exe_root.join("data");
     fs::create_dir_all(&data).map_err(|e|format!("无法建立便携数据目录，请将整个目录复制到可写位置。{e}"))?;
@@ -209,6 +216,29 @@ pub fn data_root(exe_root: &Path) -> Result<(PathBuf,bool), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn compact_kit_verifies_private_host_and_keeps_data_beside_the_entry() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let metadata = root.join(COMPACT_METADATA);
+        fs::create_dir_all(&metadata).unwrap();
+        let mut entries = Vec::new();
+        for path in ["ScreenTrigger.exe", COMPACT_HOST, "resources/python/python.exe", "resources/backend/main.py"] {
+            let target = root.join(path);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(target, b"abc").unwrap();
+            entries.push(json!({"path":path,"bytes":3,"sha256":format!("{:x}",Sha256::digest(b"abc"))}));
+        }
+        assert!(data_root(&root).is_err());
+        let raw = serde_json::to_vec(&entries).unwrap();
+        fs::write(metadata.join("portable-core.json"), &raw).unwrap();
+        fs::write(metadata.join(MARKER), json!({"format":2,"mode":"portable","version":"automation-v2",
+            "data":"data","core_sha256":format!("{:x}",Sha256::digest(raw))}).to_string()).unwrap();
+        assert_eq!(data_root(&root).unwrap(), (root.join("data"), true));
+        fs::write(root.join(COMPACT_HOST), b"xyz").unwrap();
+        assert!(data_root(&root).unwrap_err().contains("哈希"));
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn marker_requires_verified_core_and_data_follows_the_executable() {
