@@ -1,7 +1,10 @@
 param([Parameter(Mandatory)][string]$OutputDirectory, [switch]$DebugCases, [switch]$HistoryCases,
       [switch]$BackupCases, [switch]$InteractionCases, [switch]$KeyboardCases,
-      [string]$Executable = 'dist/desktop/bin/ScreenTrigger/debug_win-x64/ScreenTrigger.exe')
+      [string]$Executable = 'dist/desktop/bin/ScreenTrigger/debug_win-x64/ScreenTrigger.DevPanel.exe')
 $ErrorActionPreference='Stop'
+if ([IO.Path]::GetFileName($Executable) -eq 'ScreenTrigger.DevPanel.exe') {
+    $env:SCREENTRIGGER_DEV_ROOT = (Resolve-Path (Join-Path $PSScriptRoot '../../../..')).Path
+}
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
 $folder=New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop
 $env:SIDECAR_DATA_DIR=Join-Path $folder.FullName 'data'

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../ScreenTrigger/Host/*.cs;../ScreenTrigger/Contracts/*.cs" />
+    <EmbeddedResource Include="../../schema/types.schema.json" LogicalName="ScreenTrigger.types.json" />
+    <EmbeddedResource Include="../../schema/config.schema.json" LogicalName="ScreenTrigger.config.json" />
+    <InternalsVisibleTo Include="ScreenTrigger" />
+    <InternalsVisibleTo Include="ScreenTrigger.DevPanel" />
+    <InternalsVisibleTo Include="ScreenTrigger.ContractTests" />
+  </ItemGroup>
+</Project>

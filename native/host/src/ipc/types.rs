@@ -276,7 +276,7 @@ const HOST_COMMANDS: [&str; 6] = [
 
 /// 引擎业务命令（§5.2 第三类；转发 Python → 骨架期 UNKNOWN_COMMAND，
 /// 业务 handler 属 M03–M07）。
-const ENGINE_COMMANDS: [&str; 48] = [
+const ENGINE_COMMANDS: [&str; 49] = [
     "list_ocr_models",
     "preview_ocr_model_change",
     "apply_ocr_model_change",
@@ -306,6 +306,7 @@ const ENGINE_COMMANDS: [&str; 48] = [
     "list_scripts",
     "load_script",
     "save_script",
+    "set_script_hotkey",
     "delete_script",
     "validate_script",
     "compile_recording",
@@ -467,7 +468,7 @@ mod tests {
             + HOST_HANDLED_COMMANDS.len()
             + HOST_COMMANDS.len()
             + ENGINE_COMMANDS.len();
-        assert_eq!(total, 85);
+        assert_eq!(total, 86);
         for cmd in ["list_execution_history", "clear_execution_logs", "list_catalog_backups",
                     "create_catalog_backup", "preview_catalog_restore", "restore_catalog_backup"] {
             assert!(ENGINE_COMMANDS.contains(&cmd));

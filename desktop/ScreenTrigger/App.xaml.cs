@@ -11,6 +11,12 @@ public partial class App : Application
 
     public App()
     {
+        var root = Environment.GetEnvironmentVariable("SCREENTRIGGER_DEV_ROOT");
+        if (string.IsNullOrEmpty(root) || !System.IO.File.Exists(System.IO.Path.Combine(root, "desktop", "ScreenTrigger", "ScreenTrigger.csproj")) ||
+            !System.IO.File.Exists(System.IO.Path.Combine(root, ".venv", "Scripts", "python.exe")))
+        {
+            Environment.Exit(2);
+        }
         opening = OpenHost();
         InitializeComponent();
     }

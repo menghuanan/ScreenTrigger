@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <AssemblyName>ScreenTrigger.DevPanel</AssemblyName>
+    <RootNamespace>ScreenTrigger</RootNamespace>
+    <IsPublishable>false</IsPublishable>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <PlatformTarget>x64</PlatformTarget>
@@ -17,8 +20,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="../../schema/types.schema.json" LogicalName="ScreenTrigger.types.json" />
-    <EmbeddedResource Include="../../schema/config.schema.json" LogicalName="ScreenTrigger.config.json" />
+    <Compile Remove="Contracts/**/*.cs;Host/**/*.cs" />
+    <ProjectReference Include="../ScreenTrigger.Client/ScreenTrigger.Client.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.7.0" />
     <PackageReference Include="WinUIEx" Version="2.9.3" />
     <Compile Include="../../tools/probes/windows/SelectionProbe/SelectionGeometry.cs" Link="Selection/SelectionGeometry.cs" />
@@ -26,4 +29,7 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" PrivateAssets="all" />
   </ItemGroup>
   <Import Project="..\NativeHost.targets" />
+  <Target Name="RequireDevelopmentBuild" BeforeTargets="PrepareForBuild" Condition="'$(Configuration)' != 'Debug'">
+    <Error Text="开发面板仅支持 Debug。发布用户端请构建 ScreenTrigger.User。" />
+  </Target>
 </Project>

@@ -26,26 +26,8 @@ internal sealed class WorkspaceCommands(HostClient host, FrameworkElement contro
     private TaskCompletionSource? idle;
     public Task WhenIdle => idle?.Task ?? Task.CompletedTask;
 
-    public async Task<JsonElement> Call(string command, object parameters)
-    {
-        if (session == null || session != host.Events.Session) throw new InvalidOperationException("引擎会话已改变，请重新打开页面。");
-        var request = host.BeginRequest(command, parameters);
-        JsonElement result;
-        try { result = await request.Completion; }
-        catch (HostException ex) when (ex.Error.Code == "INTERNAL_ERROR" && ex.Error.Details.ValueKind == JsonValueKind.Object &&
-                                      ex.Error.Details.TryGetProperty("deadline_ms", out _))
-        {
-            if (session != host.Events.Session) throw;
-            var status = await host.QueryAsync(request);
-            if (status.GetProperty("status").GetString() != "completed")
-                throw new InvalidOperationException($"请求 {request.Id} 的结果待核实。请在历史页查询状态。");
-            result = status.GetProperty("response");
-            if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("code", out var code))
-                throw new InvalidOperationException($"{code} · {result.GetProperty("message")}");
-        }
-        if (session != host.Events.Session) throw new InvalidOperationException("本次操作所属的会话已结束。");
-        return result;
-    }
+    public Task<JsonElement> Call(string command, object parameters) =>
+        host.RequestCheckedAsync(session ?? throw new InvalidOperationException("引擎会话尚未就绪。"), command, parameters);
 
     public async Task Run(Func<Task> action)
     {

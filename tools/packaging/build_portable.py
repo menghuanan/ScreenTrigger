@@ -37,7 +37,7 @@ def build(out, crt, pipelines):
         if baseline(workspace)["sha256"]!=manifest["sha256"]:
             raise ValueError("Incomplete source snapshot")
         ui=workspace/"dist/ui"
-        run(["dotnet","publish","desktop/ScreenTrigger/ScreenTrigger.csproj","-c","Release","-p:PublishProfile=Offline",
+        run(["dotnet","publish","desktop/ScreenTrigger.User/ScreenTrigger.User.csproj","-c","Release","-p:PublishProfile=Offline",
              "-p:RestoreLockedMode=true","--disable-build-servers","-o",str(ui)])
         toolchain=ROOT/".venv/probe-toolchain"
         candidate=workspace/"dist/automation-v2"/out.name

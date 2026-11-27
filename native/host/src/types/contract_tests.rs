@@ -101,7 +101,7 @@ fn type_validation_cases_match_python_source() {
     // AUDIT-20261012-004：五种分组字段错误和一条空条件树共享原用例。
     // ORB adds a persisted anchor and a rejected geometric threshold.
     // 后台运行及监控的九条增量向量与旧运行配置一起核对取值和错误字段。
-    assert_eq!(ran, 67, "Rust 共享类型契约用例数不符");
+    assert_eq!(ran, 70, "Rust 共享类型契约用例数不符");
 }
 
 #[test]

@@ -194,6 +194,27 @@ internal sealed class HostClient : IAsyncDisposable
     public Task<JsonElement> RequestAsync(string command, object parameters) => BeginRequest(command, parameters).Completion;
     public Task<JsonElement> QueryAsync(HostRequest request) =>
         RequestIn(request.Session, "query_request", new { request_id = request.Id }).Completion;
+
+    public async Task<JsonElement> RequestCheckedAsync(string session, string command, object parameters)
+    {
+        if (session != Events.Session) throw new InvalidOperationException("引擎会话已改变，请重新打开页面。");
+        var request = RequestIn(session, command, parameters);
+        JsonElement result;
+        try { result = await request.Completion.ConfigureAwait(false); }
+        catch (HostException ex) when (ex.Error.Code == "INTERNAL_ERROR" &&
+            ex.Error.Details.ValueKind == JsonValueKind.Object && ex.Error.Details.TryGetProperty("deadline_ms", out _))
+        {
+            if (session != Events.Session) throw;
+            var status = await QueryAsync(request).ConfigureAwait(false);
+            if (status.GetProperty("status").GetString() != "completed")
+                throw new InvalidOperationException($"请求 {request.Id} 的结果待核实，请刷新并查看日志。");
+            result = status.GetProperty("response");
+            if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("code", out var code))
+                throw new InvalidOperationException($"{code} · {result.GetProperty("message")}");
+        }
+        if (session != Events.Session) throw new InvalidOperationException("本次操作所属的会话已结束。");
+        return result;
+    }
     public Task<JsonElement> CancelAsync(HostRequest request) =>
         Schedule(new { op = "cancel", session_id = request.Session, request_id = request.Id }, Capacity.Control);
 

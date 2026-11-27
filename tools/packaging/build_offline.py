@@ -26,6 +26,34 @@ def copy(source, destination):
     shutil.copyfile(source, destination)
 
 
+def user_publish_files(ui):
+    """Stage only the files emitted by the user WinUI project's Publish target."""
+    inventory = ui / "ScreenTrigger.User.files"
+    if not inventory.is_file():
+        raise ValueError("请选择 ScreenTrigger.User 的 Offline 发布目录")
+    allowed_pages = {p.relative_to(ROOT / "desktop/ScreenTrigger.User").with_suffix(".xbf").as_posix().lower()
+                     for p in (ROOT / "desktop/ScreenTrigger.User").rglob("*.xaml")}
+    selected = {}
+    for line in inventory.read_text(encoding="utf-8-sig").splitlines():
+        relative, sha = line.rsplit("|", 1)
+        path = Path(relative)
+        if path.is_absolute() or path.drive or ".." in path.parts or not path.name:
+            raise ValueError(f"Invalid user publish path: {relative}")
+        if path.suffix.lower() == ".pdb":
+            continue
+        key = path.as_posix().lower()
+        if ("devpanel" in key or "contracttests" in key or "selectionprobe" in key or
+                (path.suffix.lower() == ".xbf" and key not in allowed_pages)):
+            raise ValueError(f"Development UI in user publish: {relative}")
+        if digest(ui / path) != sha.lower():
+            raise ValueError(f"User publish file changed: {relative}")
+        selected[key] = path
+    # The Release XAML compiler embeds the pages in ScreenTrigger.pri.
+    if not {"screentrigger.exe", "screentrigger.dll", "screentrigger.client.dll", "screentrigger.pri"} <= selected.keys():
+        raise ValueError("Incomplete ScreenTrigger.User publish")
+    return selected.values()
+
+
 def prepare_engine(stage, args, pipelines=None):
     resources = stage / "resources"
     python = resources / "python"
@@ -84,9 +112,9 @@ def prepare_engine(stage, args, pipelines=None):
     copy(args.crt.parent.parent / "vc_redist.x64.exe", resources / "licenses/VC/vc_redist.x64.exe")
     # The redistributable includes Microsoft's VC runtime terms. Preserve wheel
     # dist-info, model cards and the .NET/NuGet and statically linked crate notices.
-    components = json.loads((ROOT / "desktop/ScreenTrigger/packages.lock.json").read_text("utf-8"))
+    components = json.loads((ROOT / "desktop/ScreenTrigger.User/packages.lock.json").read_text("utf-8-sig"))
     packages = next(iter(components["dependencies"].values()))
-    for name, ver in [(n, v["resolved"]) for n, v in packages.items()] + [("Microsoft.NETCore.App.Runtime.win-x64", RUNTIME)]:
+    for name, ver in [(n, v["resolved"]) for n, v in packages.items() if v["type"] != "Project"] + [("Microsoft.NETCore.App.Runtime.win-x64", RUNTIME)]:
         package = args.nuget / name.lower() / ver.lower()
         for file in package.iterdir():
             if file.is_file() and (file.name.lower().startswith(("license", "third", "notice")) or file.suffix == ".nuspec"):
@@ -167,7 +195,8 @@ def main():
             p.error("unknown or duplicate factory selection")
     with tempfile.TemporaryDirectory(dir=out.parent, prefix="build-") as tmp:
         stage = Path(tmp) / "app"
-        shutil.copytree(args.ui, stage, ignore=shutil.ignore_patterns("*.pdb"))
+        for relative in user_publish_files(args.ui):
+            copy(args.ui / relative, stage / relative)
         prepare_engine(stage, args, selected if args.portable else None)
         files = sorted(path for path in stage.rglob("*") if path.is_file())
         entries = [{"path": path.relative_to(stage).as_posix(), "bytes": path.stat().st_size,

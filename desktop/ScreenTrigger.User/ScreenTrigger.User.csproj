@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>ScreenTrigger</AssemblyName>
+    <Version>0.1.0-beta.1</Version>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ScreenTrigger.Client/ScreenTrigger.Client.csproj" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.7.0" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" PrivateAssets="all" />
+  </ItemGroup>
+  <Import Project="../NativeHost.targets" />
+  <Target Name="WriteUserPublishInventory" AfterTargets="Publish">
+    <GetFileHash Files="@(ResolvedFileToPublish)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_UserPublishFile" />
+    </GetFileHash>
+    <WriteLinesToFile File="$(PublishDir)/ScreenTrigger.User.files"
+        Lines="@(_UserPublishFile->'%(RelativePath)|%(FileHash)')" Encoding="UTF-8" Overwrite="true" />
+  </Target>
+</Project>

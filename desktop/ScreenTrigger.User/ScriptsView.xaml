@@ -1,0 +1,58 @@
+<UserControl x:Class="ScreenTrigger.User.ScriptsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:local="using:ScreenTrigger.User" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid x:Name="Library" RowSpacing="12">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <TextBlock Text="编写脚本" Style="{StaticResource PageTitle}"/>
+            <Grid Grid.Row="1">
+                <Button x:Name="NewButton" AutomationProperties.Name="新建" AutomationProperties.AutomationId="NewScript" Style="{StaticResource AccentButtonStyle}" Click="NewScript">
+                    <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE710;" FontSize="14"/><TextBlock Text="新建"/></StackPanel>
+                </Button>
+                <ToggleButton x:Name="EditMode" Content="编辑" HorizontalAlignment="Right" Visibility="Collapsed"
+                    AutomationProperties.AutomationId="EditScripts" Checked="ChangeMode" Unchecked="ChangeMode"/>
+            </Grid>
+            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="5">
+                <ListView x:Name="ScriptList" SelectionMode="None" AutomationProperties.Name="已有脚本"
+                    AutomationProperties.AutomationId="ScriptList">
+                    <ListView.ItemContainerStyle><Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="9,5"/>
+                    </Style></ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate><DataTemplate x:DataType="local:ScriptRow">
+                        <Grid ColumnSpacing="10" MinHeight="50">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{x:Bind Status, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" VerticalAlignment="Center" MinWidth="94" ItemsSource="{x:Bind Keys, Mode=OneWay}"
+                                SelectedItem="{x:Bind Key, Mode=OneWay}" SelectionChangedTrigger="Committed" SelectionChanged="SetKey"
+                                AutomationProperties.Name="脚本热键" AutomationProperties.AutomationId="{x:Bind KeyId, Mode=OneWay}"/>
+                            <Button Grid.Column="2" VerticalAlignment="Center" MinWidth="67" Content="{x:Bind Action, Mode=OneWay}"
+                                AutomationProperties.AutomationId="{x:Bind RunId, Mode=OneWay}" Click="ToggleScript"
+                                ToolTipService.ToolTip="在当前显示器开始或停止脚本。键盘动作发往前台窗口。"/>
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Spacing="6" Visibility="{x:Bind EditVisibility, Mode=OneWay}">
+                                <Button Content="删除" Click="DeleteScript" AutomationProperties.AutomationId="{x:Bind DeleteId, Mode=OneWay}"/>
+                                <Button Content="编辑" Click="EditScript" AutomationProperties.AutomationId="{x:Bind EditId, Mode=OneWay}"/>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate></ListView.ItemTemplate>
+                </ListView>
+            </Border>
+        </Grid>
+        <Grid x:Name="Editor" Visibility="Collapsed" RowSpacing="12">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <TextBlock x:Name="EditorTitle" Style="{StaticResource PageTitle}"/>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="保存" Style="{StaticResource AccentButtonStyle}" Click="Save" AutomationProperties.AutomationId="SaveScript"/>
+                <Button Content="返回" Click="Back" AutomationProperties.AutomationId="BackScripts"/>
+            </StackPanel>
+            <TextBox Grid.Row="2" x:Name="ScriptName" PlaceholderText="脚本名称" MaxLength="100" AutomationProperties.Name="脚本名称" AutomationProperties.AutomationId="ScriptName"/>
+            <TextBox Grid.Row="3" x:Name="Source" AcceptsReturn="True" TextWrapping="Wrap" Padding="14"
+                FontFamily="Consolas" FontSize="14" VerticalContentAlignment="Top" IsSpellCheckEnabled="False"
+                IsTextPredictionEnabled="False" ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="脚本内容"
+                AutomationProperties.AutomationId="ScriptSource"/>
+        </Grid>
+    </Grid>
+</UserControl>

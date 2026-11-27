@@ -23,7 +23,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from ..script.validator import ScriptValidator, build_default_script_validator
-from ..storage.errors import data_corrupt, in_use, invalid_params
+from ..storage.errors import StorageError, data_corrupt, in_use, invalid_params
+from ..types.conditions import SCRIPT_HOTKEYS
 from ..storage.generation import sha256_hex
 from ..targets.emitter import CatalogEmitter, NullCatalogEmitter
 from ..targets.repository import CatalogChange, Repository
@@ -239,6 +240,29 @@ class ScriptService:
         )
         if action_policy is not UNSET:
             script_dict["action_policy"] = action_policy
+        if existing is not None and "hotkey" in existing:
+            script_dict["hotkey"] = existing["hotkey"]
+        return self._commit_script(snapshot, scripts, script_dict)
+
+    def set_hotkey(self, script_id: str, expected_revision: int, hotkey: Optional[str]) -> Dict[str, Any]:
+        if hotkey is not None and hotkey not in SCRIPT_HOTKEYS:
+            raise invalid_params("hotkey", "请选择 A–Z 或 F1–F12")
+        snapshot = self._repository.read_snapshot()
+        scripts = domain.scripts_from_snapshot(snapshot)
+        current = domain.ensure_script_found(domain.find_script(scripts, script_id), script_id)
+        domain.ensure_script_revision(current, expected_revision)
+        if current.get("hotkey") == hotkey:
+            return dict(current)
+        if hotkey and any(s.get("hotkey") == hotkey for s in scripts):
+            raise StorageError("HOTKEY_CONFLICT", f"{hotkey} 已绑定其他脚本", field="hotkey")
+        updated = dict(current, revision=expected_revision + 1, updated_at=self._clock())
+        if hotkey is None:
+            updated.pop("hotkey", None)
+        else:
+            updated["hotkey"] = hotkey
+        return self._commit_script(snapshot, scripts, updated)
+
+    def _commit_script(self, snapshot, scripts, script_dict):
         new_scripts = domain.upsert_script(scripts, script_dict)
         change = CatalogChange.build(
             snapshot,

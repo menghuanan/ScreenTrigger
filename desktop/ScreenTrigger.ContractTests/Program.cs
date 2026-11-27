@@ -17,13 +17,14 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
         if (args.Length > 1 && Path.GetFileName(args[0]) == "main.py") return FaultPeer.Run(args);
-        if (args.Length != 2 || args[0] is not ("types" or "config" or "protocol" or "faults" or "points")) return 2;
+        if (args.Length != 2 || args[0] is not ("types" or "config" or "protocol" or "faults" or "points" or "updates")) return 2;
         output = Path.GetFullPath(args[1]);
         if (Directory.Exists(output)) throw new IOException("证据目录已存在。");
         Directory.CreateDirectory(output);
         using var source = JsonDocument.Parse(File.ReadAllBytes("schema/contract-cases.json"));
         cases = source.RootElement.GetProperty("cases");
         if (args[0] == "types") await TypeCases();
+        if (args[0] == "updates") await ReleaseCases();
         if (args[0] == "points")
         {
             foreach (double scale in new[] { 1, 1.25, 1.5, 2, 3 })
@@ -46,6 +47,47 @@ internal static class Program
         File.WriteAllText(Path.Combine(output,"results.json"),JsonSerializer.Serialize(results,reportJson));
         Console.WriteLine($"{results.Count - failures}/{results.Count} passed");
         return failures == 0 ? 0 : 1;
+    }
+
+    private sealed class ReleaseFeed(string[] tags, System.Net.HttpStatusCode status, string? atom = null) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (atom != null && request.RequestUri?.AbsoluteUri == "https://github.com/menghuanan/ScreenTrigger/releases.atom")
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(atom) });
+            Require(request.RequestUri!.Host == "api.github.com" && request.RequestUri.AbsolutePath == "/repos/menghuanan/ScreenTrigger/releases", "Unexpected release endpoint");
+            var releases = tags.Select(tag => new { draft = tag == "v99.0.0", tag_name = tag });
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(JsonSerializer.Serialize(releases)) });
+        }
+    }
+
+    private static async Task ReleaseCases()
+    {
+        foreach (var (name, tags, expected) in new (string, string[], string)[] {
+            ("newer", ["v0.1.0-beta.10", "v0.1.0-beta.2"], "有新版本更新　v0.1.0-beta.10"),
+            ("same", ["v0.1.0-beta.1+build", "v99.0.0"], "当前是最新版本。"),
+            ("older", ["v0.0.9"], "当前是最新版本。"),
+            ("stable", ["v0.1.0"], "有新版本更新　v0.1.0"),
+            ("empty", [], "当前是最新版本。项目暂无公开发布的版本。") })
+            await Check("release/" + name, async () => {
+                using var client = new HttpClient(new ReleaseFeed(tags, System.Net.HttpStatusCode.OK));
+                var message = await ScreenTrigger.User.ReleaseChecker.CheckAsync("0.1.0-beta.1", default, client);
+                Require(message == expected, message);
+                return message;
+            });
+        await Check("release/rate-limited-public-feed", async () => {
+            const string feed = "<feed xmlns='http://www.w3.org/2005/Atom'><entry><link href='https://github.com/menghuanan/ScreenTrigger/releases/tag/v0.10.0'/></entry></feed>";
+            using var client = new HttpClient(new ReleaseFeed([], System.Net.HttpStatusCode.Forbidden, feed));
+            var message = await ScreenTrigger.User.ReleaseChecker.CheckAsync("0.9.9", default, client);
+            Require(message == "有新版本更新　v0.10.0", message);
+            return message;
+        });
+        await Check("release/unavailable", async () => {
+            using var client = new HttpClient(new ReleaseFeed([], System.Net.HttpStatusCode.ServiceUnavailable));
+            try { await ScreenTrigger.User.ReleaseChecker.CheckAsync("0.1.0-beta.1", default, client); }
+            catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable) { return "503"; }
+            throw new Exception("Unavailable repository reported success");
+        });
     }
 
     private static async Task Check(string name, Func<Task<object?>> test)

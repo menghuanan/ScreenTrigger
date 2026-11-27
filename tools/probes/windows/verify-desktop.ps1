@@ -8,6 +8,9 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
 $exe = (Resolve-Path -LiteralPath $Executable).Path
+if ([IO.Path]::GetFileName($exe) -eq 'ScreenTrigger.DevPanel.exe') {
+    $env:SCREENTRIGGER_DEV_ROOT = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
+}
 $folder = New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop
 $env:SIDECAR_DATA_DIR = Join-Path $folder.FullName 'data'
 if ($Scenario -in 'normal','missing_models','close_pending') { $env:SIDECAR_FAULT_SCENARIO = $null }

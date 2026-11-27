@@ -57,7 +57,7 @@ def build(root):
     documents = {path: read(root, path) for path in (ENTRY, INPUT, VISION, MEDIA)}
     entry = documents[ENTRY]
     tasks, tests, checks = {}, {}, {}
-    for number, (title, dependencies, expected, group) in numbered_rows(entry, "任务号", range(30, 45)).items():
+    for number, (title, dependencies, expected, group) in numbered_rows(entry, "任务号", range(30, 46)).items():
         tid = f"TASK-{number}"
         if dependencies != "无" and not re.fullmatch(r"\d{3}(?:、\d{3})*", dependencies):
             raise ValueError(f"Invalid dependencies for {tid}: {dependencies}")
@@ -65,7 +65,7 @@ def build(root):
         tasks[tid] = dict(id=tid, title=title, stage=VERSION, group=VERSION,
                           dependencies=prerequisites, source=ENTRY, checks=[], tests=[f"TEST-{group}"],
                           requirements=[], deliverable=expected)
-    for number, (title, old_groups) in numbered_rows(entry, "测试组号", range(17, 25)).items():
+    for number, (title, old_groups) in numbered_rows(entry, "测试组号", range(17, 26)).items():
         gid = f"TEST-{number}"
         tests[gid] = dict(id=gid, title=title, source=ENTRY, checks=[],
                           regression_groups=ids(old_groups, "TEST"))
@@ -104,7 +104,7 @@ def build(root):
     for tid, item in tasks.items():
         if tid == "TASK-030":
             continue
-        package = tid in ("TASK-039", "TASK-040", "TASK-044")
+        package = tid in ("TASK-039", "TASK-040", "TASK-044", "TASK-045")
         clauses = [s for s in re.split(r"[；。]", item["deliverable"]) if s.strip()]
         cases(tid, "VERIFY", ENTRY, clauses, package=package)
         add(tid, "HANDOFF", HANDOFF, PROCEDURE)

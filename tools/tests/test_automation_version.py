@@ -88,8 +88,9 @@ class AutomationVersionTests(unittest.TestCase):
     def test_catalog_ledger_and_report_isolation(self):
         self.assertEqual(len(self.legacy_tasks), 29)
         self.assertEqual(len(self.legacy_tests), 16)
-        self.assertEqual(set(self.catalog["tasks"]), {f"TASK-{n:03}" for n in range(30, 45)})
-        self.assertEqual(set(self.catalog["tests"]), {f"TEST-{n:03}" for n in range(17, 25)})
+        self.assertEqual(set(self.catalog["tasks"]), {f"TASK-{n:03}" for n in range(30, 46)})
+        self.assertEqual(set(self.catalog["tests"]), {f"TEST-{n:03}" for n in range(17, 26)})
+        self.assertEqual(self.catalog["tasks"]["TASK-045"]["dependencies"], ["TASK-044"])
         self.assertEqual(self.catalog["tasks"]["TASK-039"]["dependencies"], ["TASK-038", "TASK-042"])
         self.assertEqual(set(self.catalog["tasks"]["TASK-044"]["dependencies"]),
                          {f"TASK-{n:03}" for n in (32, 34, 35, 37, 40, 41, 42, 43)})
@@ -116,7 +117,7 @@ class AutomationVersionTests(unittest.TestCase):
         group = self.audit("--test", "TEST-017", code=1)
         self.assertEqual(set(group["selected_checks"]), set(self.catalog["tests"]["TEST-017"]["checks"]))
         release = self.audit("--scope", "release", code=1)
-        self.assertEqual(release["task_denominator"], 15)
+        self.assertEqual(release["task_denominator"], 16)
         self.assertEqual(release["verified_tasks"], 0)
         self.assertEqual((self.reports / "latest-audit.json").read_bytes(), legacy_pointer)
         self.assertEqual(self.legacy_state.read_bytes(), legacy_ledger)
@@ -290,7 +291,7 @@ class AutomationVersionTests(unittest.TestCase):
         self.assertNotEqual(no_signoff["tasks"]["TASK-044"]["acceptance"], "VERIFIED")
         install_fixture("release")
         complete = self.audit("--scope", "release", code=0)
-        self.assertEqual(complete["verified_tasks"], 15)
+        self.assertEqual(complete["verified_tasks"], 16)
 
         replacement = package.with_name("ScreenTrigger-automation-v2-replacement.zip")
         with ZipFile(replacement, "w") as archive:

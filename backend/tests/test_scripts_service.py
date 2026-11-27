@@ -122,6 +122,21 @@ class _ServiceFixture(unittest.TestCase):
 
 
 class SaveScriptTest(_ServiceFixture):
+    def test_local_hotkey_lifecycle(self):
+        first = self._save()
+        second = self._save()
+        bound = self.svc.set_hotkey(first["id"], 1, "F12")
+        self.assertEqual(self.svc.set_hotkey(first["id"], 2, "F12"), bound)
+        for key, revision, code in (("F13", 1, "INVALID_PARAMS"), ("F12", 1, "HOTKEY_CONFLICT"),
+                                    ("A", 2, "CONFLICT")):
+            with self.assertRaises(StorageError) as error:
+                self.svc.set_hotkey(second["id"], revision, key)
+            self.assertEqual(error.exception.code, code)
+        edited = self._save(name="修改", script_id=first["id"], expected_revision=2)
+        self.assertEqual(edited["hotkey"], "F12")
+        self.assertNotIn("hotkey", self.svc.set_hotkey(first["id"], 3, None))
+        self.assertEqual(self.svc.set_hotkey(second["id"], 1, "F12")["revision"], 2)
+
     def test_create_revision_event_and_source_persisted(self):
         script = self._save()
         self.assertEqual(script["revision"], 1)

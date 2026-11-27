@@ -51,7 +51,8 @@ internal sealed record Group(string Id, long Revision, string Name, string? Pare
 internal sealed record ScriptParameter(string Name, string Type, bool Required, JsonElement Default, string Description);
 internal sealed record Script(string Id, long Revision, string Name, string SourcePath, string SourceSha256,
     ScriptParameter[] Parameters, string CreatedAt, string UpdatedAt,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] JsonElement? ActionPolicy = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] JsonElement? ActionPolicy = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Hotkey = null);
 internal sealed record Match(string? TargetId, long? SampleNo, string Space, PixelRect Bbox, PixelPoint Center,
     double Confidence, long GeometryRevision, JsonElement[] Evidence);
 internal sealed record RunConfig(string ScriptId, JsonElement Args, string Mode, long? Iterations, string? StopTargetId,

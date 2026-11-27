@@ -1,0 +1,34 @@
+<Window x:Class="ScreenTrigger.User.ShellWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="ScreenTrigger">
+    <Grid x:Name="Root" Background="{ThemeResource ShellBrush}" PreviewKeyDown="OnShortcut">
+        <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <StackPanel x:Name="TitleArea" Orientation="Horizontal" Spacing="10" Padding="16,0" VerticalAlignment="Stretch">
+            <Border Width="21" Height="21" Background="#336CAD" CornerRadius="5" VerticalAlignment="Center">
+                <ContentPresenter Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Content="ScreenTrigger" ContentTemplate="{StaticResource AppMark}"/>
+            </Border>
+            <TextBlock Text="ScreenTrigger" FontSize="13" VerticalAlignment="Center"/>
+        </StackPanel>
+        <NavigationView x:Name="Navigation" Grid.Row="1" PaneDisplayMode="Left" OpenPaneLength="184"
+            CompactPaneLength="48" IsPaneToggleButtonVisible="False" IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="False" IsTitleBarAutoPaddingEnabled="False" AlwaysShowHeader="False"
+            SelectionChanged="Navigate" PaneTitle="">
+            <NavigationView.Resources>
+                <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent"/>
+            </NavigationView.Resources>
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="ScriptsNav" Tag="scripts" Content="编写脚本" AutomationProperties.AutomationId="NavScripts"><NavigationViewItem.Icon><FontIcon Glyph="&#xE943;"/></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem x:Name="GroupsNav" Tag="groups" Content="目标分组" AutomationProperties.AutomationId="NavGroups"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;"/></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem x:Name="LogsNav" Tag="logs" Content="日志" AutomationProperties.AutomationId="NavLogs"><NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;"/></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem x:Name="AboutNav" Tag="about" Content="关于" AutomationProperties.AutomationId="NavAbout"><NavigationViewItem.Icon><FontIcon Glyph="&#xE946;"/></NavigationViewItem.Icon></NavigationViewItem>
+            </NavigationView.MenuItems>
+            <Grid Background="{ThemeResource PaperBrush}" Padding="26,22" RowSpacing="8">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <InfoBar x:Name="Notice" IsOpen="False" Severity="Error" IsClosable="True"/>
+                <ContentControl x:Name="PageHost" Grid.Row="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</Window>

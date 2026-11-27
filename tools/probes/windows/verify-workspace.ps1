@@ -5,6 +5,9 @@ $folder = New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop
 $env:SIDECAR_DATA_DIR = Join-Path $folder.FullName 'data'
 $env:SIDECAR_FAULT_SCENARIO = $null
 $exe = (Resolve-Path -LiteralPath $Executable).Path
+if ([IO.Path]::GetFileName($exe) -eq 'ScreenTrigger.DevPanel.exe') {
+    $env:SCREENTRIGGER_DEV_ROOT = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
+}
 $tree = [Windows.Automation.TreeScope]::Descendants
 $ae = [Windows.Automation.AutomationElement]
 $observations = [ordered]@{}

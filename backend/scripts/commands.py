@@ -35,6 +35,7 @@ _SCRIPT_COMMAND_PARAMS: Dict[str, Tuple[str, ...]] = {
     "load_script": ("script_id",),
     "save_script": ("script_id", "expected_revision", "name", "source", "parameters", "action_policy"),
     "delete_script": ("script_id", "expected_revision"),
+    "set_script_hotkey": ("script_id", "expected_revision", "hotkey"),
     "validate_script": ("source",),
     "compile_recording": ("scope", "actions", "interrupted"),
 }
@@ -180,7 +181,13 @@ def register_script_commands(dispatcher: Any, service: ScriptService) -> None:
 
     dispatcher.register("list_scripts", _wrap("list_scripts", _cmd_list_scripts))
     dispatcher.register("load_script", _wrap("load_script", _cmd_load_script))
+    def _cmd_set_hotkey(params):
+        return {"script": service.set_hotkey(_require_str(params, "script_id"),
+                                             _require_int(params, "expected_revision"),
+                                             _require_present(params, "hotkey"))}
+
     dispatcher.register("save_script", _wrap("save_script", _cmd_save_script))
+    dispatcher.register("set_script_hotkey", _wrap("set_script_hotkey", _cmd_set_hotkey))
     dispatcher.register("delete_script", _wrap("delete_script", _cmd_delete_script))
     dispatcher.register("validate_script", _wrap("validate_script", _cmd_validate_script))
     dispatcher.register("compile_recording", _wrap("compile_recording", compile_recording))

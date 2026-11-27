@@ -22,7 +22,7 @@ def run(out):
     out.mkdir(parents=True,exist_ok=False)
     # A fresh obj/bin pair keeps XAML metadata and its resource index from different builds apart.
     build=ROOT/"dist/automation-work"/("point-" + out.name)
-    gui=build/"bin/ScreenTrigger/debug_win-x64/ScreenTrigger.exe"
+    gui=build/"bin/ScreenTrigger/debug_win-x64/ScreenTrigger.DevPanel.exe"
     csharp=build/"bin/ScreenTrigger.ContractTests/debug/ScreenTrigger.ContractTests.dll"
     host_build=ROOT/"dist/automation-work/point-host"
     flags=[f"-p:ArtifactsPath={build}",f"-p:HostOutput={host_build}","-p:RestoreIgnoreFailedSources=true","-p:NuGetAudit=false"]

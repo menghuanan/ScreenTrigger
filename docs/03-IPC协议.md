@@ -133,6 +133,7 @@ TargetDraft 为 `{name,group_id?,image_id,anchor_condition_id,conditions,storage
 | list_scripts | {offset?:int=0,limit?:int=100} | {items:Script[],total:int} |
 | load_script | {script_id:string} | {script:Script,source:string} |
 | save_script | {script_id?:string,expected_revision?:int,name:string,source:string,parameters:array} | {script:Script} |
+| set_script_hotkey | {script_id:string,expected_revision:int,hotkey:string或null} | {script:Script}。null 清除绑定，重复绑定返回原修订，同键占用返回 HOTKEY_CONFLICT。 |
 | delete_script | {script_id:string,expected_revision:int} | {ok:true} |
 | validate_script | {source:string} | {valid:boolean,diagnostics:array} |
 

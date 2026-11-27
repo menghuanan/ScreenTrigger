@@ -1,6 +1,6 @@
 # 开发规范与本机命令
 
-现阶段用现有 WinUI 主窗开发和验证功能。先从[实现审查](implementation-review.md)或已确认的适配需求选一项，按[任务索引](../agent/任务拆解.md)核对所属模块、前置、关联 TEST 和已有问题。新功能的输入、依赖和设计留在[后续开发规划](roadmap.md)。
+用户端和开发面板共用宿主客户端。用户端工程为 [ScreenTrigger.User](../../desktop/ScreenTrigger.User/ScreenTrigger.User.csproj)，本机可用 `dotnet run --project desktop/ScreenTrigger.User` 启动。开发面板保留原有九个入口与自动化标识。先从[实现审查](implementation-review.md)或已确认的适配需求选一项，按[任务索引](../agent/任务拆解.md)核对所属模块、前置和测试组。
 
 ## 启动开发面板
 
@@ -12,9 +12,7 @@
 $py = '.\.venv\Scripts\python.exe'
 & $py --version
 & $py tools/run_acceptance.py audit --scope baseline
-dotnet build desktop/ScreenTrigger/ScreenTrigger.csproj -p:RestoreLockedMode=true
-$env:SIDECAR_DATA_DIR = Join-Path $PWD ('reports\raw\dev-' + [guid]::NewGuid().ToString('N'))
-& .\dist\desktop\bin\ScreenTrigger\debug_win-x64\ScreenTrigger.exe
+& .\tools\start-dev-panel.ps1
 ```
 
 在 Windows x64 开发者终端运行，使 `dotnet`、`cargo`、MSVC 链接器及 Windows SDK 可用。开发态宿主默认查找项目的 `.venv\Scripts\python.exe`。需要替换解释器时用 `SIDECAR_PYTHON`，指定本地权重库用 `ST_OCR_MODELS_DIR`。开新终端即可恢复原来的会话环境。面板就绪后先查看引擎版本和能力，走与需求有关的页面，在隔离数据根模拟一次失败或取消并验证可恢复。

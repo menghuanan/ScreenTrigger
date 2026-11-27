@@ -1,6 +1,6 @@
 # 技术架构与模块所有权
 
-当前可执行入口是 `ScreenTrigger.exe`。主窗口在同一进程加载 Rust DLL，宿主启动一个受管 CPython 子进程。Lua VM 和视觉 Provider 运行在引擎侧。新增功能应先定位状态或资源由谁拥有，再决定改哪个入口。
+用户运行[用户端主窗](../../desktop/ScreenTrigger.User/ShellWindow.xaml)所在的 `ScreenTrigger.exe`。源码工作区可另行启动 `ScreenTrigger.DevPanel.exe`。两个应用通过[共享客户端](../../desktop/ScreenTrigger.Client/ScreenTrigger.Client.csproj)加载 Rust DLL，由宿主管理 CPython 子进程。Lua VM 和视觉 Provider 运行在引擎侧。仅用户点击关于页的检查更新按钮时，用户端才请求 GitHub 的公开发行列表。
 
 | 责任 | 当前实现入口 | 修改时应保持的行为 |
 |---|---|---|

@@ -7,10 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../ScreenTrigger/Contracts/*.cs" Link="Contracts/%(Filename)%(Extension)" />
-    <Compile Include="../ScreenTrigger/Host/*.cs" Link="Host/%(Filename)%(Extension)" />
-    <EmbeddedResource Include="../../schema/types.schema.json" LogicalName="ScreenTrigger.types.json" />
-    <EmbeddedResource Include="../../schema/config.schema.json" LogicalName="ScreenTrigger.config.json" />
+    <ProjectReference Include="../ScreenTrigger.Client/ScreenTrigger.Client.csproj" />
+    <Compile Include="../ScreenTrigger.User/ReleaseChecker.cs" Link="ReleaseChecker.cs" />
   </ItemGroup>
   <Import Project="..\NativeHost.targets" />
 </Project>

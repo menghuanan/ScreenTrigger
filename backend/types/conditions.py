@@ -387,6 +387,10 @@ class Script:
     created_at: str
     updated_at: str
     action_policy: Optional[dict] = None
+    hotkey: Optional[str] = None
+
+
+SCRIPT_HOTKEYS = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + tuple(f"F{n}" for n in range(1, 13))
 
 
 def _validate_script_parameter(item: Any) -> ScriptParameter:
@@ -413,7 +417,7 @@ def validate_script(value: Any) -> Script:
     check_keys(
         data,
         ("id", "revision", "name", "source_path", "source_sha256", "parameters",
-         "created_at", "updated_at", "action_policy"),
+         "created_at", "updated_at", "action_policy", "hotkey"),
         "script",
     )
     raw_name = data.get("name")
@@ -438,6 +442,7 @@ def validate_script(value: Any) -> Script:
         source_sha256=hex64_field(data, "source_sha256", "source_sha256"),
         parameters=tuple(_validate_script_parameter(item) for item in parameters),
         action_policy=validate_policy(data["action_policy"]) if "action_policy" in data else None,
+        hotkey=enum_field(data, "hotkey", "hotkey", SCRIPT_HOTKEYS) if "hotkey" in data else None,
         created_at=validate_rfc3339_utc(data.get("created_at"), "created_at"),
         updated_at=validate_rfc3339_utc(data.get("updated_at"), "updated_at"),
     )

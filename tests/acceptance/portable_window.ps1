@@ -224,11 +224,12 @@ public static class PortableShellInput {
         if ($hwnd -ne [IntPtr]::Zero) {
             $main=$ae::FromHandle($hwnd)
             $stop=$main.FindFirst($scope,[Windows.Automation.PropertyCondition]::new($ae::AutomationIdProperty,'StopEngine'))
+            $newScript=$main.FindFirst($scope,[Windows.Automation.PropertyCondition]::new($ae::AutomationIdProperty,'NewScript'))
             $tree=@($main.FindAll($scope,[Windows.Automation.Condition]::TrueCondition) | ForEach-Object {
                 [ordered]@{id=$_.Current.AutomationId;name=$_.Current.Name}
             })
             $record.tree=$tree
-            if ($Expect -eq 'ready' -and $stop -and $stop.Current.IsEnabled) {break}
+            if ($Expect -eq 'ready' -and (($stop -and $stop.Current.IsEnabled) -or ($newScript -and $newScript.Current.IsEnabled))) {break}
             if ($Expect -eq 'error' -and (@($tree | ForEach-Object { $_.name }) -match '不可写|哈希不符|长度不符|便携清单|便携数据布局|复制到可写|便携目录')) {break}
         }
         if ($sw.Elapsed.TotalSeconds -gt 120) { throw "Timeout waiting for $Expect" }

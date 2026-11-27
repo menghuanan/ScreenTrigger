@@ -485,6 +485,13 @@ pub fn validate_group_fields(v: &Value) -> Result<(), TypeError> {
 
 /// Script 校验（source_path 形态 + 组件判断；parameters required/default 约束）。
 pub fn validate_script(v: &Value) -> Result<(), TypeError> {
+    if let Some(value) = v.get("hotkey") {
+        let key = value.as_str().unwrap_or("");
+        if !(key.len() == 1 && key.as_bytes()[0].is_ascii_uppercase())
+            && !(1..=12).any(|n| key == format!("F{n}")) {
+            return Err(TypeError::invalid_params("hotkey"));
+        }
+    }
     if let Some(policy) = v.get("action_policy") {
         crate::input::policy::ActionPolicy::parse(policy).map_err(TypeError::invalid_params)?;
     }

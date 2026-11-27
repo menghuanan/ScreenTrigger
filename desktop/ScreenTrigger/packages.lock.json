@@ -64,6 +64,9 @@
         "dependencies": {
           "Microsoft.WindowsAppSDK.Base": "2.7.0"
         }
+      },
+      "screentrigger.client": {
+        "type": "Project"
       }
     },
     "net10.0-windows10.0.26100/win-x64": {

@@ -23,16 +23,29 @@ function Measure-StartupUi($process, $record, [string]$manifest) {
     $window = Await-Startup { $process.Refresh(); if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
         $ae::FromHandle($process.MainWindowHandle) } } 'WinUI window'
     $record.window_qpc = & $now
-    $nav = Await-Startup { Find-StartupControl $window 'NavRun' } 'run navigation'
+    $nav = Await-Startup {
+        $legacy = Find-StartupControl $window 'NavRun'
+        if ($legacy) { $legacy } else { Find-StartupControl $window 'NavScripts' }
+    } 'script navigation'
+    $userClient = $nav.Current.AutomationId -eq 'NavScripts'
     $record.nav_qpc = & $now
     $nav.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select()
     $readyLabel=[regex]::Unescape('\u5f15\u64ce\u5c31\u7eea')
     $null = Await-Startup {
+        if ($userClient) {
+            $newScript = Find-StartupControl $window 'NewScript'
+            return $newScript -and $newScript.Current.IsEnabled
+        }
         $health = Find-StartupControl $window 'ServiceStatus'
         $health -and $health.Current.Name -eq $readyLabel
     } 'engine ready'
     $record.ready_seen_qpc = & $now
     $go = Await-Startup {
+        if ($userClient) {
+            $row = Find-StartupControl $window ("Run_" + $scenario.script_id)
+            if ($row -and $row.Current.IsEnabled) { return $row }
+            return
+        }
         $button = Find-StartupControl $window 'ExecuteScript'
         $picker = Find-StartupControl $window 'RunScriptPicker'
         if ($button -and $picker -and $button.Current.IsEnabled) {
@@ -43,6 +56,7 @@ function Measure-StartupUi($process, $record, [string]$manifest) {
     $record.selected_qpc = & $now
     $record.name = $scenario.name
     $previous = ''
+    $acceptedIds = @{}
     for ($i = 0; $i -lt $scenario.count; $i++) {
         $warmWorker=$null
         if ($i -gt 0 -and $scenario.kind -ne 'lua') {
@@ -59,12 +73,20 @@ function Measure-StartupUi($process, $record, [string]$manifest) {
         $attempt=[ordered]@{index=$i;status='invoking';invoke_qpc=$begin;warm_worker=$warmWorker}
         $record.runs += $attempt
         $go.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
-        $feedback = Find-StartupControl $window 'RunFeedback'
+        $feedback = if (-not $userClient) { Find-StartupControl $window 'RunFeedback' }
         $id = Await-Startup {
+            if ($userClient) {
+                $accepted = @(Get-Content -LiteralPath $scenario.timing -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json } |
+                    Where-Object { $_.event -eq 'execute_accepted' -and $_.script_id -eq $scenario.script_id -and -not $acceptedIds.ContainsKey($_.execution_id) })
+                if ($accepted.Count -gt 1) { throw 'One click created multiple execution IDs' }
+                if ($accepted.Count -eq 1) { return $accepted[0].execution_id }
+                return
+            }
             $m = [regex]::Match($feedback.Current.Name, '[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}')
             if ($m.Success -and $m.Value -ne $previous) { $m.Value }
         } 'new accepted execution'
         $previous = $id
+        $acceptedIds[$id] = $true
         $accepted = & $now
         $attempt.execution_id=$id
         $attempt.accepted_seen_qpc=$accepted
